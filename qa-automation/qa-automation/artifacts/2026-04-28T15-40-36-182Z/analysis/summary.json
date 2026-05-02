@@ -1,0 +1,257 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-04-28T15:40:47.673Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    },
+    {
+      "stepId": "class-created",
+      "label": "class-created",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/class-created-class-created.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/class-created-class-created.html",
+      "timestamp": "2026-04-28T15:41:03.481Z",
+      "notes": [
+        "Live class created from admin flow."
+      ]
+    },
+    {
+      "stepId": "class-started",
+      "label": "class-started",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/class-started-class-started.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/class-started-class-started.html",
+      "timestamp": "2026-04-28T15:41:32.980Z",
+      "notes": [
+        "Admin started the class and the room loaded."
+      ]
+    },
+    {
+      "stepId": "admin-in-room",
+      "label": "admin-in-room",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/admin-in-room-admin-in-room.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/admin-in-room-admin-in-room.html",
+      "timestamp": "2026-04-28T15:41:33.089Z",
+      "notes": [
+        "Admin is inside the live classroom."
+      ]
+    },
+    {
+      "stepId": "student-login",
+      "label": "student-login",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/student-login-student-login.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/student-login-student-login.html",
+      "timestamp": "2026-04-28T15:41:40.136Z",
+      "notes": [
+        "Student login completed."
+      ]
+    },
+    {
+      "stepId": "student-join",
+      "label": "student-join",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/student-join-student-join.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/student-join-student-join.html",
+      "timestamp": "2026-04-28T15:41:56.758Z",
+      "notes": [
+        "Student joined the live classroom."
+      ]
+    },
+    {
+      "stepId": "both-inside-room-admin",
+      "label": "both-inside-room-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/both-inside-room-admin-both-inside-room-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/both-inside-room-admin-both-inside-room-admin.html",
+      "timestamp": "2026-04-28T15:41:56.910Z",
+      "notes": [
+        "Admin side of shared classroom."
+      ]
+    },
+    {
+      "stepId": "both-inside-room-student",
+      "label": "both-inside-room-student",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/both-inside-room-student-both-inside-room-student.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/both-inside-room-student-both-inside-room-student.html",
+      "timestamp": "2026-04-28T15:41:57.075Z",
+      "notes": [
+        "Student side of shared classroom."
+      ]
+    },
+    {
+      "stepId": "chat-interaction-admin",
+      "label": "chat-interaction-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/chat-interaction-admin-chat-interaction-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/chat-interaction-admin-chat-interaction-admin.html",
+      "timestamp": "2026-04-28T15:42:01.343Z",
+      "notes": [
+        "Admin view after real-time chat sync."
+      ]
+    },
+    {
+      "stepId": "chat-interaction-student",
+      "label": "chat-interaction-student",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/chat-interaction-student-chat-interaction-student.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/chat-interaction-student-chat-interaction-student.html",
+      "timestamp": "2026-04-28T15:42:01.494Z",
+      "notes": [
+        "Student view after real-time chat sync."
+      ]
+    },
+    {
+      "stepId": "raise-hand-flow-admin",
+      "label": "raise-hand-flow-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/raise-hand-flow-admin-raise-hand-flow-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/raise-hand-flow-admin-raise-hand-flow-admin.html",
+      "timestamp": "2026-04-28T15:42:02.081Z",
+      "notes": [
+        "Admin sees student raised hand."
+      ]
+    },
+    {
+      "stepId": "raise-hand-flow-student",
+      "label": "raise-hand-flow-student",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/raise-hand-flow-student-raise-hand-flow-student.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/raise-hand-flow-student-raise-hand-flow-student.html",
+      "timestamp": "2026-04-28T15:42:02.225Z",
+      "notes": [
+        "Student raised hand state."
+      ]
+    },
+    {
+      "stepId": "admin-reject",
+      "label": "admin-reject",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/admin-reject-admin-reject.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/admin-reject-admin-reject.html",
+      "timestamp": "2026-04-28T15:42:02.681Z",
+      "notes": [
+        "Admin rejected raised hand."
+      ]
+    },
+    {
+      "stepId": "admin-approve",
+      "label": "admin-approve",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/admin-approve-admin-approve.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/admin-approve-admin-approve.html",
+      "timestamp": "2026-04-28T15:42:03.925Z",
+      "notes": [
+        "Admin approved student to speak."
+      ]
+    },
+    {
+      "stepId": "admin-unmute",
+      "label": "admin-unmute",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/admin-unmute-admin-unmute.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/admin-unmute-admin-unmute.html",
+      "timestamp": "2026-04-28T15:42:04.618Z",
+      "notes": [
+        "Admin unmuted student."
+      ]
+    },
+    {
+      "stepId": "admin-mute",
+      "label": "admin-mute",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/admin-mute-admin-mute.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/admin-mute-admin-mute.html",
+      "timestamp": "2026-04-28T15:42:05.459Z",
+      "notes": [
+        "Admin muted student again."
+      ]
+    },
+    {
+      "stepId": "screen-share-admin",
+      "label": "screen-share-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/screen-share-admin-screen-share-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/screen-share-admin-screen-share-admin.html",
+      "timestamp": "2026-04-28T15:42:06.227Z",
+      "notes": [
+        "Admin started screen sharing."
+      ]
+    },
+    {
+      "stepId": "screen-share-student",
+      "label": "screen-share-student",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/screen-share-student-screen-share-student.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/screen-share-student-screen-share-student.html",
+      "timestamp": "2026-04-28T15:42:06.364Z",
+      "notes": [
+        "Student sees admin screen-sharing state."
+      ]
+    },
+    {
+      "stepId": "admin-remove-student",
+      "label": "admin-remove-student",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/admin-remove-student-admin-remove-student.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/admin-remove-student-admin-remove-student.html",
+      "timestamp": "2026-04-28T15:42:07.436Z",
+      "notes": [
+        "Admin removed student from room."
+      ]
+    },
+    {
+      "stepId": "student-removed",
+      "label": "student-removed",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/student-removed-student-removed.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/student-removed-student-removed.html",
+      "timestamp": "2026-04-28T15:42:07.721Z",
+      "notes": [
+        "Student was returned out of the room after removal."
+      ]
+    },
+    {
+      "stepId": "class-end",
+      "label": "class-end",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/screenshots/class-end-class-end.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T15-40-36-182Z/sources/class-end-class-end.html",
+      "timestamp": "2026-04-28T15:42:19.532Z",
+      "notes": [
+        "Admin ended the live class."
+      ]
+    }
+  ],
+  "failures": []
+}

@@ -1,0 +1,73 @@
+{
+  "captures": [
+    {
+      "stepId": "launch",
+      "label": "app-launch",
+      "state": "loading",
+      "durationMs": 60782,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T06-57-26-256Z/screenshots/launch-loading-app-launch.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T06-57-26-256Z/sources/launch-loading-app-launch.xml",
+      "timestamp": "2026-04-30T06:58:34.620Z"
+    },
+    {
+      "stepId": "login-error",
+      "label": "invalid-login",
+      "state": "error",
+      "durationMs": 4616,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T06-57-26-256Z/screenshots/login-error-error-invalid-login.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T06-57-26-256Z/sources/login-error-error-invalid-login.xml",
+      "timestamp": "2026-04-30T06:58:40.167Z",
+      "notes": [
+        "Intentional invalid login to capture error state."
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "stepId": "launch",
+      "title": "Slow screen transition",
+      "description": "App launch took 60782ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-04-30T06:58:34.646Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T06-57-26-256Z/screenshots/launch-loading-app-launch.png"
+    },
+    {
+      "stepId": "fatal",
+      "title": "Audit crashed",
+      "description": "WebDriverError: The operation was aborted due to timeout when running \"refresh\" with method \"POST\"",
+      "severity": "critical",
+      "timestamp": "2026-04-30T07:00:49.598Z"
+    }
+  ],
+  "findings": [
+    {
+      "category": "responsiveness",
+      "severity": "high",
+      "title": "Perceived loading speed needs stronger feedback",
+      "evidence": "At least one core screen crossed the configured slow threshold.",
+      "recommendation": "Add skeleton loaders and preserve layout while data loads so transitions feel intentional instead of blocked."
+    },
+    {
+      "category": "clarity",
+      "severity": "low",
+      "title": "Global search was not surfaced during audit",
+      "evidence": "Cross-feature discovery becomes harder when students must manually browse every module.",
+      "recommendation": "Keep search persistent in the shell and expose quick actions for lessons, mocks, and live classes."
+    },
+    {
+      "category": "hierarchy",
+      "severity": "medium",
+      "title": "Information hierarchy should prioritize student actions over raw density",
+      "evidence": "Dashboard, analytics, and practice surfaces contain many cards and metrics competing for attention.",
+      "recommendation": "Lead each screen with one primary action, one progress summary, and move secondary metrics below the fold."
+    },
+    {
+      "category": "visual-noise",
+      "severity": "medium",
+      "title": "The product would benefit from calmer visual grouping",
+      "evidence": "Many surfaces use similarly weighted cards, making it harder to distinguish primary vs secondary information.",
+      "recommendation": "Use quieter containers for supporting information, stronger section spacing, and one accent surface per screen."
+    }
+  ],
+  "generatedFlutterFile": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T06-57-26-256Z/generated_flutter/improved_ui.dart"
+}

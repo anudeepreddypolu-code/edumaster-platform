@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -8,6 +8,8 @@ import {
   Brain,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   Expand,
@@ -19,10 +21,14 @@ import {
   LoaderCircle,
   Lock,
   LogOut,
+  Mic,
+  MicOff,
   MessageSquare,
+  MoreHorizontal,
   Pause,
   PlayCircle,
   Radio,
+  Search,
   Send,
   ShieldCheck,
   Sparkles,
@@ -31,6 +37,7 @@ import {
   UserCircle2,
   Video,
   Wallet,
+  X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -43,20 +50,19 @@ import {
   YAxis,
 } from 'recharts';
 import { AuthProvider, useAuth } from './AuthContext';
-import { CoursesTab } from './components/CoursesTab';
-import { EduService } from './EduService';
+import { BrandLogo } from './components/BrandLogo';
+import { CourseFigmaTab } from './components/CourseFigmaTab';
+import { OverviewFigmaTab } from './components/OverviewFigmaTab';
+import { TestSeriesFigmaTab } from './components/TestSeriesFigmaTab';
+import { LiveClassesFigmaTab } from './components/LiveClassesFigmaTab';
+import { ApiRequestError, EduService } from './EduService';
 import { AdminCourseManager } from './components/AdminCourseManager';
-import { AdminLiveClassManager } from './components/AdminLiveClassManager';
 import { AdminModuleManager } from './components/AdminModuleManager';
-import { LiveBroadcastViewer } from './components/LiveBroadcastViewer';
-import { ProtectedLivePlayback } from './components/ProtectedLivePlayback';
 import { AdminVideoUpload } from './components/AdminVideoUpload';
 import Hls from 'hls.js';
 import {
   AiResponse,
   DailyQuizResult,
-  LiveChatMessage,
-  LiveClassAccess,
   MockTest,
   NotificationItem,
   PlatformOverview,
@@ -67,20 +73,65 @@ import {
 } from './types';
 import { cn } from './lib/utils';
 
-type TabKey = 'overview' | 'courses' | 'tests' | 'quiz' | 'live' | 'analytics' | 'plans' | 'admin';
+type TabKey = 'overview' | 'courses' | 'live' | 'tests' | 'quiz' | 'revision' | 'analytics' | 'admin';
 
 const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
 const tabs: { id: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'courses', label: 'Courses', icon: BookOpen },
+  { id: 'courses', label: 'All Courses', icon: BookOpen },
+  { id: 'live', label: 'Live Classes', icon: Radio },
   { id: 'tests', label: 'Mock Tests', icon: ClipboardCheck },
   { id: 'quiz', label: 'Daily Quiz', icon: Sparkles },
-  { id: 'live', label: 'Live Classes', icon: Radio },
+  { id: 'revision', label: 'Revision', icon: Brain },
   { id: 'analytics', label: 'Analytics', icon: Gauge },
-  { id: 'plans', label: 'Plans', icon: Wallet },
   { id: 'admin', label: 'Admin', icon: ShieldCheck },
 ];
+
+const mobilePrimaryTabIds: TabKey[] = ['overview', 'courses', 'live', 'tests'];
+
+const shellTabMeta: Record<TabKey, { eyebrow: string; title: string; description: string }> = {
+  overview: {
+    eyebrow: 'Overview',
+    title: 'Your dashboard',
+    description: 'Continue your prep with less noise.',
+  },
+  courses: {
+    eyebrow: 'Courses workspace',
+    title: 'Study without losing context',
+    description: 'Move from subject selection to lesson playback with less scrolling, less noise, and faster recovery.',
+  },
+  live: {
+    eyebrow: 'Live classes',
+    title: 'Join the classroom the moment it starts',
+    description: 'Live sessions, waiting rooms, classroom controls, chat, and participant sync now stay inside one connected flow.',
+  },
+  tests: {
+    eyebrow: 'Practice zone',
+    title: 'Attempt mocks with a cleaner runway',
+    description: 'Keep timed practice, review, and progress signals focused so the test flow feels intentional.',
+  },
+  quiz: {
+    eyebrow: 'Daily quiz',
+    title: 'Protect the streak with a quick win',
+    description: 'Open the daily quiz, finish it fast, and keep the streak visible without crowding the workspace.',
+  },
+  revision: {
+    eyebrow: 'Revision center',
+    title: 'Turn saved lessons into repeatable revision',
+    description: 'Weak topics, saved lessons, and mistake recovery should feel like one connected workflow.',
+  },
+  analytics: {
+    eyebrow: 'Progress analytics',
+    title: 'Read performance without dashboard fatigue',
+    description: 'Important trends should stand out first so students can act on them instead of decoding the screen.',
+  },
+  admin: {
+    eyebrow: 'Admin',
+    title: 'Administration',
+    description: 'Manage platform content and operations.',
+  },
+};
 
 const formatDateTime = (value: string) =>
   new Intl.DateTimeFormat('en-IN', {
@@ -109,7 +160,21 @@ const formatPlaybackTime = (seconds: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 };
 
-const CBT_BRAND_NAME = 'EduMaster';
+const CBT_BRAND_NAME = 'VARONENGLISH';
+const LIVE_FONT_STACK = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const getInitials = (value: string) =>
+  value
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('') || 'VE';
+
+const TeacherAvatar = ({ initials = 'RS' }: { initials?: string }) => (
+  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(180deg,#d8edf9_0%,#5fb7d8_100%)] text-[12px] font-semibold text-white shadow-[0_8px_20px_rgba(14,27,42,0.08)]">
+    {initials}
+  </div>
+);
 
 const buildSavedTopicsKey = (userId: string) => `edumaster.saved-topics.${userId}`;
 
@@ -134,40 +199,362 @@ const formatEventLabel = (eventType: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
-const getNotificationNavigationTarget = (notification: NotificationItem) => {
-  if (notification.type === 'live-class-started' && notification.entityId) {
-    return {
-      tab: 'live' as TabKey,
-      liveClassId: notification.entityId,
-    };
+const formatShortDate = (value: Date | string) =>
+  new Intl.DateTimeFormat('en-IN', {
+    day: 'numeric',
+    month: 'short',
+  }).format(typeof value === 'string' ? new Date(value) : value);
+
+const formatSessionLastUsed = (value?: string | null) => {
+  if (!value) {
+    return 'Recently active';
   }
 
-  if (notification.actionUrl && typeof window !== 'undefined') {
-    try {
-      const targetUrl = new URL(notification.actionUrl, window.location.origin);
-      const tab = targetUrl.searchParams.get('tab');
-      const liveClassId = targetUrl.searchParams.get('liveClassId');
-      if (tab === 'live' && liveClassId) {
-        return {
-          tab: 'live' as TabKey,
-          liveClassId,
-        };
-      }
-    } catch {
-      return null;
-    }
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) {
+    return 'Recently active';
   }
 
-  return null;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const diffDays = Math.round((startOfToday.getTime() - startOfTarget.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (diffDays <= 0) {
+    return 'Today';
+  }
+
+  if (diffDays === 1) {
+    return 'Yesterday';
+  }
+
+  return `${diffDays} days ago`;
 };
 
+const getSessionDeviceIcon = (deviceLabel: string) => {
+  const normalized = String(deviceLabel || '').toLowerCase();
+  if (normalized.includes('iphone') || normalized.includes('android') || normalized.includes('mobile') || normalized.includes('phone')) {
+    return Radio;
+  }
+  return LayoutDashboard;
+};
+
+const buildCourseFallbackArtwork = (title: string) => {
+  const safeTitle = String(title || 'VARONENGLISH Course').slice(0, 28);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240" fill="none">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="320" y2="240" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#17385d"/>
+          <stop offset="1" stop-color="#1b8cb6"/>
+        </linearGradient>
+      </defs>
+      <rect width="320" height="240" rx="28" fill="url(#g)"/>
+      <circle cx="250" cy="64" r="42" fill="rgba(255,255,255,0.12)"/>
+      <circle cx="78" cy="178" r="56" fill="rgba(255,255,255,0.08)"/>
+      <text x="28" y="168" fill="#ffffff" font-size="28" font-family="Georgia, serif" font-weight="700">${safeTitle}</text>
+      <text x="28" y="204" fill="rgba(255,255,255,0.72)" font-size="14" font-family="Arial, sans-serif">VARONENGLISH course</text>
+    </svg>
+  `.trim();
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+};
+
+const formatLargeMetric = (value: number) =>
+  new Intl.NumberFormat('en-IN').format(Math.max(Math.round(value || 0), 0));
+
+const buildInitials = (value: string) =>
+  value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('') || 'VE';
+
+const buildStudyArtwork = (label: string) => {
+  const safeLabel = String(label || 'Study').slice(0, 18);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="280" height="180" viewBox="0 0 280 180" fill="none">
+      <defs>
+        <linearGradient id="bg" x1="16" y1="14" x2="252" y2="170" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#7dd1ff"/>
+          <stop offset="0.55" stop-color="#6bb0ff"/>
+          <stop offset="1" stop-color="#243e7a"/>
+        </linearGradient>
+        <radialGradient id="sun" cx="0" cy="0" r="1" gradientTransform="translate(168 84) rotate(90) scale(66)">
+          <stop stop-color="#fff6b2"/>
+          <stop offset="1" stop-color="#fff6b2" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="280" height="180" rx="28" fill="url(#bg)"/>
+      <rect x="0" y="120" width="280" height="60" rx="0" fill="#7cb889"/>
+      <rect x="0" y="136" width="280" height="44" rx="0" fill="#527d63"/>
+      <circle cx="168" cy="84" r="64" fill="url(#sun)"/>
+      <path d="M165 124c7-17 7-33 0-50 14 16 20 33 15 51 11-12 16-27 16-43 8 17 7 36-6 58 10-5 17-14 21-24-3 23-18 41-46 54-31-15-43-35-38-60 5 11 13 20 23 28-11-17-15-35-10-52 3 15 9 28 18 38 1-15 3-29 7-41z" fill="#fff1a1"/>
+      <text x="18" y="28" fill="rgba(255,255,255,0.82)" font-size="14" font-family="Arial, sans-serif">${safeLabel}</text>
+    </svg>
+  `.trim();
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+};
+
+const buildCoachPortraitArtwork = (name: string) => {
+  const safeName = String(name || 'Tutor').slice(0, 18);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" fill="none">
+      <defs>
+        <linearGradient id="bg" x1="20" y1="12" x2="154" y2="166" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#dff4ff"/>
+          <stop offset="1" stop-color="#83c9ff"/>
+        </linearGradient>
+      </defs>
+      <rect width="180" height="180" rx="34" fill="url(#bg)"/>
+      <circle cx="90" cy="72" r="30" fill="#f5c29b"/>
+      <path d="M58 64c2-22 16-34 32-34 14 0 28 11 33 27-11-8-20-10-33-10-12 0-22 6-32 17z" fill="#244070"/>
+      <path d="M49 154c7-28 23-41 41-41 20 0 36 14 41 41" fill="#2b4c85"/>
+      <path d="M66 118l24 18 24-18" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+      <text x="90" y="168" fill="rgba(20,46,86,0.7)" font-size="12" font-family="Arial, sans-serif" text-anchor="middle">${safeName}</text>
+    </svg>
+  `.trim();
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+};
+
+type SearchTarget =
+  | { id: string; kind: 'course'; title: string; subtitle: string; tab: TabKey; courseId: string; lessonId?: string | null }
+  | { id: string; kind: 'lesson'; title: string; subtitle: string; tab: TabKey; courseId: string; lessonId: string }
+  | { id: string; kind: 'test'; title: string; subtitle: string; tab: TabKey }
+  | { id: string; kind: 'saved'; title: string; subtitle: string; tab: TabKey; courseId: string; lessonId: string };
+
+type RevisionDayPlan = {
+  dateLabel: string;
+  title: string;
+  summary: string;
+  actions: string[];
+};
+
+const searchKindLabels: Record<SearchTarget['kind'], string> = {
+  course: 'Course',
+  lesson: 'Lesson',
+  test: 'Mock test',
+  saved: 'Saved topic',
+};
+
+const getNotificationNavigationTarget = (_notification: NotificationItem) => null;
+
+const HeaderInsightCard = ({
+  label,
+  value,
+  hint,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  icon: React.ComponentType<{ className?: string }>;
+}) => (
+  <div className="rounded-[26px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.94)_100%)] p-4 shadow-[0_20px_48px_rgba(15,23,42,0.08)]">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]">{label}</p>
+        <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-[var(--ink)] sm:text-base">{value}</p>
+      </div>
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent-cream)_0%,#ffffff_100%)] text-[var(--accent-rust)] shadow-[0_12px_28px_rgba(22,152,212,0.16)] ring-1 ring-white/90">
+        <Icon className="h-5 w-5" />
+      </div>
+    </div>
+    <p className="mt-3 text-xs leading-6 text-[var(--ink-soft)]/95">{hint}</p>
+  </div>
+);
+
+const SearchPanel = ({
+  open,
+  query,
+  results,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  query: string;
+  results: SearchTarget[];
+  onSelect: (target: SearchTarget) => void;
+  onClose: () => void;
+}) => (
+  <AnimatePresence>
+    {open && (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        className="absolute left-0 right-0 top-[calc(100%+12px)] z-40 overflow-hidden rounded-[30px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.96)_100%)] shadow-[0_32px_96px_rgba(15,23,42,0.16)] backdrop-blur"
+      >
+        <div className="border-b border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,1)_0%,rgba(234,247,255,0.96)_100%)] px-4 py-4 sm:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]">
+                {query.trim() ? 'Search results' : 'Suggested shortcuts'}
+              </p>
+              <p className="mt-2 text-sm text-[var(--ink-soft)]">
+                {query.trim()
+                  ? `Jump to lessons, mocks, and saved topics from one place.`
+                  : 'Start with the current lesson, a saved topic, or your next practice task.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--line)] bg-white text-[var(--ink-soft)] transition hover:border-[var(--accent-rust)]/30 hover:bg-[var(--accent-cream)] hover:text-[var(--ink)]"
+              aria-label="Close search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="max-h-[min(68vh,34rem)] overflow-y-auto px-3 py-3 sm:px-4">
+          {results.length > 0 ? (
+            <div className="space-y-2">
+              {results.map((target) => (
+                <button
+                  key={target.id}
+                  data-testid={`search-result-${target.kind}`}
+                  onClick={() => onSelect(target)}
+                  className="flex w-full items-start justify-between gap-4 rounded-[22px] border border-transparent px-4 py-4 text-left transition hover:border-[var(--accent-rust)]/16 hover:bg-[linear-gradient(180deg,#ffffff_0%,var(--accent-cream)_100%)]"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[var(--accent-cream)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-rust)]">
+                        {searchKindLabels[target.kind]}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-[var(--ink)] sm:text-base">{target.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--ink-soft)]">{target.subtitle}</p>
+                  </div>
+                  <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent-cream)_0%,#ffffff_100%)] text-[var(--accent-rust)] shadow-[0_10px_24px_rgba(22,152,212,0.12)]">
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-[var(--line)] px-5 py-6 text-sm leading-7 text-[var(--ink-soft)]">
+              No matching items. Try an exam name, lesson topic, or mock title.
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
+
+const MobileMoreSheet = ({
+  open,
+  tabs,
+  activeTab,
+  onSelect,
+  onClose,
+  onLogout,
+}: {
+  open: boolean;
+  tabs: { id: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[];
+  activeTab: TabKey;
+  onSelect: (tab: TabKey) => void;
+  onClose: () => void;
+  onLogout: () => Promise<void>;
+}) => (
+  <AnimatePresence>
+    {open && (
+      <>
+        <motion.button
+          type="button"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 z-40 bg-slate-950/32 backdrop-blur-[3px] lg:hidden"
+          aria-label="Close more menu"
+        />
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 18 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="fixed inset-x-3 bottom-24 z-50 rounded-[32px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,250,255,0.95)_100%)] p-5 shadow-[0_28px_90px_rgba(15,23,42,0.24)] backdrop-blur lg:hidden"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]">More destinations</p>
+              <h2 className="mt-2 text-xl font-semibold text-[var(--ink)]">Open secondary tools without crowding the main nav</h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--line)] bg-white text-[var(--ink-soft)] shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+              aria-label="Close more menu"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mt-5 grid gap-3">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                data-testid={`mobile-more-${tab.id}`}
+                onClick={() => onSelect(tab.id)}
+                className={cn(
+                  'flex w-full items-start justify-between gap-4 rounded-[24px] border px-4 py-4 text-left transition',
+                  activeTab === tab.id
+                    ? 'border-[var(--accent-rust)]/20 bg-[linear-gradient(180deg,#ffffff_0%,var(--accent-cream)_100%)] shadow-[0_16px_30px_rgba(22,152,212,0.10)]'
+                    : 'border-[var(--line)] bg-white',
+                )}
+              >
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className={cn(
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
+                    activeTab === tab.id ? 'bg-white text-[var(--accent-rust)] shadow-[0_10px_22px_rgba(22,152,212,0.12)]' : 'bg-[var(--accent-cream)] text-[var(--ink-soft)]',
+                  )}>
+                    <tab.icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[var(--ink)]">{tab.label}</p>
+                    <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">{shellTabMeta[tab.id].description}</p>
+                  </div>
+                </div>
+                <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-[var(--ink-soft)]" />
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => void onLogout()}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-[22px] border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-3 text-sm font-semibold text-[var(--ink)]"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </button>
+        </motion.div>
+      </>
+    )}
+  </AnimatePresence>
+);
+
 const SectionHeader = ({ title, caption, action }: { title: string; caption: string; action?: React.ReactNode }) => (
-  <div className="flex items-end justify-between gap-4">
+  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--ink-soft)]">{caption}</p>
-      <h2 className="mt-2 text-2xl font-semibold text-[var(--ink)]">{title}</h2>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]/95">{caption}</p>
+      <h2 className="mt-2 text-xl font-semibold leading-tight text-[var(--ink)] sm:text-2xl">{title}</h2>
     </div>
     {action}
+  </div>
+);
+
+const SurfaceCard = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <div className={cn('overflow-hidden rounded-[30px] border border-white/72 bg-[linear-gradient(180deg,var(--surface-strong)_0%,rgba(244,249,255,0.94)_100%)] p-5 shadow-[0_24px_60px_rgba(15,23,42,0.08)] sm:p-6', className)}>
+    {children}
   </div>
 );
 
@@ -182,17 +569,135 @@ const MetricCard = ({
   hint: string;
   icon: React.ComponentType<{ className?: string }>;
 }) => (
-  <div className="rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+  <div className="rounded-[26px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(244,249,255,0.94)_100%)] p-4 shadow-[0_20px_48px_rgba(15,23,42,0.09)] backdrop-blur sm:rounded-[28px] sm:p-5 sm:shadow-[0_24px_60px_rgba(15,23,42,0.09)]">
     <div className="flex items-start justify-between gap-4">
       <div>
         <p className="text-sm text-[var(--ink-soft)]">{title}</p>
-        <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{value}</p>
+        <p className="mt-2 text-2xl font-semibold text-[var(--ink)] sm:text-3xl">{value}</p>
       </div>
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--accent-cream)] text-[var(--accent-rust)]">
+      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent-cream)_0%,#ffffff_100%)] text-[var(--accent-rust)] shadow-[0_12px_24px_rgba(22,152,212,0.14)] sm:h-12 sm:w-12">
         <Icon className="h-5 w-5" />
       </div>
     </div>
-    <p className="mt-4 text-sm text-[var(--ink-soft)]">{hint}</p>
+    <p className="mt-3 text-xs leading-6 text-[var(--ink-soft)] sm:mt-4 sm:text-sm">{hint}</p>
+  </div>
+);
+
+const LoadingShell = () => (
+  <div className="min-h-screen bg-[var(--page-bg)]">
+    <div className="flex min-h-screen">
+      <aside className="hidden w-[306px] shrink-0 border-r border-white/50 bg-[linear-gradient(180deg,#142033_0%,#1b2942_100%)] px-5 py-6 lg:flex">
+        <div className="w-full animate-pulse">
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-2xl bg-white/10" />
+            <div className="space-y-2">
+              <div className="h-4 w-24 rounded-full bg-white/14" />
+              <div className="h-3 w-20 rounded-full bg-white/10" />
+            </div>
+          </div>
+          <div className="mt-8 rounded-[30px] border border-white/10 bg-white/8 p-5">
+            <div className="h-3 w-24 rounded-full bg-white/10" />
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-12 w-12 rounded-2xl bg-white/12" />
+              <div className="space-y-2">
+                <div className="h-4 w-28 rounded-full bg-white/16" />
+                <div className="h-3 w-16 rounded-full bg-white/10" />
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              {[0, 1].map((item) => (
+                <div key={item} className="rounded-2xl bg-white/8 p-3">
+                  <div className="h-3 w-12 rounded-full bg-white/10" />
+                  <div className="mt-3 h-6 w-14 rounded-xl bg-white/14" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-8 space-y-3">
+            {[0, 1, 2, 3, 4].map((item) => (
+              <div key={item} className="h-12 rounded-[22px] bg-white/10" />
+            ))}
+          </div>
+        </div>
+      </aside>
+
+      <div className="flex-1">
+        <div className="border-b border-white/60 bg-[var(--page-bg)]/88 px-4 py-4 backdrop-blur-xl sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl animate-pulse">
+            <div className="grid gap-4 xl:grid-cols-[1fr_620px]">
+              <div>
+                <div className="h-3 w-28 rounded-full bg-white/80" />
+                <div className="mt-4 h-10 w-[380px] max-w-full rounded-3xl bg-white/90" />
+                <div className="mt-4 h-4 w-[520px] max-w-full rounded-full bg-white/80" />
+              </div>
+              <div>
+                <div className="h-14 rounded-[28px] bg-white/92" />
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {[0, 1, 2].map((item) => (
+                    <div key={item} className="rounded-[24px] bg-white/92 p-4">
+                      <div className="h-3 w-16 rounded-full bg-[var(--accent-cream)]" />
+                      <div className="mt-3 h-4 w-28 rounded-full bg-[var(--accent-cream)]" />
+                      <div className="mt-3 h-3 w-full rounded-full bg-[var(--accent-cream)]" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="animate-pulse">
+            <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-[34px] bg-[var(--card-dark)]/95 p-8">
+                <div className="h-4 w-32 rounded-full bg-white/15" />
+                <div className="mt-5 h-12 w-full max-w-[560px] rounded-3xl bg-white/12" />
+                <div className="mt-4 h-5 w-full max-w-[480px] rounded-2xl bg-white/10" />
+                <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                  {[0, 1, 2].map((item) => (
+                    <div key={item} className="rounded-[26px] bg-white/10 p-5">
+                      <div className="h-3 w-20 rounded-full bg-white/18" />
+                      <div className="mt-4 h-8 w-16 rounded-xl bg-white/18" />
+                      <div className="mt-4 h-3 w-full rounded-full bg-white/12" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-[34px] bg-white/92 p-6">
+                <div className="h-4 w-24 rounded-full bg-[var(--accent-cream)]" />
+                <div className="mt-4 h-8 w-48 rounded-2xl bg-[var(--accent-cream)]" />
+                <div className="mt-6 space-y-4">
+                  {[0, 1, 2].map((item) => (
+                    <div key={item} className="rounded-[24px] bg-[var(--accent-cream)] p-5">
+                      <div className="h-4 w-32 rounded-full bg-white" />
+                      <div className="mt-3 h-3 w-full rounded-full bg-white/80" />
+                      <div className="mt-2 h-3 w-3/4 rounded-full bg-white/80" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+              {[0, 1].map((item) => (
+                <div key={item} className="rounded-[30px] bg-white/92 p-6">
+                  <div className="h-4 w-28 rounded-full bg-[var(--accent-cream)]" />
+                  <div className="mt-5 space-y-4">
+                    {[0, 1, 2].map((row) => (
+                      <div key={row} className="rounded-[24px] bg-[var(--accent-cream)] p-5">
+                        <div className="h-4 w-36 rounded-full bg-white" />
+                        <div className="mt-3 h-3 w-full rounded-full bg-white/80" />
+                        <div className="mt-2 h-3 w-4/5 rounded-full bg-white/80" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 );
 
@@ -356,19 +861,66 @@ const AuthScreen = ({
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionConflict, setSessionConflict] = useState<{
+    email: string;
+    password: string;
+    activeDevice: string;
+    activeSessions: Array<{
+      sessionId: string;
+      device: string;
+      lastSeenAt: string | null;
+    }>;
+    sessionLimit: number;
+  } | null>(null);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [registerForm, setRegisterForm] = useState<RegisterPayload>({
     name: '',
     email: '',
     password: '',
   });
+  const authHighlights = [
+    '1-device protected access',
+    'Resume after restart',
+    'Mock tests, analytics',
+  ];
+  const localAdminCredentials = {
+    email: 'admin@local.edumaster',
+    password: 'AdminChangeMe_2026',
+  };
+  const showLocalAdminHelper = import.meta.env.DEV
+    || (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname));
 
-  const submitLogin = async (email = loginForm.email, password = loginForm.password) => {
+  const submitLogin = async (
+    email = loginForm.email,
+    password = loginForm.password,
+    options?: { forceLogoutOtherSessions?: boolean },
+  ) => {
     setSubmitting(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(email, password, options);
+      setSessionConflict(null);
     } catch (err) {
+      if (err instanceof ApiRequestError && err.code === 'SESSION_ACTIVE') {
+        const activeDevice = typeof err.details?.activeDevice === 'string' ? err.details.activeDevice : 'another device';
+        const activeSessions = Array.isArray(err.details?.activeSessions)
+          ? err.details.activeSessions
+            .map((session: any, index: number) => ({
+              sessionId: typeof session?.sessionId === 'string' ? session.sessionId : `active-${index}`,
+              device: typeof session?.device === 'string' ? session.device : activeDevice,
+              lastSeenAt: typeof session?.lastSeenAt === 'string' ? session.lastSeenAt : null,
+            }))
+          : [{ sessionId: 'active-0', device: activeDevice, lastSeenAt: null }];
+        setSessionConflict({
+          email,
+          password,
+          activeDevice,
+          activeSessions,
+          sessionLimit: Number(err.details?.sessionLimit || 1),
+        });
+        return;
+      }
+
       setError(err instanceof Error ? err.message : 'Unable to log in');
     } finally {
       setSubmitting(false);
@@ -387,176 +939,339 @@ const AuthScreen = ({
     }
   };
 
+  const confirmTakeover = async () => {
+    if (!sessionConflict) {
+      return;
+    }
+
+    await submitLogin(sessionConflict.email, sessionConflict.password, { forceLogoutOtherSessions: true });
+  };
+
+  const fillLocalAdminLogin = () => {
+    setMode('login');
+    setError(null);
+    setSessionConflict(null);
+    setLoginForm(localAdminCredentials);
+  };
+
   return (
-    <div className="min-h-screen bg-[var(--page-bg)] px-4 py-6 sm:px-6 lg:px-10">
-      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-7xl gap-6 lg:grid-cols-[1.2fr_0.9fr]">
-        <section className="relative overflow-hidden rounded-[36px] border border-white/70 bg-[var(--card-dark)] p-6 text-white shadow-[0_32px_120px_rgba(15,23,42,0.35)] sm:p-10">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.18),transparent_28%)]" />
-          <div className="relative">
-            <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-white/80 backdrop-blur">
-              <Sparkles className="h-4 w-4" />
-              Built for SSC JE / RRB JE at 10K+ concurrent scale
-            </div>
+    <div className="relative min-h-screen overflow-hidden bg-[#eef4ff] text-[#15264b]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,149,255,0.26),transparent_30%),radial-gradient(circle_at_82%_18%,rgba(64,196,255,0.18),transparent_20%),radial-gradient(circle_at_bottom_center,rgba(33,92,255,0.12),transparent_26%),linear-gradient(180deg,#eef4ff_0%,#f7fbff_46%,#eef5ff_100%)]" />
+      <div className="absolute inset-0 opacity-50 [background-image:linear-gradient(rgba(87,118,170,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(87,118,170,0.08)_1px,transparent_1px)] [background-size:88px_88px]" />
+      <div className="relative mx-auto flex min-h-screen max-w-7xl items-center justify-center px-3 py-4 sm:px-6 sm:py-8 lg:px-10">
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-5xl overflow-hidden rounded-[28px] border border-[#d9e5f6] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,251,255,0.98))] shadow-[0_24px_70px_rgba(58,89,138,0.14)] backdrop-blur-xl sm:rounded-[36px] sm:shadow-[0_34px_100px_rgba(58,89,138,0.16)]"
+        >
+          <div className="grid lg:grid-cols-[0.92fr_1.08fr]">
+            <section className="relative overflow-hidden border-b border-[#e2ebf7] bg-[linear-gradient(160deg,#123a7b_0%,#1d5bcc_48%,#45baf2_100%)] p-4 text-white sm:p-8 lg:border-b-0 lg:border-r lg:border-[#d8e5f6] lg:p-10">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(10,35,78,0.26),transparent_30%)]" />
+              <div className="relative">
+                <div className="flex flex-col gap-2">
+                  <BrandLogo tone="dark" size="lg" showTagline />
+                  <p className="text-xs text-white/76 sm:text-sm">SSC JE and RRB JE premium access</p>
+                </div>
 
-            <h1 className="mt-8 max-w-3xl text-4xl font-semibold leading-tight sm:text-5xl">
-              Mobile-first exam prep with mock tests, daily quiz streaks, live classes, and AI-backed analytics.
-            </h1>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-white/72 sm:text-lg">
-              This project now aligns the frontend and backend around a real prep-platform flow: login, course access,
-              mock test attempts, daily quiz engagement, live sessions, performance insights, payments, and admin tooling.
-            </p>
+                <h1 className="mt-5 max-w-lg text-[27px] font-semibold leading-[1.08] tracking-[-0.03em] text-white sm:mt-10 sm:text-[52px]">
+                  Login or sign up to continue
+                </h1>
+                <p className="mt-3 max-w-md text-[13px] leading-6 text-white/80 sm:mt-4 sm:text-base sm:leading-7">
+                  Secure learner access with single-device protection, persistent sign-in, and quick entry to your prep dashboard.
+                </p>
 
-            <div className="mt-8 grid gap-4 sm:grid-cols-3">
-              <MetricCard title="Concurrent Ready" value="10K+" hint="Load balancer + Redis + CDN + stateless APIs" icon={Trophy} />
-              <MetricCard title="Daily Engagement" value="5-20 Q" hint="Instant quiz results, streaks, and leaderboards" icon={Flame} />
-              <MetricCard title="Learning Stack" value="7 Modules" hint="Courses, tests, live classes, AI, analytics, payments, admin" icon={Brain} />
-            </div>
+                <div className="mt-6 hidden rounded-[24px] border border-white/12 bg-white/10 p-4 shadow-[0_18px_34px_rgba(10,31,67,0.2)] sm:mt-8 sm:block sm:rounded-[28px] sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/60">Why this feels premium</p>
+                  <div className="mt-5 space-y-3">
+                    {authHighlights.map((item) => (
+                      <div key={item} className="flex items-center gap-3 text-sm text-white">
+                        <CheckCircle2 className="h-4 w-4 text-[#bfe8ff]" />
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
 
-            <div className="mt-10 grid gap-4 lg:grid-cols-2">
-              {(publicOverview?.highlights.modules || ['Courses', 'Mock Tests', 'Daily Quiz', 'Live Classes']).map((module) => (
-                <div
-                  key={module}
-                  className="rounded-[24px] border border-white/15 bg-white/8 p-4 text-sm text-white/78 backdrop-blur"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/12">
-                      <CheckCircle2 className="h-5 w-5" />
+            <section className="relative bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-4 sm:p-8 lg:p-10">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7a8faf]">Access Portal</p>
+                  <p className="mt-2 text-[22px] font-semibold leading-[1.15] text-[#16264a] sm:mt-3 sm:text-2xl">{mode === 'login' ? 'Continue your preparation' : 'Create your learner account'}</p>
+                </div>
+                <div className="hidden rounded-2xl border border-[#dce7f6] bg-[#f4f8ff] p-3 sm:flex">
+                  <LifeBuoy className="h-6 w-6 text-[#5878ad]" />
+                </div>
+              </div>
+
+              <div className="mt-5 flex rounded-full border border-[#dce7f6] bg-[#eef4ff] p-1 sm:mt-7">
+                {(['login', 'register'] as const).map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => {
+                      setMode(item);
+                      setError(null);
+                      setSessionConflict(null);
+                    }}
+                    className={cn(
+                      'flex-1 rounded-full px-3 py-2.5 text-[13px] font-semibold transition sm:px-4 sm:py-3 sm:text-sm',
+                      mode === item
+                        ? 'bg-[linear-gradient(90deg,#249bff,#3163ff)] text-white shadow-[0_12px_28px_rgba(49,99,255,0.24)]'
+                        : 'text-[#6e84a7]',
+                    )}
+                  >
+                    {item === 'login' ? 'Login' : 'Create account'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-6 sm:mt-8">
+                {mode === 'login' ? (
+                  <form
+                    className="space-y-4 sm:space-y-5"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitLogin();
+                    }}
+                    >
+                    <div>
+                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Email address</label>
+                      <input
+                        data-testid="auth-login-email"
+                        value={loginForm.email}
+                        onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
+                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
+                        placeholder="student@varonenglish.app"
+                      />
                     </div>
                     <div>
-                      <p className="font-medium text-white">{module}</p>
-                      <p className="mt-1 text-white/60">Integrated into a single same-origin product shell.</p>
+                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Password</label>
+                      <input
+                        data-testid="auth-login-password"
+                        type="password"
+                        value={loginForm.password}
+                        onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
+                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
+                        placeholder="Enter your password"
+                      />
+                    </div>
+                    <button
+                      data-testid="auth-login-submit"
+                      type="submit"
+                      disabled={submitting}
+                      className="flex w-full items-center justify-center gap-2 rounded-[16px] bg-[linear-gradient(90deg,#249bff,#3163ff)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_18px_40px_rgba(49,99,255,0.26)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-[20px] sm:py-4"
+                    >
+                      {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
+                      Continue
+                    </button>
+                    {showLocalAdminHelper && (
+                      <div className="rounded-[16px] border border-[#dce7f6] bg-[#f4f8ff] p-4 text-[13px] text-[#526987] sm:rounded-[20px] sm:text-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="font-semibold text-[#16264a]">Local admin access</p>
+                            <p className="mt-1">Use the seeded admin account to open the admin workspace and manage platform content.</p>
+                            <p className="mt-2 font-mono text-[12px] text-[#41597d]">admin@local.edumaster / AdminChangeMe_2026</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={fillLocalAdminLogin}
+                            className="rounded-[14px] border border-[#cfe0fb] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#2458c7] shadow-[0_8px_18px_rgba(49,99,255,0.08)]"
+                          >
+                            Use admin login
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </form>
+                ) : (
+                  <form
+                    className="space-y-4 sm:space-y-5"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitRegister();
+                    }}
+                    >
+                    <div>
+                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Full name</label>
+                      <input
+                        data-testid="auth-register-name"
+                        value={registerForm.name}
+                        onChange={(event) => setRegisterForm((current) => ({ ...current, name: event.target.value }))}
+                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
+                        placeholder="Aspirant name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Email address</label>
+                      <input
+                        data-testid="auth-register-email"
+                        value={registerForm.email}
+                        onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
+                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
+                        placeholder="you@example.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Password</label>
+                      <input
+                        data-testid="auth-register-password"
+                        type="password"
+                        value={registerForm.password}
+                        onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
+                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
+                        placeholder="Create a strong password"
+                      />
+                    </div>
+                    <button
+                      data-testid="auth-register-submit"
+                      type="submit"
+                      disabled={submitting}
+                      className="flex w-full items-center justify-center gap-2 rounded-[16px] bg-[linear-gradient(90deg,#1e88ff,#29b8f4)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_18px_40px_rgba(41,132,255,0.24)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-[20px] sm:py-4"
+                    >
+                      {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <GraduationCap className="h-5 w-5" />}
+                      Create account
+                    </button>
+                  </form>
+                )}
+
+                {error && (
+                  <div className="mt-4 rounded-[16px] border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700 sm:mt-5 sm:rounded-[20px] sm:py-4 sm:text-sm">
+                    {error}
+                  </div>
+                )}
+
+                <div className="mt-5 rounded-[18px] border border-[#dce7f6] bg-[#f4f8ff] p-4 sm:mt-7 sm:rounded-[24px] sm:p-5">
+                  <p className="text-[13px] font-semibold text-[#16264a] sm:text-sm">Session behavior</p>
+                  <div className="mt-3 space-y-3 text-[13px] text-[#5e7294] sm:mt-4 sm:text-sm">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#29a86a]" />
+                      Stay logged in after refresh or PC restart.
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#29a86a]" />
+                      If your account is active elsewhere, we show a takeover screen before login continues.
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-
-            <div className="mt-10 rounded-[28px] border border-white/15 bg-black/18 p-5 backdrop-blur">
-              <p className="text-sm font-semibold text-white">Production-ready sign in</p>
-              <p className="mt-2 text-sm leading-6 text-white/66">
-                Use actual learner or admin accounts created in your backend.
-              </p>
-              {publicOverview?.sampleCredentials && (
-                <div className="mt-4 rounded-2xl border border-white/15 bg-white/10 p-4 text-sm text-white/78">
-                  <p className="font-medium text-white">Local admin credentials</p>
-                  <p className="mt-2">Email: {publicOverview.sampleCredentials.adminEmail}</p>
-                  <p>Password: {publicOverview.sampleCredentials.adminPassword}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-[36px] border border-white/80 bg-white/90 p-6 shadow-[0_28px_100px_rgba(15,23,42,0.12)] backdrop-blur sm:p-8">
-          <div className="flex rounded-full bg-[var(--accent-cream)] p-1">
-            {(['login', 'register'] as const).map((item) => (
-              <button
-                key={item}
-                onClick={() => setMode(item)}
-                className={cn(
-                  'flex-1 rounded-full px-4 py-3 text-sm font-semibold transition',
-                  mode === item ? 'bg-white text-[var(--ink)] shadow-sm' : 'text-[var(--ink-soft)]',
-                )}
-              >
-                {item === 'login' ? 'Login' : 'Create account'}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-8 space-y-5">
-            {mode === 'login' ? (
-              <>
-                <div>
-                  <label className="text-sm font-medium text-[var(--ink-soft)]">Email</label>
-                  <input
-                    value={loginForm.email}
-                    onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
-                    className="mt-2 w-full rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none transition focus:border-[var(--accent-rust)]"
-                    placeholder="student@edumaster.local"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-[var(--ink-soft)]">Password</label>
-                  <input
-                    type="password"
-                    value={loginForm.password}
-                    onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
-                    className="mt-2 w-full rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none transition focus:border-[var(--accent-rust)]"
-                    placeholder="Enter your password"
-                  />
-                </div>
-                <button
-                  onClick={() => submitLogin()}
-                  disabled={submitting}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white transition hover:bg-[var(--accent-rust-strong)] disabled:opacity-60"
-                >
-                  {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
-                  Continue to dashboard
-                </button>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className="text-sm font-medium text-[var(--ink-soft)]">Full name</label>
-                  <input
-                    value={registerForm.name}
-                    onChange={(event) => setRegisterForm((current) => ({ ...current, name: event.target.value }))}
-                    className="mt-2 w-full rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none transition focus:border-[var(--accent-rust)]"
-                    placeholder="Aspirant name"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-[var(--ink-soft)]">Email</label>
-                  <input
-                    value={registerForm.email}
-                    onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
-                    className="mt-2 w-full rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none transition focus:border-[var(--accent-rust)]"
-                    placeholder="you@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-[var(--ink-soft)]">Password</label>
-                  <input
-                    type="password"
-                    value={registerForm.password}
-                    onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
-                    className="mt-2 w-full rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none transition focus:border-[var(--accent-rust)]"
-                    placeholder="Create a strong password"
-                  />
-                </div>
-                <button
-                  onClick={submitRegister}
-                  disabled={submitting}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white transition hover:bg-[var(--accent-rust-strong)] disabled:opacity-60"
-                >
-                  {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <GraduationCap className="h-5 w-5" />}
-                  Create student account
-                </button>
-              </>
-            )}
-
-            {error && <p className="rounded-2xl bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">{error}</p>}
-          </div>
-
-          <div className="mt-8 rounded-[28px] border border-[var(--line)] bg-[var(--accent-cream)] p-5">
-            <p className="text-sm font-semibold text-[var(--ink)]">What is already integrated now?</p>
-            <div className="mt-4 space-y-3 text-sm text-[var(--ink-soft)]">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-4 w-4 text-[var(--accent-rust)]" />
-                Same-origin React + backend API integration
               </div>
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-4 w-4 text-[var(--accent-rust)]" />
-                Backend JWT sessions with single-device style session tracking
-              </div>
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-4 w-4 text-[var(--accent-rust)]" />
-                Sample product data for courses, tests, quiz, live classes, analytics, and admin
-              </div>
-            </div>
+            </section>
           </div>
-        </section>
+        </motion.div>
       </div>
+
+      <AnimatePresence>
+        {sessionConflict && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-30 bg-[#0b0d14] text-white"
+          >
+            <div className="mx-auto flex min-h-screen w-full max-w-[460px] flex-col px-6 pb-8 pt-10 sm:max-w-[520px] sm:px-8">
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="flex min-h-full flex-col"
+              >
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setSessionConflict(null)}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full text-white/92"
+                  >
+                    <ChevronLeft className="h-8 w-8" />
+                  </button>
+                  <div className="flex items-center gap-[5px] text-[#f5f7fb]">
+                    <span className="h-[7px] w-[5px] rounded-[2px] bg-current" />
+                    <span className="h-[9px] w-[5px] rounded-[2px] bg-current" />
+                    <span className="h-[11px] w-[5px] rounded-[2px] bg-current" />
+                    <span className="ml-[4px] h-[10px] w-[20px] rounded-[4px] border border-current" />
+                  </div>
+                </div>
+
+                <div className="mt-10 flex flex-1 flex-col">
+                  <div className="mx-auto w-full max-w-[340px]">
+                    <div className="relative mx-auto h-[180px] w-full max-w-[300px]">
+                      <div className="absolute left-[12%] top-[54%] h-[78px] w-[126px] rounded-[10px] border border-[#536187] bg-[linear-gradient(180deg,#434753_0%,#2a2e37_100%)] shadow-[0_20px_40px_rgba(0,0,0,0.36)]" />
+                      <div className="absolute left-[7%] top-[79%] h-[3px] w-[140px] rounded-full bg-[#2a2d37]" />
+                      <div className="absolute left-[30%] top-[28%] h-[106px] w-[190px] rounded-[10px] border border-[#5a647c] bg-[linear-gradient(180deg,#3a3f4c_0%,#252932_100%)] shadow-[0_24px_48px_rgba(0,0,0,0.32)]" />
+                      <div className="absolute left-[30%] top-[82%] h-[4px] w-[206px] rounded-full bg-[#2a2d37]" />
+                      <div className="absolute right-[6%] top-[50%] flex h-[82px] w-[44px] items-center justify-center rounded-[10px] border border-[#5a647c] bg-[linear-gradient(180deg,#454955_0%,#2b2f38_100%)] shadow-[0_18px_36px_rgba(0,0,0,0.34)]">
+                        <div className="flex h-[44px] w-[44px] items-center justify-center rounded-full border border-white/22 bg-white/6">
+                          <AlertTriangle className="h-5 w-5 text-[#d7d8de]" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 text-center">
+                    <p className="text-[20px] font-semibold leading-[1.15] tracking-[-0.03em] text-white sm:text-[22px]">
+                      Login Pending, Device Limit Reached
+                    </p>
+                    <p className="mt-3 text-[15px] leading-6 text-[#8f95ab]">
+                      Your current plan supports {sessionConflict.sessionLimit} device only
+                    </p>
+                  </div>
+
+                  <div className="mt-8 rounded-[22px] bg-[#141925] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.22)]">
+                    <p className="text-[18px] font-semibold text-white">
+                      Log Out {sessionConflict.activeSessions.length} Device{sessionConflict.activeSessions.length === 1 ? '' : 's'} to Continue
+                    </p>
+
+                    <div className="mt-6 space-y-5">
+                      {sessionConflict.activeSessions.map((session, index) => {
+                        const SessionIcon = getSessionDeviceIcon(session.device);
+                        return (
+                          <div key={session.sessionId || index} className="flex items-center gap-4">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.03] text-[#aeb6d6]">
+                              <SessionIcon className="h-6 w-6" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[16px] font-medium text-white">{session.device}</p>
+                              <p className="mt-1 text-[13px] text-[#8b93ad]">Last used : {formatSessionLastUsed(session.lastSeenAt)}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void confirmTakeover()}
+                              disabled={submitting}
+                              className="inline-flex h-[52px] min-w-[120px] items-center justify-center rounded-[12px] bg-white/[0.06] px-4 text-[15px] font-semibold text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {submitting ? 'Logging Out...' : 'Log Out'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mt-7 flex items-center gap-4 text-[#7c839c]">
+                    <div className="h-px flex-1 bg-white/12" />
+                    <span className="text-[14px] font-medium">Or Upgrade</span>
+                    <div className="h-px flex-1 bg-white/12" />
+                  </div>
+
+                  <div className="mt-7 rounded-[20px] bg-[#141925] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[#f2af2f]">Recommended</p>
+                    <button
+                      type="button"
+                      onClick={() => setSessionConflict(null)}
+                      className="mt-3 flex w-full items-center justify-between gap-4 text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[17px] leading-6 text-white">Upgrade to 4 devices for ₹699</p>
+                        <p className="mt-1 truncate text-[13px] text-[#7f87a2]">Watch on TV, Laptop • 4K UHD • Dolby Atmos • Ads...</p>
+                      </div>
+                      <ChevronRight className="h-6 w-6 shrink-0 text-white/72" />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -568,7 +1283,6 @@ const Shell = ({
   onLogout,
   onRefresh,
   resumeTarget,
-  liveNavigationTarget,
   onContinueLearningNavigate,
   onOpenNotification,
   onResumeNavigationHandled,
@@ -582,7 +1296,6 @@ const Shell = ({
   onLogout: () => Promise<void>;
   onRefresh: () => Promise<void>;
   resumeTarget: { courseId: string; lessonId?: string | null } | null;
-  liveNavigationTarget: string | null;
   onContinueLearningNavigate: (courseId: string, lessonId?: string | null) => void;
   onOpenNotification: (notification: NotificationItem) => void;
   onResumeNavigationHandled: () => void;
@@ -591,132 +1304,550 @@ const Shell = ({
   onToggleSavedTopic: (courseId: string, lessonId: string) => void;
 }) => {
   const { user, isAdmin } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
+  const [liveMobileMode, setLiveMobileMode] = useState<'list' | 'detail' | 'room'>('list');
+  const [isImmersiveCoursePlayer, setIsImmersiveCoursePlayer] = useState(false);
+  const [isImmersiveTestsFlow, setIsImmersiveTestsFlow] = useState(false);
+  const [pendingLiveClassId, setPendingLiveClassId] = useState<string | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
 
   const visibleTabs = tabs.filter((tab) => tab.id !== 'admin' || isAdmin);
+  const overviewSidebarTabs = useMemo(
+    () => ['overview', 'courses', 'live', 'tests', 'revision', 'analytics', ...(isAdmin ? ['admin'] : [])]
+      .map((id) => tabs.find((tab) => tab.id === id))
+      .filter((tab): tab is (typeof tabs)[number] => Boolean(tab)),
+    [isAdmin],
+  );
+  const primaryNavTabs = mobilePrimaryTabIds
+    .map((tabId) => visibleTabs.find((tab) => tab.id === tabId))
+    .filter((tab): tab is (typeof tabs)[number] => Boolean(tab));
+  const utilityTabs = visibleTabs.filter((tab) => !mobilePrimaryTabIds.includes(tab.id));
+  const searchTargets = useMemo(() => buildSearchTargets(overview, savedTopics), [overview, savedTopics]);
+  const filteredTargets = useMemo(() => {
+    const normalized = searchQuery.trim().toLowerCase();
+    if (!normalized) {
+      return searchTargets.slice(0, 8);
+    }
+
+    return searchTargets
+      .filter((target) => `${target.title} ${target.subtitle} ${target.kind}`.toLowerCase().includes(normalized))
+      .slice(0, 8);
+  }, [searchQuery, searchTargets]);
+  const activeMeta = shellTabMeta[activeTab];
+  const isOverviewWorkspace = activeTab === 'overview';
+  const isCoursesWorkspace = activeTab === 'courses';
+  const isTestsWorkspace = activeTab === 'tests';
+  const isLiveWorkspace = activeTab === 'live';
+  const isFigmaWorkspace = activeTab === 'courses' && isImmersiveCoursePlayer;
+  const isImmersiveTestsWorkspace = activeTab === 'tests' && isImmersiveTestsFlow;
+  const isImmersiveWorkspace = isFigmaWorkspace || isImmersiveTestsWorkspace;
+  const hideMobileShellNav = isLiveWorkspace && liveMobileMode !== 'list';
+  const shouldLockViewport = isOverviewWorkspace || isImmersiveWorkspace;
+  const continueCourse = overview.dashboard.continueLearning[0] || null;
+  const isSecondaryMobileTabActive = utilityTabs.some((tab) => tab.id === activeTab);
+  const mobileNavLabels: Record<TabKey, string> = {
+    overview: 'Home',
+    courses: 'Courses',
+    live: 'Live',
+    tests: 'Tests',
+    quiz: 'Quiz',
+    revision: 'Revision',
+    analytics: 'Analytics',
+    admin: 'Admin',
+  };
+  const showShellHeader = false;
+
+  useEffect(() => {
+    const handleWindowClick = (event: MouseEvent) => {
+      if (!searchContainerRef.current?.contains(event.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsSearchOpen(false);
+        setIsMobileMoreOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', handleWindowClick);
+    window.addEventListener('keydown', handleEscape);
+
+    return () => {
+      window.removeEventListener('mousedown', handleWindowClick);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !isMobileMoreOpen) {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileMoreOpen]);
+
+  useEffect(() => {
+    if (activeTab !== 'live') {
+      setLiveMobileMode('list');
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !shouldLockViewport) {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [shouldLockViewport]);
+
+  useEffect(() => {
+    if (activeTab !== 'courses') {
+      setIsImmersiveCoursePlayer(false);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'tests') {
+      setIsImmersiveTestsFlow(false);
+    }
+  }, [activeTab]);
+
+  const handleSearchTargetSelect = (target: SearchTarget) => {
+    setSearchQuery('');
+    setIsSearchOpen(false);
+    setIsMobileMoreOpen(false);
+
+    if (target.kind === 'course' || target.kind === 'lesson' || target.kind === 'saved') {
+      setActiveTab('courses');
+      onContinueLearningNavigate(target.courseId, target.lessonId || null);
+      return;
+    }
+
+    setActiveTab(target.tab);
+  };
+
+  const handleTabChange = (tab: TabKey) => {
+    setActiveTab(tab);
+    setIsSearchOpen(false);
+    setIsMobileMoreOpen(false);
+  };
+
+  const renderActiveTab = () => {
+    if (activeTab === 'overview') {
+      return (
+          <OverviewFigmaTab
+          overview={overview}
+          onContinueLearning={(courseId, lessonId) => {
+            onContinueLearningNavigate(courseId, lessonId);
+            setActiveTab('courses');
+          }}
+          onOpenLiveTab={() => setActiveTab('live')}
+          onOpenTestsTab={() => setActiveTab('tests')}
+          onOpenRevisionTab={() => setActiveTab('revision')}
+          onOpenQuizTab={() => setActiveTab('quiz')}
+          onOpenNotification={onOpenNotification}
+        />
+      );
+    }
+
+    if (activeTab === 'courses') {
+      return (
+        <CourseFigmaTab
+          overview={overview}
+          onRefresh={onRefresh}
+          initialCourseId={resumeTarget?.courseId}
+          initialLessonId={resumeTarget?.lessonId || null}
+          onResumeNavigationHandled={onResumeNavigationHandled}
+          savedTopicIds={savedTopicIds}
+          onToggleSavedTopic={onToggleSavedTopic}
+          onImmersiveModeChange={setIsImmersiveCoursePlayer}
+        />
+      );
+    }
+
+    if (activeTab === 'tests') {
+      return (
+        <TestSeriesFigmaTab
+          overview={overview}
+          onRefresh={onRefresh}
+          onImmersiveModeChange={setIsImmersiveTestsFlow}
+          onOpenLiveClass={(liveClassId) => {
+            setPendingLiveClassId(liveClassId);
+            setActiveTab('live');
+          }}
+        />
+      );
+    }
+
+    if (activeTab === 'live') {
+      return (
+        <LiveClassesFigmaTab
+          overview={overview}
+          onRefresh={onRefresh}
+          onMobileModeChange={setLiveMobileMode}
+          initialLiveClassId={pendingLiveClassId}
+          onInitialLiveClassHandled={() => setPendingLiveClassId(null)}
+        />
+      );
+    }
+
+    if (activeTab === 'quiz') {
+      return <QuizTab overview={overview} onRefresh={onRefresh} />;
+    }
+
+    if (activeTab === 'revision') {
+      return (
+        <RevisionTab
+          overview={overview}
+          savedTopics={savedTopics}
+          onContinueLearning={(courseId, lessonId) => {
+            onContinueLearningNavigate(courseId, lessonId);
+            setActiveTab('courses');
+          }}
+        />
+      );
+    }
+
+    if (activeTab === 'analytics') {
+      return <AnalyticsTab overview={overview} />;
+    }
+
+    if (activeTab === 'admin' && overview.adminOverview) {
+      return <AdminTab overview={overview} onRefresh={onRefresh} />;
+    }
+
+    return null;
+  };
 
   return (
-    <div className="flex min-h-screen bg-[var(--page-bg)]">
-      <aside className="hidden w-[280px] shrink-0 border-r border-white/60 bg-[var(--card-dark)] px-5 py-6 text-white shadow-[0_24px_80px_rgba(15,23,42,0.2)] lg:flex lg:flex-col">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
-              <Sparkles className="h-6 w-6" />
-            </div>
+    <div className="min-h-dvh bg-[var(--page-bg)]">
+      <div className="flex min-h-dvh">
+        {!isImmersiveWorkspace && (
+          <aside
+            className={cn(
+              'hidden shrink-0 overflow-y-auto px-4 py-5 shadow-[0_20px_64px_rgba(15,23,42,0.12)] lg:flex lg:flex-col',
+              'w-[280px] border-r border-white/8 bg-[linear-gradient(180deg,#14233f_0%,#172944_100%)] text-white shadow-[0_20px_64px_rgba(15,23,42,0.24)]',
+            )}
+            style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}
+          >
             <div>
-              <p className="text-lg font-semibold">EduMaster</p>
-              <p className="text-sm text-white/60">JE Prep Control Room</p>
-            </div>
-          </div>
-          <div className="mt-8 rounded-[28px] border border-white/10 bg-white/8 p-5">
-            <p className="text-xs uppercase tracking-[0.3em] text-white/46">Current user</p>
-            <div className="mt-4 flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/12">
-                <UserCircle2 className="h-7 w-7" />
+              <div className="px-2">
+                <BrandLogo tone="dark" size="sm" />
+                <p className="mt-[4px] text-[11px] leading-none text-white/58">Competitive exam platform</p>
               </div>
-              <div>
-                <p className="font-medium text-white">{user?.name}</p>
-                <p className="text-sm capitalize text-white/60">{user?.role}</p>
+
+              <div className="mt-6 rounded-[20px] border border-white/8 bg-white/[0.06] px-[14px] py-[16px]">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/38">Current learner</p>
+                <div className="mt-[14px] flex items-center gap-[12px]">
+                  <div className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white/[0.12]">
+                    <UserCircle2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-semibold text-white">Abuw Singh</p>
+                    <p className="text-[12px] text-white/58">Beginner</p>
+                  </div>
+                </div>
+
+                <div className="mt-[16px] grid grid-cols-2 gap-[10px] text-[11px]">
+                  <div className="rounded-[14px] bg-white/[0.07] px-[12px] py-[10px]">
+                    <p className="text-white/42">Recent</p>
+                    <p className="mt-[6px] text-[16px] font-semibold text-white">9</p>
+                  </div>
+                  <div className="rounded-[14px] bg-white/[0.07] px-[12px] py-[10px]">
+                    <p className="text-white/42">Snapshots</p>
+                    <p className="mt-[6px] text-[16px] font-semibold text-white">265</p>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-2xl bg-white/8 p-3">
-                <p className="text-white/52">Streak</p>
-                <p className="mt-1 text-xl font-semibold">{overview.dashboard.streak}</p>
+
+            <div className="mt-[18px]">
+              <nav className="space-y-[4px]">
+                {overviewSidebarTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      if (tab.id === 'admin' && !isAdmin) {
+                        return;
+                      }
+
+                      handleTabChange(tab.id);
+                    }}
+                    data-testid={`nav-${tab.id}`}
+                    className={cn(
+                      'flex w-full items-center gap-[11px] rounded-[18px] px-[14px] py-[12px] text-left text-[13px] font-medium transition',
+                      activeTab === tab.id
+                        ? 'bg-white text-[#1f2d4e] shadow-[0_12px_24px_rgba(255,255,255,0.12)]'
+                        : 'text-white/78 hover:bg-white/8 hover:text-white',
+                    )}
+                  >
+                    <tab.icon className="h-4 w-4" />
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            <div className="mt-auto space-y-[12px]">
+              <div className="rounded-[20px] border border-white/8 bg-white/[0.06] px-[14px] py-[16px]">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/42">Next Best Move</p>
+                <p className="mt-[12px] text-[13px] leading-[1.6] text-white/78">
+                  Resume Circuits &amp; Network Reduction Essentials before opening something new.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (continueCourse) {
+                      onContinueLearningNavigate(continueCourse._id, continueCourse.continueLesson?.id || null);
+                      setActiveTab('courses');
+                      return;
+                    }
+
+                    handleTabChange('revision');
+                  }}
+                  className="mt-[14px] inline-flex h-[34px] items-center rounded-[12px] bg-white/[0.12] px-[14px] text-[12px] font-semibold text-white transition hover:bg-white/[0.18]"
+                >
+                  Resume now
+                </button>
               </div>
-              <div className="rounded-2xl bg-white/8 p-3">
-                <p className="text-white/52">Points</p>
-                <p className="mt-1 text-xl font-semibold">{overview.dashboard.points}</p>
+
+              <div className="rounded-[18px] border border-white/8 bg-white/[0.06] p-[8px]">
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="flex w-full items-center gap-[10px] rounded-[14px] px-[12px] py-[11px] text-[13px] text-white/78 transition hover:bg-white/8 hover:text-white"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </button>
               </div>
             </div>
-          </div>
-        </div>
+          </aside>
+        )}
 
-        <nav className="mt-8 space-y-2">
-          {visibleTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-medium transition',
-                activeTab === tab.id ? 'bg-white text-[var(--ink)] shadow-sm' : 'text-white/72 hover:bg-white/10 hover:text-white',
-              )}
-            >
-              <tab.icon className="h-5 w-5" />
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        <button
-          onClick={onLogout}
-          className="mt-auto flex items-center gap-3 rounded-2xl border border-white/12 px-4 py-3 text-sm text-white/74 transition hover:bg-white/10 hover:text-white"
-        >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </button>
-      </aside>
-
-      <div className="flex min-h-screen flex-1 flex-col">
-        <header className="sticky top-0 z-20 border-b border-white/60 bg-[var(--page-bg)]/90 px-4 py-4 backdrop-blur sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--ink-soft)]">Unified platform</p>
-              <h1 className="mt-1 text-2xl font-semibold text-[var(--ink)]">SSC JE / RRB JE prep operating system</h1>
+        <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden" data-testid="shell-ready">
+          {isLiveWorkspace && !isImmersiveWorkspace && (
+            <div className="hidden border-b border-[#edf2fb] bg-white px-4 py-5 lg:block lg:px-8">
+              <div className="mx-auto flex w-full max-w-[1460px] items-center justify-between gap-4">
+                <div className="flex min-w-0 flex-1 items-center gap-4">
+                  <div className="hidden h-10 w-px bg-[#edf2fb] lg:block" />
+                  <div className="flex min-w-0 flex-1 items-center gap-3 rounded-[18px] border border-[#e9eff8] bg-[#fbfcff] px-5 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] lg:max-w-[520px]">
+                    <Search className="h-5 w-5 text-[#6f82a5]" />
+                    <input
+                      value={searchQuery}
+                      onFocus={() => {
+                        setIsSearchOpen(true);
+                        setIsMobileMoreOpen(false);
+                      }}
+                      onChange={(event) => {
+                        setSearchQuery(event.target.value);
+                        setIsSearchOpen(true);
+                      }}
+                      placeholder="Search for tests, classes, notes..."
+                      className="min-w-0 flex-1 bg-transparent text-[15px] text-[#31486d] outline-none placeholder:text-[#95a3bc]"
+                    />
+                    <span className="hidden rounded-[10px] border border-[#e5ebf6] bg-white px-2.5 py-1 text-[12px] font-semibold text-[#7b8cab] sm:inline-flex">
+                      ⌘ K
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (overview.notifications[0]) {
+                        onOpenNotification(overview.notifications[0]);
+                      }
+                    }}
+                    className="relative flex h-11 w-11 items-center justify-center rounded-full text-[#20335c]"
+                  >
+                    <BellRing className="h-5 w-5" />
+                    <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ff4d5d] px-1 text-[9px] font-semibold text-white">
+                      {overview.notifications.length}
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-3 rounded-full pl-1">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[linear-gradient(135deg,#dce8ff_0%,#7ea7ff_100%)] text-sm font-semibold text-[#22375e] shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+                      {buildInitials(user?.name || 'Learner')}
+                    </div>
+                    <div className="hidden sm:block">
+                      <p className="text-[15px] font-semibold text-[#1f2d4e]">{user?.name || 'Learner'}</p>
+                      <p className="text-[13px] text-[#7b8cab]">{isAdmin ? 'Teacher' : 'Aspirant'}</p>
+                    </div>
+                    <ChevronDown className="hidden h-4 w-4 text-[#7b8cab] sm:block" />
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="hidden items-center gap-3 rounded-full border border-[var(--line)] bg-white px-4 py-3 shadow-sm sm:flex">
-              <BellRing className="h-4 w-4 text-[var(--accent-rust)]" />
-              <span className="text-sm text-[var(--ink-soft)]">{overview.notifications.length} active reminders</span>
-            </div>
-          </div>
-        </header>
-
-        <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pb-28 pt-6 sm:px-6 lg:px-8">
-          {activeTab === 'overview' && (
-            <OverviewTab
-              overview={overview}
-              savedTopics={savedTopics}
-              onOpenNotification={onOpenNotification}
-              onContinueLearning={(courseId, lessonId) => {
-                onContinueLearningNavigate(courseId, lessonId);
-                setActiveTab('courses');
-              }}
-            />
           )}
-          {activeTab === 'courses' && (
-            <CoursesTab
-              overview={overview}
-              onRefresh={onRefresh}
-              initialCourseId={resumeTarget?.courseId}
-              initialLessonId={resumeTarget?.lessonId || null}
-              onResumeNavigationHandled={onResumeNavigationHandled}
-              savedTopicIds={savedTopicIds}
-              onToggleSavedTopic={onToggleSavedTopic}
-            />
-          )}
-          {activeTab === 'tests' && <TestsTab overview={overview} onRefresh={onRefresh} />}
-          {activeTab === 'quiz' && <QuizTab overview={overview} onRefresh={onRefresh} />}
-          {activeTab === 'live' && <LiveTab overview={overview} onRefresh={onRefresh} initialLiveClassId={liveNavigationTarget} />}
-          {activeTab === 'analytics' && <AnalyticsTab overview={overview} />}
-          {activeTab === 'plans' && <PlansTab overview={overview} onRefresh={onRefresh} />}
-          {activeTab === 'admin' && overview.adminOverview && <AdminTab overview={overview} onRefresh={onRefresh} />}
-        </main>
 
-        <div className="fixed inset-x-3 bottom-3 z-30 rounded-[28px] border border-white/70 bg-white/92 p-2 shadow-[0_20px_60px_rgba(15,23,42,0.14)] backdrop-blur lg:hidden">
-          <div className="grid grid-cols-4 gap-1">
-            {visibleTabs.slice(0, 4).map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  'flex flex-col items-center gap-1 rounded-2xl px-2 py-3 text-[11px] font-medium',
-                  activeTab === tab.id ? 'bg-[var(--accent-rust)] text-white' : 'text-[var(--ink-soft)]',
-                )}
+          {showShellHeader && (
+            <header className="sticky top-0 z-20 border-b border-white/60 bg-[var(--page-bg)]/88 px-4 py-4 backdrop-blur-xl sm:px-6 lg:px-8">
+              <div className="mx-auto flex w-full max-w-[1380px] flex-col gap-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="max-w-3xl">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--ink-soft)]">{activeMeta.eyebrow}</p>
+                        <h1 className="mt-3 text-2xl font-semibold leading-tight text-[var(--ink)] sm:text-[2.2rem]">{activeMeta.title}</h1>
+                        <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--ink-soft)] sm:text-base">{activeMeta.description}</p>
+                      </div>
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm lg:hidden">
+                        <UserCircle2 className="h-5 w-5 text-[var(--accent-rust)]" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="w-full xl:max-w-[620px]">
+                    <div ref={searchContainerRef} className="relative">
+                      <div className={cn(
+                        'flex items-center gap-3 rounded-[28px] border px-4 py-3.5 shadow-[0_16px_34px_rgba(15,23,42,0.07)]',
+                        isSearchOpen ? 'border-[var(--accent-rust)]/24 bg-white' : 'border-white/70 bg-white/92',
+                      )}>
+                        <Search className="h-4 w-4 text-[var(--accent-rust)]" />
+                        <input
+                          data-testid="global-search-input"
+                          value={searchQuery}
+                          onFocus={() => {
+                            setIsSearchOpen(true);
+                            setIsMobileMoreOpen(false);
+                          }}
+                          onChange={(event) => {
+                            setSearchQuery(event.target.value);
+                            setIsSearchOpen(true);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                              setIsSearchOpen(false);
+                            }
+
+                            if (event.key === 'Enter' && filteredTargets[0]) {
+                              event.preventDefault();
+                              handleSearchTargetSelect(filteredTargets[0]);
+                            }
+                          }}
+                          placeholder="Search lessons, mocks, and saved topics..."
+                          className="w-full bg-transparent text-sm text-[var(--ink)] outline-none placeholder:text-[var(--ink-soft)]"
+                        />
+                        <span className="hidden rounded-full bg-[var(--accent-cream)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent-rust)] md:inline-flex">
+                          Search
+                        </span>
+                      </div>
+                      <SearchPanel
+                        open={isSearchOpen}
+                        query={searchQuery}
+                        results={filteredTargets}
+                        onSelect={handleSearchTargetSelect}
+                        onClose={() => setIsSearchOpen(false)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </header>
+          )}
+
+          <main className={cn(
+            'mx-auto flex w-full flex-1 flex-col overflow-hidden',
+            (isOverviewWorkspace || isCoursesWorkspace || isTestsWorkspace)
+              ? 'max-w-none px-0 pb-0 pt-0'
+              : isLiveWorkspace
+                ? cn('max-w-[1460px] px-0 pt-0 sm:px-4 sm:pt-5 lg:px-7 lg:pb-10', hideMobileShellNav ? 'pb-6 sm:pb-8 lg:pb-10' : 'pb-28 sm:pb-36 lg:pb-10')
+                : 'max-w-[1380px] px-4 pb-36 pt-4 sm:px-6 lg:px-8 lg:pb-10',
+            showShellHeader && !isCoursesWorkspace ? 'pt-6' : '',
+          )} style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="flex flex-1 flex-col"
               >
-                <tab.icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            ))}
-          </div>
+                {renderActiveTab()}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          {!isImmersiveWorkspace && !isImmersiveTestsFlow && !hideMobileShellNav && (
+            <>
+              <MobileMoreSheet
+                open={isMobileMoreOpen}
+                tabs={utilityTabs}
+                activeTab={activeTab}
+                onSelect={handleTabChange}
+                onClose={() => setIsMobileMoreOpen(false)}
+                onLogout={onLogout}
+              />
+
+              <div
+                className="pointer-events-none fixed inset-x-0 bottom-0 z-30 border-t border-[#dde6f4] bg-white/98 px-3 pt-2 shadow-[0_-12px_34px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.45rem)' }}
+              >
+                <div className="pointer-events-auto grid grid-cols-5 gap-1">
+                  {primaryNavTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => handleTabChange(tab.id)}
+                      data-testid={`mobile-nav-${tab.id}`}
+                      className={cn(
+                        'flex flex-col items-center gap-[6px] rounded-[16px] px-2 py-[8px] text-[11px] font-medium transition',
+                        activeTab === tab.id ? 'text-[#1b5fe3]' : 'text-[#65789b]',
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          'flex h-[30px] w-[30px] items-center justify-center rounded-[10px]',
+                          activeTab === tab.id ? 'bg-[#eef4ff]' : 'bg-transparent',
+                        )}
+                      >
+                        <tab.icon className="h-[19px] w-[19px]" />
+                      </div>
+                      {mobileNavLabels[tab.id]}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    data-testid="mobile-nav-more"
+                    onClick={() => {
+                      setIsMobileMoreOpen(true);
+                      setIsSearchOpen(false);
+                    }}
+                    className={cn(
+                      'flex flex-col items-center gap-[6px] rounded-[16px] px-2 py-[8px] text-[11px] font-medium transition',
+                      isSecondaryMobileTabActive || isMobileMoreOpen ? 'text-[#1b5fe3]' : 'text-[#65789b]',
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'flex h-[30px] w-[30px] items-center justify-center rounded-[10px]',
+                        isSecondaryMobileTabActive || isMobileMoreOpen ? 'bg-[#eef4ff]' : 'bg-transparent',
+                      )}
+                    >
+                      <UserCircle2 className="h-[19px] w-[19px]" />
+                    </div>
+                    Profile
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -733,210 +1864,791 @@ const OverviewTab = ({
   onContinueLearning: (courseId: string, lessonId?: string | null) => void;
   onOpenNotification: (notification: NotificationItem) => void;
   savedTopics: SavedTopic[];
-}) => (
-  <div className="space-y-6">
-    <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-      <div className="rounded-[34px] bg-[var(--card-dark)] p-6 text-white shadow-[0_30px_120px_rgba(15,23,42,0.3)] sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/52">Execution layer</p>
-        <h2 className="mt-4 text-3xl font-semibold leading-tight sm:text-4xl">
-          {overview.highlights.concurrencyTarget} learning experience with courses, tests, daily quiz, live classes, and AI guidance.
-        </h2>
-        <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70 sm:text-base">
-          {overview.ai.headline}
-        </p>
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          <MetricCard title="Accuracy" value={`${overview.dashboard.accuracy}%`} hint="Combined quiz + mock test performance" icon={Target} />
-          <MetricCard title="Speed" value={`${overview.dashboard.speed}x`} hint="Current solving pace indicator" icon={Gauge} />
-          <MetricCard title="Streak" value={`${overview.dashboard.streak} days`} hint="Protected through daily quiz attempts" icon={Flame} />
-        </div>
-      </div>
+}) => {
+  const learnerName = overview.user?.name || 'Learner';
+  const learnerInitials = buildInitials(learnerName);
+  const enrolledCourses = overview.courses.filter((course) => course.enrolled);
+  const continueCourse = overview.dashboard.continueLearning[0] || enrolledCourses[0] || overview.courses[0] || null;
+  const secondaryCourse = overview.dashboard.continueLearning[1] || enrolledCourses[1] || overview.courses[1] || null;
+  const activeCourses = [continueCourse, secondaryCourse].filter(
+    (course, index, items): course is NonNullable<typeof course> => Boolean(course) && items.findIndex((item) => item?._id === course?._id) === index,
+  );
+  const actionQueueNotification = overview.notifications[0] || null;
+  const nextLiveClass = overview.liveClasses.find((liveClass) => {
+    const state = `${liveClass.status || ''} ${liveClass.mode || ''}`.toLowerCase();
+    return state.includes('live') || state.includes('scheduled') || state.includes('upcoming');
+  }) || overview.liveClasses[0] || null;
+  const nextTest = overview.dashboard.latestMockTest || overview.testSeries[0] || null;
+  const scoreValue = overview.dashboard.latestMockTest?.score ?? Math.round(overview.analytics.accuracy || overview.dashboard.accuracy || 0);
+  const rankValue = overview.dashboard.latestMockTest?.rank ?? null;
+  const summaryStats = [
+    { label: 'Accuracy', value: `${overview.dashboard.accuracy}%`, icon: Target },
+    { label: 'Speed', value: `${overview.dashboard.speed}x`, icon: Gauge },
+    { label: 'Streak', value: `${overview.dashboard.streak}d`, icon: Flame },
+  ];
+  const savedTopicCards = savedTopics.length > 0 ? savedTopics.slice(0, 2) : [];
+  const focusTopics = overview.dashboard.weakTopics.slice(0, 2);
+  const highlightTopic = focusTopics[0] || savedTopics[0]?.lessonTitle || continueCourse?.continueLesson?.title || continueCourse?.title || 'Weekly focus';
+  const recommendation = continueCourse
+    ? `Resume ${continueCourse.continueLesson?.title || continueCourse.title} and keep your current study rhythm intact.`
+    : savedTopics[0]
+      ? `Revisit ${savedTopics[0].lessonTitle} and rebuild the topic from the last saved checkpoint.`
+      : 'Open one lesson, finish one block, and keep the dashboard moving with a small win.';
+  const nextTestTitle = nextTest
+    ? 'title' in nextTest
+      ? nextTest.title
+      : 'Mock test'
+    : 'Mock Test 02';
+  const nextTestSubtitle = nextTest
+    ? 'category' in nextTest
+      ? nextTest.category
+      : 'SSC JE Electrical Power Track'
+    : 'SSC JE Electrical Power Track';
+  const nextTestDuration = nextTest
+    ? 'durationMinutes' in nextTest
+      ? nextTest.durationMinutes
+      : 60
+    : 60;
 
-      <div className="rounded-[34px] border border-white/70 bg-white/92 p-6 shadow-[0_24px_90px_rgba(15,23,42,0.08)]">
-        <SectionHeader title="Action queue" caption="Right now" />
-        <div className="mt-6 space-y-4">
-          {overview.notifications.map((item) => (
+  return (
+    <div
+      data-testid="overview-dashboard"
+      className="relative overflow-hidden rounded-[36px] border border-white/70 bg-[linear-gradient(180deg,#dfe8fb_0%,#edf2ff_42%,#e7edf9_100%)] px-4 py-5 shadow-[0_30px_100px_rgba(15,23,42,0.08)] sm:px-5 sm:py-6 lg:px-6"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_14%,rgba(255,255,255,0.92),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(117,166,255,0.24),transparent_20%),radial-gradient(circle_at_70%_84%,rgba(123,176,255,0.18),transparent_26%)] opacity-90" />
+      <div className="relative mx-auto flex w-full max-w-[1400px] flex-col gap-5">
+        <div data-testid="overview-topbar" className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/68 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--ink-soft)] shadow-[0_10px_24px_rgba(15,23,42,0.06)] backdrop-blur">
+              <LayoutDashboard className="h-3.5 w-3.5 text-[var(--accent-rust)]" />
+              Overview dashboard
+            </div>
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-[var(--ink)] sm:text-[3rem]">
+              Good to see you, {learnerName}.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--ink-soft)] sm:text-base">
+              {continueCourse
+                ? `Continue ${continueCourse.exam} and keep the next lesson, revision queue, and practice flow connected.`
+                : 'Start one lesson, then build revision around what you actually study.'}
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-white/72 px-3 py-1.5 text-xs font-semibold text-[var(--accent-rust)] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                {overview.highlights.concurrencyTarget}
+              </span>
+              <span className="rounded-full bg-white/72 px-3 py-1.5 text-xs font-semibold text-[var(--ink-soft)] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                {overview.highlights.deploymentProfile}
+              </span>
+              {overview.highlights.modules.slice(0, 2).map((module) => (
+                <span key={module} className="rounded-full bg-[rgba(255,255,255,0.66)] px-3 py-1.5 text-xs font-medium text-[var(--ink-soft)]">
+                  {module}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 self-start lg:pt-1">
             <button
-              key={item._id}
               type="button"
-              onClick={() => onOpenNotification(item)}
-              className="w-full rounded-[24px] border border-[var(--line)] bg-[var(--accent-cream)] p-4 text-left transition hover:border-[var(--accent-rust)]/40"
+              data-testid="overview-search-pill"
+              className="flex h-11 items-center gap-2 rounded-full border border-white/80 bg-white/72 px-4 text-sm text-[var(--ink-soft)] shadow-[0_10px_24px_rgba(15,23,42,0.07)] backdrop-blur transition hover:bg-white/86"
             >
-              <div className="flex items-start gap-3">
-                <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-white">
-                  <BellRing className="h-4 w-4 text-[var(--accent-rust)]" />
-                </div>
-                <div>
-                  <p className="font-medium text-[var(--ink)]">{item.title}</p>
-                  <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">{item.message}</p>
-                  {(item.actionLabel || getNotificationNavigationTarget(item)) && (
-                    <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-rust)]">
-                      {item.actionLabel || 'Open now'}
-                    </p>
-                  )}
-                  <p className="mt-2 text-xs uppercase tracking-[0.2em] text-[var(--ink-soft)]">{formatDateTime(item.createdAt)}</p>
-                </div>
-              </div>
+              <Search className="h-4 w-4 text-[var(--accent-rust)]" />
+              <span className="hidden sm:inline">Search...</span>
+              <span className="sm:hidden">Search</span>
             </button>
-          ))}
-        </div>
-      </div>
-    </section>
-
-    <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-      <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
-        <SectionHeader title="Continue learning" caption="Resume playback" />
-        <div className="mt-6 space-y-4">
-          {overview.dashboard.continueLearning.length > 0 ? overview.dashboard.continueLearning.map((course) => (
             <button
-              key={course._id}
-              onClick={() => onContinueLearning(course._id, course.continueLesson?.id || null)}
-              className="w-full rounded-[26px] border border-[var(--line)] p-4 text-left transition hover:border-[var(--accent-rust)]"
+              type="button"
+              data-testid="overview-notification-button"
+              onClick={() => {
+                if (actionQueueNotification) {
+                  onOpenNotification(actionQueueNotification);
+                }
+              }}
+              className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/80 bg-white/72 text-[var(--ink-soft)] shadow-[0_10px_24px_rgba(15,23,42,0.07)] backdrop-blur transition hover:text-[var(--ink)]"
+              aria-label="Open notifications"
             >
-              <div className="flex items-start gap-4">
-                <img src={course.thumbnailUrl} alt={course.title} className="h-24 w-24 rounded-[20px] object-cover" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--ink-soft)]">{course.exam}</p>
-                  <h3 className="mt-2 text-lg font-semibold text-[var(--ink)]">{course.title}</h3>
-                  <p className="mt-1 text-sm text-[var(--ink-soft)]">
-                    Resume: {course.continueLesson?.title || 'Start your next lesson'}
-                    {course.continueProgressSeconds
-                      ? ` at ${formatPlaybackTime(course.continueProgressSeconds)}`
-                      : ''}
-                  </p>
-                  <div className="mt-4">
-                    <div className="mb-2 flex items-center justify-between text-xs text-[var(--ink-soft)]">
-                      <span>Progress</span>
-                      <span>{course.progressPercent || 0}%</span>
+              <BellRing className="h-5 w-5" />
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent-rust)] px-1 text-[10px] font-semibold text-white">
+                {overview.notifications.length}
+              </span>
+            </button>
+            <div
+              data-testid="overview-profile-avatar"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/80 bg-[linear-gradient(135deg,#6b9cff_0%,#2b63df_100%)] text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+              title={learnerName}
+            >
+              {learnerInitials}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.85fr)]">
+          <div className="space-y-5">
+            <section
+              data-testid="overview-hero"
+              className="relative overflow-hidden rounded-[34px] border border-white/40 bg-[linear-gradient(135deg,#2f6fe4_0%,#3b82f6_50%,#7cb8ff_100%)] p-6 text-white shadow-[0_32px_110px_rgba(35,84,190,0.28)] sm:p-8"
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,0.18),transparent_24%),radial-gradient(circle_at_82%_62%,rgba(255,255,255,0.12),transparent_26%),linear-gradient(120deg,rgba(255,255,255,0.12),transparent_24%)]" />
+              <div className="absolute -right-12 top-10 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+              <div className="absolute bottom-0 right-0 h-32 w-64 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.22),transparent_65%)] blur-2xl" />
+              <div className="relative max-w-3xl">
+                <div className="flex items-center gap-3 text-sm font-semibold">
+                  <span className="rounded-full bg-white/16 px-3 py-1.5 backdrop-blur">Continue Learning</span>
+                  <span className="text-white/78">{continueCourse?.progressPercent || 0}%</span>
+                </div>
+                <h3 className="mt-4 max-w-2xl text-3xl font-semibold tracking-[-0.04em] sm:text-[2.7rem]">
+                  {continueCourse?.title || 'SSC JE 2026 Electrical Power Track'}
+                </h3>
+                <p className="mt-4 max-w-2xl text-sm leading-8 text-white/78 sm:text-base">
+                  {continueCourse
+                    ? `Resume ${continueCourse.continueLesson?.title || 'the next lesson'} and build your revision around what you actually study.`
+                    : overview.ai.headline}
+                </p>
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    data-testid="overview-continue-cta"
+                    onClick={() => {
+                      if (continueCourse) {
+                        onContinueLearning(continueCourse._id, continueCourse.continueLesson?.id || null);
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 rounded-[18px] bg-white px-5 py-3 text-base font-semibold text-[var(--accent-rust)] shadow-[0_18px_30px_rgba(8,29,61,0.16)] transition hover:-translate-y-0.5"
+                  >
+                    Continue Learning
+                    <ArrowRight className="h-5 w-5" />
+                  </button>
+                  <span className="rounded-full border border-white/24 bg-white/10 px-4 py-3 text-sm font-medium text-white/86 backdrop-blur">
+                    {continueCourse?.exam || overview.highlights.modules[0] || 'Exam prep'}
+                  </span>
+                </div>
+                <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                  {summaryStats.map((stat) => (
+                    <div key={stat.label} className="rounded-[22px] border border-white/20 bg-white/10 p-4 backdrop-blur">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">{stat.label}</p>
+                          <p className="mt-2 text-2xl font-semibold">{stat.value}</p>
+                        </div>
+                        <stat.icon className="h-5 w-5 text-white/80" />
+                      </div>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-[var(--accent-cream)]">
-                      <div className="h-full rounded-full bg-[var(--accent-rust)]" style={{ width: `${course.progressPercent || 0}%` }} />
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section data-testid="overview-active-courses" className="space-y-4">
+              <SectionHeader title="Active Courses" caption="Your current track" />
+              <div className="grid gap-4 lg:grid-cols-2">
+                {activeCourses.length > 0 ? activeCourses.map((course, index) => (
+                  <button
+                    key={course._id}
+                    type="button"
+                    data-testid={`overview-active-course-card-${index}`}
+                    onClick={() => onContinueLearning(course._id, course.continueLesson?.id || null)}
+                    className="group rounded-[28px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] p-5 text-left shadow-[0_20px_60px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)]"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="inline-flex rounded-full bg-[var(--accent-cream)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent-rust)]">
+                          {course.exam}
+                        </p>
+                        <h4 className="mt-3 line-clamp-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--ink)]">
+                          {course.title}
+                        </h4>
+                        <p className="mt-1 text-base text-[var(--ink-soft)]">{course.subject}</p>
+                      </div>
+                      <div className="rounded-full bg-[linear-gradient(135deg,#e7eefc_0%,#ffffff_100%)] px-3 py-1.5 text-sm font-medium text-[var(--ink-soft)] shadow-inner">
+                        {course.exam}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-between text-sm text-[var(--ink-soft)]">
+                      <span>{course.progressPercent || 0}% Completed</span>
+                      <span>{course.lessonCount || 0} lessons</span>
+                    </div>
+                    <div className="mt-2 h-2 rounded-full bg-[rgba(93,134,220,0.16)]">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#2f6fe4_0%,#5aa3ff_100%)]"
+                        style={{ width: `${Math.min(course.progressPercent || 0, 100)}%` }}
+                      />
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-between gap-3">
+                      <div className="grid grid-cols-3 gap-4 text-sm text-[var(--ink-soft)]">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em]">Modules</p>
+                          <p className="mt-1 font-semibold text-[var(--ink)]">{course.modules?.length || 0}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em]">Tests</p>
+                          <p className="mt-1 font-semibold text-[var(--ink)]">{Math.max(1, Math.round((course.lessonCount || 0) / 24))}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em]">Questions</p>
+                          <p className="mt-1 font-semibold text-[var(--ink)]">{formatLargeMetric((course.lessonCount || 0) * 12)}</p>
+                        </div>
+                      </div>
+                      <span className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#2f6fe4_0%,#3f82f7_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.24)]">
+                        Continue
+                        <ChevronRight className="h-4 w-4" />
+                      </span>
+                    </div>
+                  </button>
+                )) : (
+                  <div className="rounded-[28px] border border-dashed border-[var(--line)] bg-white/70 p-6 text-sm text-[var(--ink-soft)]">
+                    No active courses yet. Enroll in a course to fill this dashboard section.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section data-testid="overview-signals" className="space-y-4">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]">Signals</p>
+                  <div className="mt-3 flex items-center gap-5 text-base font-medium text-[var(--ink-soft)] sm:text-lg">
+                    <span className="border-b-2 border-[var(--accent-rust)] pb-2 text-[var(--ink)]">Signals</span>
+                    <span>Saved</span>
+                    <span>Focus</span>
+                  </div>
+                </div>
+                <span className="hidden rounded-full bg-white/70 px-3 py-1.5 text-xs font-semibold text-[var(--ink-soft)] shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:inline-flex">
+                  {overview.dashboard.weakTopics.length + savedTopics.length} items ready
+                </span>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.16fr)_minmax(0,0.84fr)]">
+                <div className="space-y-4">
+                  <div
+                    data-testid="overview-streak"
+                    className="rounded-[30px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(247,250,255,0.94)_100%)] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-2xl">🔥 Keep the Streak On</p>
+                        <p className="mt-2 text-sm text-[var(--ink-soft)]">
+                          Daily quiz, a short revision block, and one mock touchpoint keep your momentum alive.
+                        </p>
+                      </div>
+                      <div className="rounded-[18px] bg-[var(--accent-cream)] px-4 py-3 text-right">
+                        <p className="text-sm text-[var(--ink-soft)]">Current streak</p>
+                        <p className="mt-1 text-3xl font-semibold text-[var(--ink)]">{overview.dashboard.streak} day{overview.dashboard.streak === 1 ? '' : 's'}</p>
+                      </div>
+                    </div>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-[1.2fr_0.8fr]">
+                      <div className="rounded-[24px] bg-[var(--accent-cream)] p-4">
+                        <p className="text-sm font-semibold text-[var(--ink)]">Today&apos;s focus</p>
+                        <p className="mt-2 text-sm leading-7 text-[var(--ink-soft)]">{highlightTopic}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-[24px] bg-[linear-gradient(135deg,#2f6fe4_0%,#3f82f7_100%)] px-5 py-4 text-left text-white shadow-[0_16px_32px_rgba(47,111,228,0.22)]"
+                      >
+                        <p className="text-sm font-semibold">Continue</p>
+                        <p className="mt-2 text-sm text-white/80">Keep one clean study block moving forward.</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {savedTopicCards.length > 0 ? savedTopicCards.map((topic, index) => (
+                      <button
+                        key={`${topic.courseId}:${topic.lessonId}`}
+                        type="button"
+                        data-testid={`overview-saved-topic-${index}`}
+                        onClick={() => onContinueLearning(topic.courseId, topic.lessonId)}
+                        className="rounded-[26px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.94)_100%)] p-4 text-left shadow-[0_18px_42px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">{topic.exam}</p>
+                        <h4 className="mt-2 text-lg font-semibold text-[var(--ink)]">{topic.lessonTitle}</h4>
+                        <p className="mt-1 text-sm text-[var(--ink-soft)]">{topic.courseTitle}</p>
+                        <div className="mt-4 flex items-center justify-between text-xs uppercase tracking-[0.18em] text-[var(--ink-soft)]">
+                          <span>{topic.moduleTitle || 'Saved topic'}</span>
+                          <ChevronRight className="h-4 w-4" />
+                        </div>
+                      </button>
+                    )) : (
+                      <>
+                        <div className="rounded-[26px] border border-dashed border-[var(--line)] bg-white/70 p-4 text-sm text-[var(--ink-soft)]">
+                          Save topics while studying to pin them here for quick revision.
+                        </div>
+                        <div className="rounded-[26px] border border-dashed border-[var(--line)] bg-white/70 p-4 text-sm text-[var(--ink-soft)]">
+                          Your saved lessons will appear here once you start bookmarking the material.
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div
+                    data-testid="overview-recommendation"
+                    className="rounded-[30px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.94)_100%)] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
+                  >
+                    <p className="text-xl font-semibold tracking-[-0.03em] text-[var(--ink)]">Circuits & Network Reduction</p>
+                    <p className="mt-1 text-sm text-[var(--ink-soft)]">Recommended Track</p>
+                    <p className="mt-4 text-sm leading-7 text-[var(--ink-soft)]">
+                      {recommendation}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (continueCourse) {
+                          onContinueLearning(continueCourse._id, continueCourse.continueLesson?.id || null);
+                        }
+                      }}
+                      className="mt-5 inline-flex items-center gap-2 rounded-[18px] bg-[linear-gradient(135deg,#2f6fe4_0%,#3f82f7_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(47,111,228,0.22)]"
+                    >
+                      Review now
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div
+                      data-testid="overview-score-summary"
+                      className="rounded-[26px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.94)_100%)] p-5 shadow-[0_18px_42px_rgba(15,23,42,0.07)]"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-sm text-[var(--ink-soft)]">Score</p>
+                        <p className="text-3xl font-semibold text-[var(--ink)]">{scoreValue}</p>
+                      </div>
+                      <div className="mt-4 h-2 rounded-full bg-[rgba(92,136,223,0.16)]">
+                        <div className="h-full rounded-full bg-[linear-gradient(90deg,#2f6fe4_0%,#7cb8ff_100%)]" style={{ width: `${Math.min(scoreValue, 100)}%` }} />
+                      </div>
+                      <div className="mt-4 flex items-center justify-between text-sm text-[var(--ink-soft)]">
+                        <span>Rank</span>
+                        <span className="text-2xl font-semibold text-[var(--ink)]">{rankValue ? `#${rankValue}` : 'Ready'}</span>
+                      </div>
+                    </div>
+
+                    <div
+                      data-testid="overview-next-test-card"
+                      className="rounded-[26px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.94)_100%)] p-5 text-left shadow-[0_18px_42px_rgba(15,23,42,0.07)]"
+                    >
+                      <p className="text-sm text-[var(--ink-soft)]">Next test</p>
+                      <p className="mt-2 text-xl font-semibold text-[var(--ink)]">{nextTestTitle}</p>
+                      <p className="mt-1 text-sm text-[var(--ink-soft)]">{nextTestSubtitle}</p>
+                      <p className="mt-1 text-sm text-[var(--ink-soft)]">{nextTestDuration} minutes</p>
+                      <button
+                        type="button"
+                        className="mt-5 inline-flex items-center gap-2 rounded-[18px] bg-[linear-gradient(135deg,#2f6fe4_0%,#3f82f7_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(47,111,228,0.22)]"
+                      >
+                        Attempt now
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
-            </button>
-          )) : (
-            <div className="rounded-[26px] border border-dashed border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
-              No watch history yet. Unlock a course or replay a live class to build learning continuity.
+            </section>
+          </div>
+
+          <aside className="space-y-5 xl:sticky xl:top-6">
+            <div
+              data-testid="overview-action-queue"
+              className="rounded-[30px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.94)_100%)] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
+            >
+              <SectionHeader
+                title="Action Queue"
+                caption="Right now"
+                action={<div className="rounded-full bg-[var(--accent-cream)] p-2 text-[var(--accent-rust)]"><ChevronRight className="h-4 w-4 rotate-[-90deg]" /></div>}
+              />
+              <div className="mt-5 space-y-4">
+                <div className="rounded-[26px] border border-[rgba(103,151,234,0.18)] bg-[linear-gradient(180deg,#ffffff_0%,#f1f7ff_100%)] p-4 shadow-[0_14px_28px_rgba(15,23,42,0.05)]">
+                  <span className="inline-flex rounded-full bg-[#f7a6aa] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                    Live
+                  </span>
+                  <p className="mt-3 text-lg font-semibold text-[var(--ink)]">
+                    {nextLiveClass ? 'Next live session is in progress.' : 'No live class running right now.'}
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--ink-soft)]">
+                    {nextLiveClass
+                      ? nextLiveClass.title
+                      : 'Your next live class will appear here once it is scheduled.'}
+                  </p>
+                  <div className="mt-4 flex items-center justify-between gap-3 text-sm text-[var(--ink-soft)]">
+                    <span>{nextLiveClass?.instructor || overview.highlights.modules[0] || 'VARONENGLISH'}</span>
+                    <span>{nextLiveClass ? formatDateTime(nextLiveClass.startTime) : 'Upcoming'}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#2f6fe4_0%,#3f82f7_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.22)]"
+                  >
+                    Join now
+                  </button>
+                </div>
+
+                <div className="rounded-[26px] border border-[rgba(103,151,234,0.16)] bg-white/86 p-4">
+                  <p className="text-xl font-semibold tracking-[-0.03em] text-[var(--ink)]">Upcoming Classes</p>
+                  <div className="mt-4 rounded-[22px] border border-[var(--line)] bg-white p-4">
+                    <div className="grid grid-cols-6 gap-2 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">
+                      {['M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                        <span key={`${day}-${index}`}>{day}</span>
+                      ))}
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {(overview.liveClasses.slice(0, 2).length > 0 ? overview.liveClasses.slice(0, 2) : [null]).map((liveClass, index) => (
+                        <div key={liveClass?._id || `live-placeholder-${index}`} className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--ink)]">
+                              {liveClass ? new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit' }).format(new Date(liveClass.startTime)) : '3:00 PM'}
+                            </p>
+                            <p className="mt-1 text-sm text-[var(--ink-soft)]">{liveClass?.title || 'General Awareness'}</p>
+                          </div>
+                          <span className="rounded-full bg-[var(--accent-cream)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-rust)]">
+                            {liveClass?.status || 'scheduled'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#2f6fe4_0%,#3f82f7_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.22)]"
+                  >
+                    View timetable
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+
+            <div
+              data-testid="overview-upcoming-tests"
+              className="rounded-[30px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.94)_100%)] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
+            >
+              <SectionHeader title="Upcoming Tests" caption="Practice queue" />
+              <div className="mt-4 rounded-[24px] border border-[var(--line)] bg-white p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--accent-cream)] text-[var(--accent-rust)]">
+                    <ClipboardCheck className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-semibold text-[var(--ink)]">{nextTestTitle}</p>
+                    <p className="mt-1 text-sm text-[var(--ink-soft)]">{nextTestSubtitle}</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-[var(--ink-soft)]">Due soon</p>
+                    <p className="mt-1 text-2xl font-semibold text-[var(--ink)]">{`${Math.max(1, Math.ceil(nextTestDuration / 45))} days`}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center rounded-[18px] bg-[linear-gradient(135deg,#2f6fe4_0%,#3f82f7_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.22)]"
+                  >
+                    Attempt now
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              data-testid="overview-score-card"
+              className="rounded-[30px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,250,255,0.94)_100%)] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-xl font-semibold text-[var(--ink)]">Score</p>
+                <p className="text-3xl font-semibold text-[var(--ink)]">{scoreValue}</p>
+              </div>
+              <div className="mt-4 h-2 rounded-full bg-[rgba(92,136,223,0.16)]">
+                <div className="h-full rounded-full bg-[linear-gradient(90deg,#2f6fe4_0%,#7cb8ff_100%)]" style={{ width: `${Math.min(scoreValue, 100)}%` }} />
+              </div>
+              <div className="mt-4 flex items-center justify-between text-sm text-[var(--ink-soft)]">
+                <span>Rank</span>
+                <span className="text-2xl font-semibold text-[var(--ink)]">{rankValue ? `#${rankValue}` : '#96'}</span>
+              </div>
+              <button
+                type="button"
+                className="mt-5 inline-flex w-full items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#2f6fe4_0%,#3f82f7_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.22)]"
+              >
+                Attempt now
+              </button>
+            </div>
+          </aside>
         </div>
       </div>
+    </div>
+  );
+};
 
-      <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
-        <SectionHeader title="Performance signals" caption="What stands out" />
-        <div className="mt-6 space-y-4">
-          <div className="rounded-[24px] bg-[var(--accent-cream)] p-4">
-            <p className="text-sm font-semibold text-[var(--ink)]">Weak topics</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {overview.dashboard.weakTopics.map((topic) => (
-                <span key={topic} className="rounded-full bg-white px-3 py-2 text-sm text-[var(--danger)]">
-                  {topic}
-                </span>
-              ))}
-            </div>
+const buildSearchTargets = (overview: PlatformOverview, savedTopics: SavedTopic[]): SearchTarget[] => {
+  const searchableCourses = overview.user?.role === 'admin'
+    ? overview.courses
+    : overview.courses.filter((course) => course.enrolled);
+
+  const courseTargets = searchableCourses.flatMap((course) => {
+    const lessonTargets = flattenCourseLessons(course).map((entry) => ({
+      id: `lesson:${course._id}:${entry.lesson.id}`,
+      kind: 'lesson' as const,
+      title: entry.lesson.title,
+      subtitle: [course.title, entry.moduleTitle, entry.chapterTitle, `${entry.lesson.durationMinutes} min`].filter(Boolean).join(' • '),
+      tab: 'courses' as const,
+      courseId: course._id,
+      lessonId: entry.lesson.id,
+    }));
+
+    return [
+      {
+        id: `course:${course._id}`,
+        kind: 'course' as const,
+        title: course.title,
+        subtitle: [course.exam, course.subject, course.instructor].filter(Boolean).join(' • '),
+        tab: 'courses' as const,
+        courseId: course._id,
+        lessonId: course.continueLesson?.id || null,
+      },
+      ...lessonTargets,
+    ];
+  });
+
+  const testTargets = overview.testSeries.map((test) => ({
+    id: `test:${test._id}`,
+    kind: 'test' as const,
+    title: test.title,
+    subtitle: [test.category, `${test.durationMinutes} min`, `${test.questions.length} questions`].join(' • '),
+    tab: 'tests' as const,
+  }));
+
+  const savedTargets = savedTopics.map((topic) => ({
+    id: `saved:${topic.courseId}:${topic.lessonId}`,
+    kind: 'saved' as const,
+    title: topic.lessonTitle,
+    subtitle: [topic.courseTitle, topic.moduleTitle, topic.chapterTitle, 'Saved topic'].filter(Boolean).join(' • '),
+    tab: 'revision' as const,
+    courseId: topic.courseId,
+    lessonId: topic.lessonId,
+  }));
+
+  return [...savedTargets, ...courseTargets, ...testTargets];
+};
+
+const buildRevisionPlan = (overview: PlatformOverview, savedTopics: SavedTopic[]): RevisionDayPlan[] => {
+  const today = new Date();
+  const latestMock = overview.dashboard.latestMockTest;
+  const weakTopics = overview.dashboard.weakTopics.slice(0, 3);
+  const strongTopics = overview.dashboard.strongTopics.slice(0, 2);
+  const continueCourse = overview.dashboard.continueLearning[0];
+  const prioritySaved = savedTopics.slice(0, 3);
+  const latestMistakes = latestMock?.solutions.filter((solution) => solution.selectedOption !== solution.correctOption).slice(0, 3) || [];
+
+  const templates = [
+    {
+      title: 'Recovery sprint',
+      summary: weakTopics.length > 0 ? `Repair ${weakTopics.join(', ')} while the last mock is still fresh.` : 'Start with your weakest recent test areas and clear conceptual gaps first.',
+      actions: [
+        latestMistakes[0] ? `Rework ${latestMistakes[0].topic} mistakes from the latest mock.` : 'Reopen your latest mock and inspect incorrect answers.',
+        weakTopics[0] ? `Watch one focused lesson on ${weakTopics[0]}.` : 'Watch one focused concept lesson.',
+        'Finish with one short sectional practice set.',
+      ],
+    },
+    {
+      title: 'Concept consolidation',
+      summary: continueCourse ? `Push ${continueCourse.title} forward instead of opening too many parallel topics.` : 'Use a disciplined single-subject session to build momentum.',
+      actions: [
+        continueCourse?.continueLesson?.title ? `Resume ${continueCourse.continueLesson.title}.` : 'Resume your most recently active lesson.',
+        prioritySaved[0] ? `Revise saved topic ${prioritySaved[0].lessonTitle}.` : 'Save one important lesson for later revision.',
+        'Make quick handwritten notes or formula points before closing.',
+      ],
+    },
+    {
+      title: 'Speed and accuracy day',
+      summary: 'Balance timed practice with clean review so speed gains do not reduce accuracy.',
+      actions: [
+        'Attempt today’s daily quiz without interruptions.',
+        latestMock ? `Compare your pace against the latest mock score of ${latestMock.score}/${latestMock.totalMarks}.` : 'Attempt one timed mini-test.',
+        weakTopics[1] ? `Close the day by revising ${weakTopics[1]}.` : 'Close the day with one weak-topic revision block.',
+      ],
+    },
+    {
+      title: 'Retention loop',
+      summary: prioritySaved.length > 0 ? 'Bring saved lessons back before they become passive bookmarks.' : 'Turn active study into retained memory through repetition.',
+      actions: [
+        ...prioritySaved.slice(0, 2).map((topic) => `Revisit ${topic.lessonTitle} from ${topic.courseTitle}.`),
+        'Test yourself without notes for 10 minutes.',
+        'Update your saved list so only high-value revision items remain.',
+      ],
+    },
+    {
+      title: 'Mock readiness',
+      summary: strongTopics.length > 0 ? `Lean on ${strongTopics.join(' and ')} while stabilizing weaker chapters.` : 'Use one medium-length mock block to judge readiness.',
+      actions: [
+        'Attempt one sectional or full mock under strict timing.',
+        'Review only skipped and incorrect questions immediately after submission.',
+        'Mark 3 topics that need another round this week.',
+      ],
+    },
+  ];
+
+  return templates.map((template, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + index);
+
+    return {
+      dateLabel: formatShortDate(date),
+      title: template.title,
+      summary: template.summary,
+      actions: template.actions.slice(0, 3),
+    };
+  });
+};
+
+const RevisionTab = ({
+  overview,
+  savedTopics,
+  onContinueLearning,
+}: {
+  overview: PlatformOverview;
+  savedTopics: SavedTopic[];
+  onContinueLearning: (courseId: string, lessonId?: string | null) => void;
+}) => {
+  const revisionPlan = useMemo(() => buildRevisionPlan(overview, savedTopics), [overview, savedTopics]);
+  const latestMock = overview.dashboard.latestMockTest;
+  const recoveryItems = latestMock?.solutions.filter((solution) => solution.selectedOption !== solution.correctOption).slice(0, 6) || [];
+  const completedSavedTopics = savedTopics.filter((topic) => topic.completed).length;
+
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
+        <div className="rounded-[34px] bg-[linear-gradient(135deg,#101827,#12213b_44%,#1d3557_100%)] p-6 text-white shadow-[0_30px_120px_rgba(15,23,42,0.28)] sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/52">Revision center</p>
+          <h2 className="mt-4 text-3xl font-semibold leading-tight sm:text-4xl">Turn saved lessons, weak topics, and mistakes into a daily recovery workflow.</h2>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70 sm:text-base">
+            This screen pulls together the real items that usually get lost after studying: unfinished lessons, bookmarked topics, and errors from your last mock.
+          </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            <MetricCard title="Saved topics" value={`${savedTopics.length}`} hint="High-value lessons parked for revision" icon={BookOpen} />
+            <MetricCard title="Recovered" value={`${completedSavedTopics}`} hint="Saved items already finished" icon={CheckCircle2} />
+            <MetricCard title="Weak topics" value={`${overview.dashboard.weakTopics.length}`} hint="Topics currently needing active repair" icon={AlertTriangle} />
           </div>
-          <div className="rounded-[24px] bg-[var(--accent-cream)] p-4">
-            <p className="text-sm font-semibold text-[var(--ink)]">Strong topics</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(overview.dashboard.strongTopics.length > 0 ? overview.dashboard.strongTopics : ['General Awareness']).map((topic) => (
-                <span key={topic} className="rounded-full bg-white px-3 py-2 text-sm text-[var(--success)]">
-                  {topic}
-                </span>
-              ))}
-            </div>
-          </div>
-          {overview.dashboard.latestMockTest && (
-            <div className="rounded-[24px] border border-[var(--line)] p-4">
-              <p className="text-sm font-semibold text-[var(--ink)]">Latest mock result</p>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-2xl bg-[var(--accent-cream)] p-3">
-                  <p className="text-[var(--ink-soft)]">Score</p>
-                  <p className="mt-1 text-lg font-semibold text-[var(--ink)]">{overview.dashboard.latestMockTest.score}</p>
-                </div>
-                <div className="rounded-2xl bg-[var(--accent-cream)] p-3">
-                  <p className="text-[var(--ink-soft)]">Rank</p>
-                  <p className="mt-1 text-lg font-semibold text-[var(--ink)]">#{overview.dashboard.latestMockTest.rank}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          {overview.sessionActivity && (
-            <div className="rounded-[24px] border border-[var(--line)] p-4">
-              <p className="text-sm font-semibold text-[var(--ink)]">Session & device activity</p>
-              <p className="mt-2 text-sm text-[var(--ink-soft)]">
-                Active sessions: <span className="font-semibold text-[var(--ink)]">{overview.sessionActivity.activeSessions}</span>
+        </div>
+
+        <div className="rounded-[34px] border border-white/70 bg-white/92 p-6 shadow-[0_24px_90px_rgba(15,23,42,0.08)]">
+          <SectionHeader title="Priority queue" caption="What deserves attention first" />
+          <div className="mt-6 space-y-4">
+            <div className="rounded-[24px] bg-[var(--accent-cream)] p-4">
+              <p className="text-sm font-semibold text-[var(--ink)]">Next best action</p>
+              <p className="mt-2 text-sm leading-7 text-[var(--ink-soft)]">
+                {latestMock
+                  ? `Review skipped and incorrect questions from your last mock before attempting a new one. This prevents repeating the same errors.`
+                  : `Use this tab to build a revision habit: reopen one saved lesson, solve one short test, and revisit one weak topic.`}
               </p>
-              <div className="mt-4 space-y-2">
-                {overview.sessionActivity.recentDeviceActivity.slice(0, 3).map((activity) => (
-                  <div key={activity._id} className="rounded-2xl bg-[var(--accent-cream)] px-3 py-3 text-sm text-[var(--ink-soft)]">
-                    <span className="font-semibold text-[var(--ink)]">{formatEventLabel(activity.eventType)}</span>
-                    {' '}on {activity.device || 'unknown device'} • {formatDateTime(activity.createdAt)}
-                  </div>
+            </div>
+            <div className="rounded-[24px] border border-[var(--line)] p-4">
+              <p className="text-sm font-semibold text-[var(--ink)]">Live repair topics</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(overview.dashboard.weakTopics.length > 0 ? overview.dashboard.weakTopics : ['Take one fresh mock to identify weak topics']).map((topic) => (
+                  <span key={topic} className="rounded-full bg-[var(--accent-cream)] px-3 py-2 text-sm text-[var(--danger)]">
+                    {topic}
+                  </span>
                 ))}
               </div>
             </div>
-          )}
+            {overview.dashboard.continueLearning[0] && (
+              <button
+                onClick={() => onContinueLearning(overview.dashboard.continueLearning[0]._id, overview.dashboard.continueLearning[0].continueLesson?.id || null)}
+                className="w-full rounded-[24px] border border-[var(--line)] bg-white p-4 text-left transition hover:border-[var(--accent-rust)]"
+              >
+                <p className="text-sm font-semibold text-[var(--ink)]">Resume active course</p>
+                <p className="mt-2 text-sm text-[var(--ink-soft)]">
+                  {overview.dashboard.continueLearning[0].continueLesson?.title || overview.dashboard.continueLearning[0].title}
+                </p>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-rust)]">Open lesson</p>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-      <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
-        <SectionHeader title="Saved topics" caption="Quick return" />
-        <div className="mt-6 space-y-3">
-          {savedTopics.length > 0 ? savedTopics.slice(0, 6).map((topic) => (
-            <button
-              key={`${topic.courseId}:${topic.lessonId}`}
-              onClick={() => onContinueLearning(topic.courseId, topic.lessonId)}
-              className="w-full rounded-[22px] border border-[var(--line)] bg-[var(--accent-cream)] p-4 text-left transition hover:border-[var(--accent-rust)]"
-            >
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">{topic.exam}</p>
-              <h3 className="mt-2 text-base font-semibold text-[var(--ink)]">{topic.lessonTitle}</h3>
-              <p className="mt-1 text-sm text-[var(--ink-soft)]">{topic.courseTitle}</p>
-              <p className="mt-3 text-xs uppercase tracking-[0.18em] text-[var(--ink-soft)]">
-                {topic.chapterTitle ? `${topic.moduleTitle} • ${topic.chapterTitle}` : topic.moduleTitle || 'Saved topic'}
-                {topic.progressSeconds ? ` • resume at ${formatPlaybackTime(topic.progressSeconds)}` : ''}
-              </p>
-            </button>
-          )) : (
-            <div className="rounded-[24px] border border-dashed border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
-              Save important topics while studying and they will appear here for faster revision.
+      <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
+          <SectionHeader title="Seven-day revision loop" caption="Practical plan" />
+          <div className="mt-6 space-y-4">
+            {revisionPlan.map((day) => (
+              <div key={`${day.dateLabel}-${day.title}`} className="rounded-[24px] border border-[var(--line)] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">{day.dateLabel}</p>
+                    <h3 className="mt-2 text-lg font-semibold text-[var(--ink)]">{day.title}</h3>
+                  </div>
+                  <span className="rounded-full bg-[var(--accent-cream)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-rust)]">
+                    3 actions
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-7 text-[var(--ink-soft)]">{day.summary}</p>
+                <div className="mt-4 grid gap-2">
+                  {day.actions.map((action) => (
+                    <div key={action} className="rounded-2xl bg-[var(--accent-cream)] px-4 py-3 text-sm text-[var(--ink)]">
+                      {action}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div data-testid="admin-recovery-section" className="space-y-6">
+          <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
+            <SectionHeader title="Mistake recovery" caption="Latest mock mistakes" />
+            <div className="mt-6 space-y-3">
+              {recoveryItems.length > 0 ? recoveryItems.map((item, index) => (
+                <div key={`${item.questionId}-${index}`} className="rounded-[22px] bg-[var(--accent-cream)] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[var(--ink)]">{item.topic}</p>
+                    <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--danger)]">
+                      {item.selectedOption === null ? 'Skipped' : 'Incorrect'}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">{item.questionText}</p>
+                  <p className="mt-3 text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                    Correct option: {String.fromCharCode(65 + item.correctOption)}
+                  </p>
+                </div>
+              )) : (
+                <div className="rounded-[22px] border border-dashed border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
+                  Your latest mock recovery queue will appear here after you attempt a test.
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
-        <SectionHeader title="Study focus" caption="What to do next" />
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <div className="rounded-[24px] bg-[var(--accent-cream)] p-4">
-            <p className="text-sm text-[var(--ink-soft)]">Active courses</p>
-            <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{overview.courses.filter((course) => course.enrolled).length}</p>
-          </div>
-          <div className="rounded-[24px] bg-[var(--accent-cream)] p-4">
-            <p className="text-sm text-[var(--ink-soft)]">Saved topics</p>
-            <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{savedTopics.length}</p>
-          </div>
-          <div className="rounded-[24px] bg-[var(--accent-cream)] p-4">
-            <p className="text-sm text-[var(--ink-soft)]">Continue queue</p>
-            <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{overview.dashboard.continueLearning.length}</p>
+          <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
+            <SectionHeader title="Saved topics" caption="Reopen in one tap" />
+            <div className="mt-6 space-y-3">
+              {savedTopics.length > 0 ? savedTopics.map((topic) => (
+                <button
+                  key={`${topic.courseId}:${topic.lessonId}`}
+                  onClick={() => onContinueLearning(topic.courseId, topic.lessonId)}
+                  className="w-full rounded-[22px] border border-[var(--line)] bg-white p-4 text-left transition hover:border-[var(--accent-rust)]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">{topic.exam}</p>
+                      <h3 className="mt-2 text-base font-semibold text-[var(--ink)]">{topic.lessonTitle}</h3>
+                      <p className="mt-1 text-sm text-[var(--ink-soft)]">{topic.courseTitle}</p>
+                    </div>
+                    <span className={cn(
+                      'rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em]',
+                      topic.completed ? 'bg-[var(--success-soft)] text-[var(--success)]' : 'bg-[var(--accent-cream)] text-[var(--accent-rust)]',
+                    )}>
+                      {topic.completed ? 'Completed' : 'Pending'}
+                    </span>
+                  </div>
+                </button>
+              )) : (
+                <div className="rounded-[22px] border border-dashed border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
+                  Save lessons from the course player and they will build your revision shelf automatically.
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        <div className="mt-5 rounded-[24px] border border-[var(--line)] p-4">
-          <p className="text-sm font-semibold text-[var(--ink)]">Recommended next action</p>
-          <p className="mt-2 text-sm leading-7 text-[var(--ink-soft)]">
-            {overview.dashboard.continueLearning[0]
-              ? `Resume ${overview.dashboard.continueLearning[0].continueLesson?.title || overview.dashboard.continueLearning[0].title} and finish that study streak before starting a new topic.`
-              : savedTopics[0]
-                ? `Revisit your saved topic ${savedTopics[0].lessonTitle} for revision or note-making.`
-                : 'Start one course topic and save key lessons so your revision queue becomes easier to manage.'}
-          </p>
-        </div>
-      </div>
-    </section>
-  </div>
-);
+      </section>
+    </div>
+  );
+};
 
 type ExamStage = 'instructions' | 'declaration' | 'exam';
 type ExamWorkspaceTab = 'question' | 'symbols' | 'calculator' | 'instructions' | 'summary';
@@ -1280,44 +2992,6 @@ const TestPlayer = ({
     stageContentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     examMainRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [stage, workspaceTab, currentIndex]);
-
-  useEffect(() => {
-    if (!draggingCalculator) {
-      return undefined;
-    }
-
-    const handlePointerMove = (event: MouseEvent) => {
-      const container = examMainRef.current;
-      const panel = calculatorPanelRef.current;
-      if (!container || !panel) {
-        return;
-      }
-
-      const containerRect = container.getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const nextX = event.clientX - containerRect.left - calculatorDragOffsetRef.current.x;
-      const nextY = event.clientY - containerRect.top - calculatorDragOffsetRef.current.y;
-      const maxX = Math.max(container.clientWidth - panelRect.width - 12, 12);
-      const maxY = Math.max(container.clientHeight - panelRect.height - 12, 12);
-
-      setCalculatorPosition({
-        x: Math.min(Math.max(nextX, 12), maxX),
-        y: Math.min(Math.max(nextY, 12), maxY),
-      });
-    };
-
-    const stopDragging = () => {
-      setDraggingCalculator(false);
-    };
-
-    window.addEventListener('mousemove', handlePointerMove);
-    window.addEventListener('mouseup', stopDragging);
-
-    return () => {
-      window.removeEventListener('mousemove', handlePointerMove);
-      window.removeEventListener('mouseup', stopDragging);
-    };
-  }, [draggingCalculator]);
 
   const handleExit = () => {
     if (stage === 'exam' && startedAt && !submitting) {
@@ -1901,7 +3575,7 @@ const TestPlayer = ({
       <div className="border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
         <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_auto] xl:items-center">
           <div>
-            <p className="text-4xl font-bold text-sky-500">EduMaster</p>
+            <BrandLogo tone="light" size="sm" />
             <p className="mt-2 text-lg font-semibold text-slate-900">{test.title}</p>
           </div>
           <div className="text-center">
@@ -2058,12 +3732,13 @@ const TestPlayer = ({
                   <ClipboardCheck className="h-7 w-7" />
                 </div>
                 <div>
-                  <p className="text-4xl font-bold text-sky-500">EduMaster</p>
+                  <BrandLogo tone="light" size="sm" />
                   <p className="mt-1 text-sm font-medium uppercase tracking-[0.2em] text-slate-500">{getExamFamilyLabel(examFamily)}</p>
                 </div>
               </div>
               <button
                 onClick={handleExit}
+                data-testid="test-player-close"
                 className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
               >
                 Go to tests
@@ -3567,6 +5242,7 @@ const TestsTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
             </div>
             <button
               onClick={() => setActiveTest(test)}
+              data-testid={`test-open-${test._id}`}
               className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--ink)] px-5 py-3 font-semibold text-white transition hover:bg-[var(--accent-rust)]"
             >
               Open exam instructions
@@ -3734,6 +5410,7 @@ const QuizTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefres
 
             <button
               onClick={() => void submitQuiz()}
+              data-testid="quiz-submit"
               disabled={submitting}
               className="flex items-center gap-2 rounded-2xl bg-[var(--accent-rust)] px-5 py-3 font-semibold text-white"
             >
@@ -3792,833 +5469,6 @@ const QuizTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefres
           </div>
         </div>
       </aside>
-    </div>
-  );
-};
-
-const LiveTab = ({
-  overview,
-  onRefresh,
-  initialLiveClassId = null,
-}: {
-  overview: PlatformOverview;
-  onRefresh: () => Promise<void>;
-  initialLiveClassId?: string | null;
-}) => {
-  const { user } = useAuth();
-  const [selectedLiveClassId, setSelectedLiveClassId] = useState<string | null>(initialLiveClassId || overview.liveClasses[0]?._id || null);
-  const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
-  const [chatMessage, setChatMessage] = useState('');
-  const [chatKind, setChatKind] = useState<'chat' | 'doubt'>('chat');
-  const [chatBusy, setChatBusy] = useState(false);
-  const [access, setAccess] = useState<LiveClassAccess | null>(null);
-  const [accessError, setAccessError] = useState<string | null>(null);
-  const [accessBusy, setAccessBusy] = useState(false);
-  const [adminBusy, setAdminBusy] = useState(false);
-  const [adminMessage, setAdminMessage] = useState<string | null>(null);
-  const [recordingState, setRecordingState] = useState<'idle' | 'recording' | 'saving'>('idle');
-  const [adminCourseId, setAdminCourseId] = useState('');
-  const [adminModuleId, setAdminModuleId] = useState('');
-  const [adminChapterId, setAdminChapterId] = useState('');
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const playbackSectionRef = useRef<HTMLDivElement | null>(null);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
-  const recordingContextRef = useRef<{
-    liveClassId: string;
-    title: string;
-    durationMinutes: number;
-    courseId: string;
-    moduleId: string;
-    chapterId: string | null;
-  } | null>(null);
-  const selectedLiveClass = useMemo(
-    () => overview.liveClasses.find((item) => item._id === selectedLiveClassId) || overview.liveClasses[0] || null,
-    [overview.liveClasses, selectedLiveClassId],
-  );
-  const adminSelectedCourse = useMemo(
-    () => overview.courses.find((course) => course._id === adminCourseId) || null,
-    [overview.courses, adminCourseId],
-  );
-  const adminSelectedModule = useMemo(
-    () => adminSelectedCourse?.modules?.find((module) => module.id === adminModuleId) || null,
-    [adminSelectedCourse, adminModuleId],
-  );
-
-  useEffect(() => {
-    if (initialLiveClassId && overview.liveClasses.some((item) => item._id === initialLiveClassId)) {
-      setSelectedLiveClassId(initialLiveClassId);
-    }
-  }, [initialLiveClassId, overview.liveClasses]);
-
-  useEffect(() => {
-    setAdminCourseId(selectedLiveClass?.courseId || '');
-    setAdminModuleId(selectedLiveClass?.moduleId || '');
-    setAdminChapterId(selectedLiveClass?.chapterId || '');
-  }, [selectedLiveClass?._id, selectedLiveClass?.courseId, selectedLiveClass?.moduleId, selectedLiveClass?.chapterId]);
-
-  const stopRecordingTracks = () => {
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    recordingStreamRef.current = null;
-  };
-
-  const clearRecordingSession = () => {
-    mediaRecorderRef.current = null;
-    recordedChunksRef.current = [];
-    recordingContextRef.current = null;
-    stopRecordingTracks();
-    setRecordingState('idle');
-  };
-
-  const buildRecordingContext = (liveClass = selectedLiveClass) => {
-    if (!liveClass?._id) {
-      throw new Error('Choose a live class first.');
-    }
-
-    if (!adminCourseId || !adminModuleId) {
-      throw new Error('Choose the course and subject before starting this live class.');
-    }
-
-    return {
-      liveClassId: liveClass._id,
-      title: liveClass.title,
-      durationMinutes: liveClass.durationMinutes,
-      courseId: adminCourseId,
-      moduleId: adminModuleId,
-      chapterId: adminChapterId || null,
-    };
-  };
-
-  const startLectureRecording = async (context = buildRecordingContext()) => {
-    if (recordingState === 'recording') {
-      return;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error('This browser does not support live recording.');
-    }
-
-    if (typeof MediaRecorder === 'undefined') {
-      throw new Error('Media recording is not supported in this browser.');
-    }
-
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 24, max: 30 },
-      },
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-    });
-
-    recordingStreamRef.current = stream;
-    recordedChunksRef.current = [];
-
-    const recorder = new MediaRecorder(
-      stream,
-      MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-        ? { mimeType: 'video/webm;codecs=vp9,opus' }
-        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-          ? { mimeType: 'video/webm;codecs=vp8,opus' }
-          : undefined,
-    );
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        recordedChunksRef.current.push(event.data);
-      }
-    };
-
-    recorder.onstop = () => {
-      stopRecordingTracks();
-    };
-
-    recorder.start(1000);
-    mediaRecorderRef.current = recorder;
-    recordingContextRef.current = context;
-    setRecordingState('recording');
-  };
-
-  const stopLectureRecording = async () => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') {
-      clearRecordingSession();
-      return null;
-    }
-
-    setRecordingState('saving');
-
-    const recordedFile = await new Promise<File | null>((resolve) => {
-      const recordingContext = recordingContextRef.current;
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'video/webm' });
-        clearRecordingSession();
-
-        if (!blob.size) {
-          resolve(null);
-          return;
-        }
-
-        const extension = recorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
-        const safeTitle = (recordingContext?.title || 'live-class').replace(/\s+/g, '-').toLowerCase();
-        resolve(new File([blob], `${safeTitle}-${Date.now()}.${extension}`, {
-          type: recorder.mimeType || `video/${extension}`,
-        }));
-      };
-      recorder.stop();
-    });
-
-    return recordedFile;
-  };
-
-  const discardLectureRecording = async () => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') {
-      clearRecordingSession();
-      return;
-    }
-
-    setRecordingState('saving');
-    await new Promise<void>((resolve) => {
-      recorder.onstop = () => {
-        clearRecordingSession();
-        resolve();
-      };
-      recorder.stop();
-    });
-  };
-
-  const uploadLectureRecording = async (recordedFile: File, context = recordingContextRef.current) => {
-    if (!context?.courseId || !context?.moduleId) {
-      throw new Error('Map this live class to a course and subject before saving the recording.');
-    }
-
-    const upload = await EduService.uploadVideoToModule(
-      context.courseId,
-      context.moduleId,
-      recordedFile,
-      `${context.title} Recording`,
-      context.durationMinutes,
-      true,
-      context.chapterId || undefined,
-    ) as any;
-
-    return upload?.video?.id || null;
-  };
-
-  const syncLiveClassPath = async () => {
-    if (!selectedLiveClass?._id) {
-      throw new Error('Choose a live class first.');
-    }
-
-    if (!adminCourseId || !adminModuleId) {
-      throw new Error('Choose the course and subject before starting this live class.');
-    }
-
-    const nextPayload: Partial<typeof selectedLiveClass> = {
-      courseId: adminCourseId,
-      moduleId: adminModuleId,
-      moduleTitle: adminSelectedModule?.title || null,
-      chapterId: adminChapterId || null,
-      chapterTitle: adminSelectedModule?.chapters?.find((chapter) => chapter.id === adminChapterId)?.title || null,
-      replayCourseId: adminCourseId,
-    };
-
-    await EduService.updateLiveClass(selectedLiveClass._id, nextPayload);
-  };
-
-  useEffect(() => {
-    if (!selectedLiveClass?._id || !user) {
-      setChatMessages([]);
-      return;
-    }
-
-    let cancelled = false;
-    void EduService.getLiveChat(selectedLiveClass._id).then((messages) => {
-      if (!cancelled) {
-        setChatMessages(messages);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setChatMessages([]);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedLiveClass?._id, user]);
-
-  useEffect(() => {
-    if (!selectedLiveClass?._id || !user) {
-      setAccess(null);
-      setAccessError(null);
-      return;
-    }
-
-    let cancelled = false;
-    setAccessBusy(true);
-    void EduService.getLiveClassAccess(selectedLiveClass._id)
-      .then((payload) => {
-        if (!cancelled) {
-          setAccess(payload);
-          setAccessError(null);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setAccess(null);
-          setAccessError(error instanceof Error ? error.message : 'Secure access could not be prepared right now.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setAccessBusy(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedLiveClass?._id, user]);
-
-  const sendLiveMessage = async () => {
-    if (!selectedLiveClass || !user || !chatMessage.trim()) {
-      return;
-    }
-
-    setChatBusy(true);
-    try {
-      const posted = await EduService.postLiveChat(selectedLiveClass._id, chatMessage, chatKind);
-      setChatMessages((current) => [...current, posted]);
-      setChatMessage('');
-      setChatKind('chat');
-    } finally {
-      setChatBusy(false);
-    }
-  };
-
-  const refreshLiveAccess = async () => {
-    if (!selectedLiveClass?._id || !user) {
-      return;
-    }
-
-    setAccessBusy(true);
-    try {
-      const payload = await EduService.getLiveClassAccess(selectedLiveClass._id);
-      setAccess(payload);
-      setAccessError(null);
-    } catch (error) {
-      setAccess(null);
-      setAccessError(error instanceof Error ? error.message : 'Secure access could not be prepared right now.');
-    } finally {
-      setAccessBusy(false);
-    }
-  };
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void onRefresh();
-    }, 20_000);
-
-    return () => window.clearInterval(intervalId);
-  }, [onRefresh]);
-
-  const scrollToPlayback = () => {
-    playbackSectionRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-  };
-
-  const handleStudentJoinLive = async () => {
-    if (!selectedLiveClass?._id || !user) {
-      return;
-    }
-
-    await refreshLiveAccess();
-    window.setTimeout(() => {
-      scrollToPlayback();
-    }, 120);
-  };
-
-  const handleLiveClassSelection = async (nextLiveClassId: string) => {
-    if (nextLiveClassId === selectedLiveClassId) {
-      return;
-    }
-
-    if (recordingState === 'saving') {
-      setAdminMessage('Please wait until the current recording finishes saving.');
-      return;
-    }
-
-    if (recordingState === 'recording') {
-      const shouldDiscard = window.confirm('A recording is still running. Switch classes and discard the current unsaved recording?');
-      if (!shouldDiscard) {
-        return;
-      }
-      await discardLectureRecording();
-      setAdminMessage('The unfinished recording was discarded before switching classes.');
-    }
-
-    setSelectedLiveClassId(nextLiveClassId);
-  };
-
-  const adminStartLive = async () => {
-    if (!selectedLiveClass?._id) {
-      return;
-    }
-
-    setAdminBusy(true);
-    setAdminMessage(null);
-    try {
-      await syncLiveClassPath();
-      const recordingContext = buildRecordingContext(selectedLiveClass);
-      let recordingWarning: string | null = null;
-
-      try {
-        await startLectureRecording(recordingContext);
-      } catch (error) {
-        recordingWarning = error instanceof Error ? error.message : 'Recording could not be started automatically.';
-      }
-
-      await EduService.startLiveClass(selectedLiveClass._id);
-      await onRefresh();
-      await refreshLiveAccess();
-
-      setAdminMessage(
-        recordingWarning
-          ? `Live class started, but automatic recording could not begin: ${recordingWarning}`
-          : 'Live class started and recording began automatically.',
-      );
-    } catch (error) {
-      if (mediaRecorderRef.current?.state && mediaRecorderRef.current.state !== 'inactive') {
-        await discardLectureRecording().catch(() => undefined);
-      }
-      setAdminMessage(error instanceof Error ? error.message : 'Unable to start live class.');
-    } finally {
-      setAdminBusy(false);
-    }
-  };
-
-  const adminEndLive = async () => {
-    if (!selectedLiveClass?._id) {
-      return;
-    }
-
-    setAdminBusy(true);
-    setAdminMessage(null);
-    try {
-      const liveClassId = selectedLiveClass._id;
-      const recordingContext = recordingContextRef.current || (() => {
-        try {
-          return buildRecordingContext(selectedLiveClass);
-        } catch {
-          return null;
-        }
-      })();
-      const recordedFile = await stopLectureRecording();
-      let replayLessonId = selectedLiveClass.replayLessonId || null;
-      let uploadError: string | null = null;
-
-      if (recordedFile) {
-        try {
-          replayLessonId = await uploadLectureRecording(recordedFile, recordingContext);
-        } catch (error) {
-          uploadError = error instanceof Error ? error.message : 'Recording upload failed.';
-        }
-      }
-
-      await EduService.endLiveClass(liveClassId, {
-        replayAvailable: Boolean(replayLessonId),
-        replayCourseId: recordingContext?.courseId || selectedLiveClass.courseId || null,
-        replayLessonId,
-        recordingUrl: null,
-      });
-      await onRefresh();
-      await refreshLiveAccess();
-      setAdminMessage(
-        replayLessonId
-          ? 'Live class ended and the recording was saved under the selected topic.'
-          : uploadError
-            ? `Live class ended, but the recording could not be saved: ${uploadError}`
-            : 'Live class ended. No recording file was available to save.',
-      );
-    } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : 'Unable to end live class.');
-    } finally {
-      setAdminBusy(false);
-    }
-  };
-
-  const adminStartRecordingOnly = async () => {
-    setAdminBusy(true);
-    setAdminMessage(null);
-    try {
-      await syncLiveClassPath();
-      const recordingContext = buildRecordingContext(selectedLiveClass);
-      await startLectureRecording(recordingContext);
-      setAdminMessage('Lecture recording started.');
-    } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : 'Unable to start recording.');
-    } finally {
-      setAdminBusy(false);
-    }
-  };
-
-  const adminStopRecordingOnly = async () => {
-    setAdminBusy(true);
-    setAdminMessage(null);
-    try {
-      const recordingContext = recordingContextRef.current || (() => {
-        try {
-          return buildRecordingContext(selectedLiveClass);
-        } catch {
-          return null;
-        }
-      })();
-      const recordedFile = await stopLectureRecording();
-      if (!recordedFile) {
-        setAdminMessage('No recording was captured.');
-        return;
-      }
-
-      const replayLessonId = await uploadLectureRecording(recordedFile, recordingContext);
-      await EduService.updateLiveClass(selectedLiveClass?._id || '', {
-        replayAvailable: Boolean(replayLessonId),
-        replayCourseId: recordingContext?.courseId || selectedLiveClass?.courseId || null,
-        replayLessonId,
-        recordingUrl: null,
-      });
-      await onRefresh();
-      setAdminMessage('Recording saved under the selected topic.');
-    } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : 'Unable to save recording.');
-    } finally {
-      setAdminBusy(false);
-    }
-  };
-
-  useEffect(() => () => {
-    if (mediaRecorderRef.current?.state && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    stopRecordingTracks();
-  }, []);
-
-  return (
-    <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-      <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-        <SectionHeader title="Live classes & replay" caption="WebRTC / Zoom / Agora ready" />
-        <div className="mt-6 space-y-4">
-          {overview.liveClasses.map((liveClass) => (
-            <button
-              key={liveClass._id}
-              onClick={() => void handleLiveClassSelection(liveClass._id)}
-              className={cn(
-                'w-full rounded-[26px] border p-4 text-left transition',
-                selectedLiveClass?._id === liveClass._id
-                  ? 'border-[var(--accent-rust)] bg-[var(--accent-cream)]'
-                  : 'border-[var(--line)] bg-white hover:border-[var(--accent-rust)]/35',
-              )}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className={cn(
-                  'rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em]',
-                  (liveClass.status || liveClass.mode) === 'live' ? 'bg-[var(--danger-soft)] text-[var(--danger)]' : 'bg-white text-[var(--accent-rust)]',
-                )}>
-                  {liveClass.status || liveClass.mode}
-                </span>
-                <span className="text-sm text-[var(--ink-soft)]">{liveClass.provider}</span>
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-[var(--ink)]">{liveClass.title}</h3>
-              <p className="mt-2 text-sm text-[var(--ink-soft)]">{liveClass.instructor}</p>
-              <p className="mt-3 text-sm text-[var(--ink-soft)]">{formatDateTime(liveClass.startTime)} • {liveClass.attendees}/{liveClass.maxAttendees || 1000} learners</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {liveClass.joinEnabled && (
-                  <span className="rounded-full bg-[var(--success-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--success)]">
-                    Join available
-                  </span>
-                )}
-                {liveClass.replayReady && (
-                  <span className="rounded-full bg-[var(--accent-cream)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-rust)]">
-                    Replay ready
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-6">
-        {selectedLiveClass ? (
-          <>
-            <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]">{selectedLiveClass.provider}</p>
-                  <h3 className="mt-2 text-3xl font-semibold text-[var(--ink)]">{selectedLiveClass.title}</h3>
-                  <p className="mt-3 text-sm leading-7 text-[var(--ink-soft)]">
-                    {selectedLiveClass.mode === 'live'
-                      ? 'Attend the class inside EduMaster with protected playback, chat, and replay handoff.'
-                      : 'Replay stays available inside the platform so learners can revisit the session later.'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3 text-sm text-[var(--ink-soft)]">
-                  <span>Capacity target: {selectedLiveClass.maxAttendees || 1000}</span>
-                  <span>Enrollment: {selectedLiveClass.requiresEnrollment === false ? 'Open to logged-in users' : 'Protected'}</span>
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <MetricCard title="Format" value={selectedLiveClass.livePlaybackType || selectedLiveClass.mode} hint="Protected in-app delivery" icon={Radio} />
-                <MetricCard title="Chat" value={selectedLiveClass.chatEnabled ? 'On' : 'Off'} hint="Real-time class discussion" icon={MessageSquare} />
-                <MetricCard title="Recordings" value={selectedLiveClass.replayAvailable ? 'Stored' : 'None'} hint="Replay available after class ends" icon={Video} />
-              </div>
-
-              <div className="mt-6 flex flex-wrap items-center gap-3">
-                {!user ? (
-                  <button
-                    onClick={scrollToPlayback}
-                    className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 font-semibold text-[var(--ink)]"
-                  >
-                    Log in to join
-                  </button>
-                ) : selectedLiveClass.joinEnabled ? (
-                  <button
-                    onClick={() => void handleStudentJoinLive()}
-                    disabled={accessBusy}
-                    className="rounded-2xl bg-[var(--accent-rust)] px-5 py-3 font-semibold text-white disabled:opacity-60"
-                  >
-                    {accessBusy ? 'Preparing join...' : 'Join live now'}
-                  </button>
-                ) : selectedLiveClass.replayReady ? (
-                  <button
-                    onClick={scrollToPlayback}
-                    className="rounded-2xl bg-[var(--ink)] px-5 py-3 font-semibold text-white"
-                  >
-                    Watch replay
-                  </button>
-                ) : (
-                  <div className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 text-sm font-medium text-[var(--ink-soft)]">
-                    {(selectedLiveClass.status || '').toLowerCase() === 'scheduled'
-                      ? 'Join button appears automatically when the class goes live.'
-                      : 'Live access will appear here when the class starts.'}
-                  </div>
-                )}
-                {access?.accessType === 'embedded-room' && access.roomUrl && (
-                  <a
-                    href={access.roomUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 font-semibold text-[var(--ink)]"
-                  >
-                    Open in new tab
-                  </a>
-                )}
-              </div>
-
-              <div className="mt-6 flex flex-wrap gap-2">
-                {selectedLiveClass.topicTags.map((tag) => (
-                  <span key={tag} className="rounded-full bg-[var(--accent-cream)] px-3 py-2 text-xs text-[var(--ink)]">{tag}</span>
-                ))}
-              </div>
-
-              {user?.role === 'admin' && (
-                <div className="mt-6 rounded-[24px] border border-[var(--line)] bg-[var(--accent-cream)] p-4">
-                  <div className="mb-4 grid gap-3 md:grid-cols-3">
-                    <select
-                      value={adminCourseId}
-                      onChange={(event) => {
-                        setAdminCourseId(event.target.value);
-                        setAdminModuleId('');
-                        setAdminChapterId('');
-                      }}
-                      disabled={adminBusy || recordingState !== 'idle'}
-                      className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm text-[var(--ink)] outline-none"
-                    >
-                      <option value="">Choose course</option>
-                      {overview.courses.map((course) => (
-                        <option key={course._id} value={course._id}>{course.title}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={adminModuleId}
-                      onChange={(event) => {
-                        setAdminModuleId(event.target.value);
-                        setAdminChapterId('');
-                      }}
-                      disabled={!adminSelectedCourse || adminBusy || recordingState !== 'idle'}
-                      className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm text-[var(--ink)] outline-none disabled:opacity-60"
-                    >
-                      <option value="">Choose subject</option>
-                      {(adminSelectedCourse?.modules || []).map((module) => (
-                        <option key={module.id} value={module.id}>{module.title}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={adminChapterId}
-                      onChange={(event) => setAdminChapterId(event.target.value)}
-                      disabled={!adminSelectedModule || adminBusy || recordingState !== 'idle'}
-                      className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm text-[var(--ink)] outline-none disabled:opacity-60"
-                    >
-                      <option value="">Choose topic (optional)</option>
-                      {(adminSelectedModule?.chapters || []).map((chapter) => (
-                        <option key={chapter.id} value={chapter.id}>{chapter.title}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="mb-4 rounded-2xl bg-white px-4 py-3 text-sm text-[var(--ink-soft)]">
-                    Live path:
-                    {' '}
-                    {[adminSelectedCourse?.title, adminSelectedModule?.title, adminSelectedModule?.chapters?.find((chapter) => chapter.id === adminChapterId)?.title]
-                      .filter(Boolean)
-                      .join(' > ') || 'Choose course and subject before starting live.'}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      onClick={() => void adminStartLive()}
-                      disabled={adminBusy || (selectedLiveClass.status || '').toLowerCase() === 'live'}
-                      className="rounded-2xl bg-[var(--accent-rust)] px-5 py-3 font-semibold text-white disabled:opacity-60"
-                    >
-                      {adminBusy ? 'Working...' : 'Start Live Now'}
-                    </button>
-                    <button
-                      onClick={() => void adminEndLive()}
-                      disabled={adminBusy || (selectedLiveClass.status || '').toLowerCase() !== 'live'}
-                      className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 font-semibold text-[var(--ink)] disabled:opacity-60"
-                    >
-                      End Live
-                    </button>
-                    <button
-                      onClick={() => void adminStartRecordingOnly()}
-                      disabled={adminBusy || recordingState === 'recording'}
-                      className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 font-semibold text-[var(--ink)] disabled:opacity-60"
-                    >
-                      {recordingState === 'recording' ? 'Recording On' : 'Start Recording'}
-                    </button>
-                    <button
-                      onClick={() => void adminStopRecordingOnly()}
-                      disabled={adminBusy || recordingState !== 'recording'}
-                      className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 font-semibold text-[var(--ink)] disabled:opacity-60"
-                    >
-                      Stop Recording
-                    </button>
-                    <span className="text-sm text-[var(--ink-soft)]">
-                      Admin controls are available directly in the live-class screen. Recording is saved into the mapped course path.
-                    </span>
-                  </div>
-                  {adminMessage && (
-                    <div className="mt-3 rounded-2xl bg-white px-4 py-3 text-sm text-[var(--ink)]">
-                      {adminMessage}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div ref={playbackSectionRef} className="mt-6">
-                {!user ? (
-                  <div className="rounded-[24px] border border-dashed border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
-                    Log in to join the protected live class inside the app.
-                  </div>
-                ) : accessBusy ? (
-                  <div className="flex items-center gap-3 rounded-[24px] border border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
-                    <LoaderCircle className="h-5 w-5 animate-spin" />
-                    Preparing secure live access…
-                  </div>
-                ) : access ? (
-                  <div className="space-y-4">
-                    {(access.accessType === 'webrtc-live' || access.accessType === 'livekit-room') && selectedLiveClass ? (
-                      <LiveBroadcastViewer liveClassId={selectedLiveClass._id} access={access} />
-                    ) : (
-                      <ProtectedLivePlayback access={access} />
-                    )}
-                    <div className="rounded-[24px] bg-[var(--accent-cream)] p-4 text-sm text-[var(--ink-soft)]">
-                      {access.statusMessage}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-[24px] border border-dashed border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
-                    {accessError || 'Secure access could not be prepared right now.'}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-              <SectionHeader title="Live chat & doubts" caption="Backend-synced class thread" />
-              <div className="mt-6 space-y-3">
-                {chatMessages.length > 0 ? chatMessages.map((message) => (
-                  <div key={message._id} className="rounded-[22px] bg-[var(--accent-cream)] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-[var(--ink)]">{message.userName}</p>
-                      <span className={cn(
-                        'rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]',
-                        message.kind === 'doubt' ? 'bg-white text-[var(--accent-rust)]' : 'bg-white text-[var(--ink-soft)]',
-                      )}>
-                        {message.kind}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">{message.message}</p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">{formatDateTime(message.createdAt)}</p>
-                  </div>
-                )) : (
-                  <div className="rounded-[24px] border border-dashed border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
-                    No class messages yet. Start the first chat or doubt thread.
-                  </div>
-                )}
-              </div>
-
-              {selectedLiveClass.chatEnabled && user && (
-                <div className="mt-6 rounded-[24px] border border-[var(--line)] p-4">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => setChatKind('chat')}
-                      className={cn(
-                        'rounded-full px-4 py-2 text-sm font-medium',
-                        chatKind === 'chat' ? 'bg-[var(--ink)] text-white' : 'bg-[var(--accent-cream)] text-[var(--ink)]',
-                      )}
-                    >
-                      Class chat
-                    </button>
-                    <button
-                      onClick={() => setChatKind('doubt')}
-                      className={cn(
-                        'rounded-full px-4 py-2 text-sm font-medium',
-                        chatKind === 'doubt' ? 'bg-[var(--accent-rust)] text-white' : 'bg-[var(--accent-cream)] text-[var(--ink)]',
-                      )}
-                    >
-                      Ask doubt
-                    </button>
-                  </div>
-                  <textarea
-                    value={chatMessage}
-                    onChange={(event) => setChatMessage(event.target.value)}
-                    className="mt-4 h-28 w-full rounded-[20px] border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 text-sm outline-none"
-                    placeholder={chatKind === 'doubt' ? 'Ask your class doubt here…' : 'Send a message to the live class thread…'}
-                  />
-                  <button
-                    onClick={() => void sendLiveMessage()}
-                    disabled={chatBusy}
-                    className="mt-4 flex items-center gap-2 rounded-2xl bg-[var(--accent-rust)] px-5 py-3 font-semibold text-white disabled:opacity-60"
-                  >
-                    {chatBusy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                    Send to class thread
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="rounded-[24px] border border-dashed border-[var(--line)] p-8 text-[var(--ink-soft)]">
-            Select a live class to see room access, replay, and chat.
-          </div>
-        )}
-      </section>
     </div>
   );
 };
@@ -4750,163 +5600,8 @@ const AnalyticsTab = ({ overview }: { overview: PlatformOverview }) => {
   );
 };
 
-const PlansTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefresh: () => Promise<void> }) => {
-  const { user } = useAuth();
-  const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
-  const [paymentMessage, setPaymentMessage] = useState<{ type: 'success' | 'error' | null; text: string }>({
-    type: null,
-    text: '',
-  });
-
-  const activatePlan = async (plan: (typeof overview.subscriptions)[number]) => {
-    if (!user || plan.active) {
-      return;
-    }
-
-    setBusyPlanId(plan._id);
-    try {
-      setPaymentMessage({ type: null, text: '' });
-      const checkout = await EduService.unlockSubscription(plan);
-      const popup = window.open(
-        checkout.url,
-        'edumaster-stripe-subscription',
-        'popup=yes,width=520,height=760',
-      );
-
-      if (!popup) {
-        throw new Error('Stripe popup was blocked. Please allow popups and try again.');
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const timeoutId = window.setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          window.removeEventListener('message', handleMessage);
-          reject(new Error('Subscription confirmation timed out. If payment succeeded, refresh and try again.'));
-        }, 5 * 60 * 1000);
-
-        const closeWatcher = window.setInterval(() => {
-          if (popup.closed && !settled) {
-            settled = true;
-            window.clearTimeout(timeoutId);
-            window.clearInterval(closeWatcher);
-            window.removeEventListener('message', handleMessage);
-            reject(new Error('Payment window was closed before confirmation.'));
-          }
-        }, 500);
-
-        const handleMessage = async (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) {
-            return;
-          }
-
-          const data = event.data || {};
-          if (
-            data.type !== 'STRIPE_PAYMENT_SUCCESS'
-            || data.accessType !== 'subscription'
-            || data.planId !== plan._id
-            || !data.sessionId
-          ) {
-            return;
-          }
-
-          try {
-            await EduService.confirmSubscriptionPayment(data.sessionId, plan._id);
-            if (!popup.closed) {
-              popup.close();
-            }
-            if (!settled) {
-              settled = true;
-              window.clearTimeout(timeoutId);
-              window.clearInterval(closeWatcher);
-              window.removeEventListener('message', handleMessage);
-              resolve();
-            }
-          } catch (error) {
-            if (!settled) {
-              settled = true;
-              window.clearTimeout(timeoutId);
-              window.clearInterval(closeWatcher);
-              window.removeEventListener('message', handleMessage);
-              reject(error instanceof Error ? error : new Error('Subscription confirmation failed.'));
-            }
-          }
-        };
-
-        window.addEventListener('message', handleMessage);
-      });
-
-      setPaymentMessage({ type: 'success', text: `${plan.title} is now active on your account.` });
-      await onRefresh();
-    } catch (error) {
-      setPaymentMessage({
-        type: 'error',
-        text: error instanceof Error ? error.message : 'Unable to activate subscription right now.',
-      });
-    } finally {
-      setBusyPlanId(null);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <SectionHeader title="Payments & subscriptions" caption="Stripe / Razorpay style flows + instant access" />
-      <div className="grid gap-5 lg:grid-cols-2">
-        {overview.subscriptions.map((plan) => (
-          <div key={plan._id} className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--ink-soft)]">{plan.billingCycle}</p>
-                <h3 className="mt-2 text-2xl font-semibold text-[var(--ink)]">{plan.title}</h3>
-              </div>
-              <div className="rounded-[24px] bg-[var(--card-dark)] px-4 py-3 text-right text-white">
-                <p className="text-xs uppercase tracking-[0.22em] text-white/50">Price</p>
-                <p className="mt-1 text-xl font-semibold">{currency.format(plan.price)}</p>
-              </div>
-            </div>
-            <p className="mt-4 text-sm leading-7 text-[var(--ink-soft)]">{plan.description}</p>
-            <div className="mt-5 space-y-3">
-              {plan.features.map((feature) => (
-                <div key={feature} className="flex items-center gap-3 text-sm text-[var(--ink-soft)]">
-                  <CheckCircle2 className="h-4 w-4 text-[var(--success)]" />
-                  {feature}
-                </div>
-              ))}
-            </div>
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              {plan.active ? (
-                <span className="rounded-full bg-[var(--success-soft)] px-4 py-3 text-sm font-semibold text-[var(--success)]">
-                  Active subscription
-                </span>
-              ) : (
-                <button
-                  onClick={() => void activatePlan(plan)}
-                  disabled={busyPlanId === plan._id}
-                  className="flex items-center gap-2 rounded-2xl bg-[var(--accent-rust)] px-5 py-3 font-semibold text-white disabled:opacity-60"
-                >
-                  {busyPlanId === plan._id ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
-                  Activate plan
-                </button>
-              )}
-              <p className="text-sm text-[var(--ink-soft)]">Access is activated after the subscription payment and backend confirmation flow.</p>
-            </div>
-            <div className="mt-6 rounded-[24px] bg-[var(--accent-cream)] p-4 text-sm text-[var(--ink-soft)]">
-              Payment retries, failure handling, and activation handoff are modeled in the backend payment, webhook, and subscription flow.
-            </div>
-          </div>
-        ))}
-      </div>
-      {paymentMessage.type && (
-        <div className={`rounded-[24px] p-4 text-sm ${paymentMessage.type === 'success' ? 'bg-[var(--success-soft)] text-[var(--success)]' : 'bg-red-50 text-red-600'}`}>
-          {paymentMessage.text}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefresh: () => Promise<void> }) => {
+  const [activeAdminSection, setActiveAdminSection] = useState<'overview' | 'courses' | 'curriculum' | 'assessments' | 'security'>('overview');
   const [courseForm, setCourseForm] = useState({
     title: '',
     description: '',
@@ -4916,7 +5611,7 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     instructor: '',
     officialChannelUrl: '',
     price: 0,
-    validityDays: 365,
+    validityDays: 183,
     level: 'Full Course',
   });
   const [mockTestForm, setMockTestForm] = useState({
@@ -4983,7 +5678,7 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
         instructor: '',
         officialChannelUrl: '',
         price: 0,
-        validityDays: 365,
+        validityDays: 183,
         level: 'Full Course',
       });
     } finally {
@@ -5182,194 +5877,341 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     }
   };
 
+  const adminSections: Array<{
+    id: 'overview' | 'courses' | 'curriculum' | 'assessments' | 'security';
+    label: string;
+    caption: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }> = [
+    { id: 'overview', label: 'Overview', caption: 'Health and readiness', icon: LayoutDashboard },
+    { id: 'courses', label: 'Courses', caption: 'Catalog and pricing', icon: BookOpen },
+    { id: 'curriculum', label: 'Curriculum', caption: 'Subjects and video assets', icon: GraduationCap },
+    { id: 'assessments', label: 'Assessments', caption: 'Mocks and quizzes', icon: ClipboardCheck },
+    { id: 'security', label: 'Security', caption: 'Sessions and devices', icon: ShieldCheck },
+  ];
+
   return (
     <div className="space-y-6">
-      <SectionHeader title="Admin command center" caption="Users, courses, test series, analytics" />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard title="Active users" value={`${overview.adminOverview?.activeUsers || 0}`} hint="Current seed + registered users" icon={UserCircle2} />
-        <MetricCard title="Active sessions" value={`${overview.adminOverview?.activeSessions || 0}`} hint="Single active session enforcement" icon={ShieldCheck} />
-        <MetricCard title="Revenue" value={currency.format(overview.adminOverview?.revenue || 0)} hint="Paid webhook totals" icon={Wallet} />
-        <MetricCard title="Participation" value={`${overview.adminOverview?.testParticipation || 0}`} hint="Quiz plus mock submissions" icon={ClipboardCheck} />
-        <MetricCard title="Capacity target" value={overview.adminOverview?.concurrentCapacityTarget || '10K'} hint="Designed for 10K-100K users" icon={ShieldCheck} />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-        <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-          <SectionHeader title="Operations" caption="Real admin workflows only" />
-          <div className="mt-6 space-y-4">
-            <div className="rounded-[24px] bg-[var(--accent-cream)] p-4 text-sm text-[var(--ink-soft)]">
-              This panel now works with actual platform data only. Create courses, subjects, topics, videos, live classes, tests, and quizzes through the secured backend flows below. AI generation creates reviewable drafts first, then you publish them through the same admin APIs.
+      <section className="overflow-hidden rounded-[34px] border border-white/70 bg-[radial-gradient(circle_at_top_left,rgba(22,152,212,0.18),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,186,73,0.16),transparent_22%),linear-gradient(135deg,#0f1d33_0%,#17385d_48%,#195f7f_100%)] p-6 text-white shadow-[0_26px_80px_rgba(15,23,42,0.22)] sm:p-8">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/58">Admin workspace</p>
+            <h2 className="mt-4 text-3xl font-semibold sm:text-[2.6rem]">Operate the platform in focused lanes instead of one long page.</h2>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/74 sm:text-base">
+              Courses, curriculum, assessments, and device security now live in separate tabs so admins can switch context fast without losing the current workflow.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[360px]">
+            <div className="rounded-[24px] border border-white/12 bg-white/10 p-4 backdrop-blur">
+              <p className="text-xs uppercase tracking-[0.16em] text-white/58">Active users</p>
+              <p className="mt-2 text-3xl font-semibold">{overview.adminOverview?.activeUsers || 0}</p>
+              <p className="mt-2 text-sm text-white/68">Registered and available on the platform right now.</p>
             </div>
-            <div className="rounded-[24px] border border-[var(--line)] bg-white p-4">
-              <p className="text-sm font-semibold text-[var(--ink)]">AI provider status</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {aiProviderOptions.map((provider) => (
-                  <span
-                    key={provider.id}
-                    className={cn(
-                      'rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em]',
-                      provider.available
-                        ? provider.mode === 'fallback'
-                          ? 'bg-[var(--accent-cream)] text-[var(--accent-rust)]'
-                          : 'bg-[var(--success-soft)] text-[var(--success)]'
-                        : 'bg-slate-100 text-slate-500',
-                    )}
-                  >
-                    {provider.label} • {provider.available ? provider.mode : 'off'}
-                  </span>
-                ))}
+            <div className="rounded-[24px] border border-white/12 bg-white/10 p-4 backdrop-blur">
+              <p className="text-xs uppercase tracking-[0.16em] text-white/58">Revenue</p>
+              <p className="mt-2 text-3xl font-semibold">{currency.format(overview.adminOverview?.revenue || 0)}</p>
+              <p className="mt-2 text-sm text-white/68">Paid collections flowing through the secured backend.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          {adminSections.map(({ id, label, caption, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              data-testid={`admin-section-${id}`}
+              onClick={() => setActiveAdminSection(id)}
+              className={cn(
+                'rounded-[22px] border px-4 py-4 text-left transition',
+                activeAdminSection === id
+                  ? 'border-white/30 bg-white text-[#10253c] shadow-[0_18px_40px_rgba(12,18,28,0.18)]'
+                  : 'border-white/12 bg-white/8 text-white hover:bg-white/12',
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  'flex h-11 w-11 items-center justify-center rounded-2xl',
+                  activeAdminSection === id ? 'bg-[var(--accent-cream)] text-[var(--accent-rust)]' : 'bg-white/12 text-white',
+                )}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{label}</p>
+                  <p className={cn('mt-1 text-xs', activeAdminSection === id ? 'text-[#607089]' : 'text-white/64')}>{caption}</p>
+                </div>
               </div>
-              <p className="mt-3 text-sm text-[var(--ink-soft)]">
-                For low-cost production use, set `GEMINI_API_KEY`. For any other model vendor, configure `AI_API_KEY`, `AI_BASE_URL`, and `AI_MODEL`.
-              </p>
-            </div>
-            {adminMessage && <div className="rounded-[24px] bg-[var(--success-soft)] p-4 text-sm text-[var(--success)]">{adminMessage}</div>}
-          </div>
-        </section>
-
-        <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-          <SectionHeader title="Create course" caption="Backend course management" />
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <input value={courseForm.title} onChange={(event) => setCourseForm((current) => ({ ...current, title: event.target.value }))} placeholder="Course title" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={courseForm.subject} onChange={(event) => setCourseForm((current) => ({ ...current, subject: event.target.value }))} placeholder="Subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={courseForm.instructor} onChange={(event) => setCourseForm((current) => ({ ...current, instructor: event.target.value }))} placeholder="Instructor" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={courseForm.officialChannelUrl} onChange={(event) => setCourseForm((current) => ({ ...current, officialChannelUrl: event.target.value }))} placeholder="Official channel URL" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input type="number" value={courseForm.price} onChange={(event) => setCourseForm((current) => ({ ...current, price: Number(event.target.value) }))} placeholder="Price" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={courseForm.category} onChange={(event) => setCourseForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={courseForm.level} onChange={(event) => setCourseForm((current) => ({ ...current, level: event.target.value }))} placeholder="Level" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <textarea value={courseForm.description} onChange={(event) => setCourseForm((current) => ({ ...current, description: event.target.value }))} placeholder="Course description" className="md:col-span-2 h-32 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <div className="md:col-span-2">
-              <button onClick={() => void createCourse()} disabled={busy} className="rounded-2xl bg-[var(--ink)] px-5 py-4 font-semibold text-white">
-                Create course
-              </button>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <AdminCourseManager courses={overview.courses || []} onCoursesChanged={onRefresh} />
-      <AdminLiveClassManager courses={overview.courses || []} onChanged={onRefresh} />
-      <AdminVideoUpload courses={overview.courses || []} onVideoUploaded={onRefresh} />
-      <AdminModuleManager courses={overview.courses || []} onModulesChanged={onRefresh} />
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-          <SectionHeader title="Create mock test" caption="Sectional, topic-wise, or full-length" />
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <select
-              value={mockAiForm.provider}
-              onChange={(event) => setMockAiForm((current) => ({ ...current, provider: event.target.value }))}
-              className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
-            >
-              {aiProviderOptions.map((provider) => (
-                <option key={provider.id} value={provider.id} disabled={!provider.available && provider.id !== 'auto'}>
-                  {provider.label} {provider.available ? '' : '(Not configured)'}
-                </option>
-              ))}
-            </select>
-            <input value={mockAiForm.subject} onChange={(event) => setMockAiForm((current) => ({ ...current, subject: event.target.value }))} placeholder="AI subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={mockAiForm.topic} onChange={(event) => setMockAiForm((current) => ({ ...current, topic: event.target.value }))} placeholder="AI topic focus" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <select value={mockAiForm.difficulty} onChange={(event) => setMockAiForm((current) => ({ ...current, difficulty: event.target.value }))} className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none">
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-            </select>
-            <input type="number" value={mockAiForm.questionCount} onChange={(event) => setMockAiForm((current) => ({ ...current, questionCount: Number(event.target.value) }))} placeholder="AI question count" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input type="number" value={mockAiForm.durationMinutes} onChange={(event) => setMockAiForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="AI duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <textarea
-              value={mockAiForm.instructions}
-              onChange={(event) => setMockAiForm((current) => ({ ...current, instructions: event.target.value }))}
-              placeholder="Optional AI instructions: chapter mix, exam style, calculation-heavy, etc."
-              className="md:col-span-2 h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
-            />
-            <div className="md:col-span-2 flex flex-wrap gap-3">
-              <button onClick={() => void generateMockTestDraft()} disabled={generatingMock} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white disabled:opacity-60">
-                {generatingMock ? 'Generating mock draft...' : 'Generate with AI'}
-              </button>
-              <span className="self-center text-sm text-[var(--ink-soft)]">AI fills the JSON draft below. You can edit it before saving.</span>
-            </div>
-            <input value={mockTestForm.title} onChange={(event) => setMockTestForm((current) => ({ ...current, title: event.target.value }))} placeholder="Mock test title" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={mockTestForm.topic} onChange={(event) => setMockTestForm((current) => ({ ...current, topic: event.target.value }))} placeholder="Topic / section" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={mockTestForm.category} onChange={(event) => setMockTestForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={mockTestForm.type} onChange={(event) => setMockTestForm((current) => ({ ...current, type: event.target.value }))} placeholder="Type" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input type="number" value={mockTestForm.durationMinutes} onChange={(event) => setMockTestForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="Duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input type="number" step="0.01" value={mockTestForm.negativeMarking} onChange={(event) => setMockTestForm((current) => ({ ...current, negativeMarking: Number(event.target.value) }))} placeholder="Negative marking" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <textarea
-              value={mockTestForm.questionsJson}
-              onChange={(event) => setMockTestForm((current) => ({ ...current, questionsJson: event.target.value }))}
-              placeholder='Questions JSON: [{"id":"q1","questionText":"...","options":["A","B","C","D"],"correctOption":1,"explanation":"...","marks":1,"topic":"Network Theory"}]'
-              className="md:col-span-2 h-36 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
-            />
-            <div className="md:col-span-2">
-              <button onClick={() => void createMockTest()} disabled={busy} className="rounded-2xl bg-[var(--ink)] px-5 py-4 font-semibold text-white">
-                Create mock test
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-          <SectionHeader title="Create daily quiz" caption="Engagement + streak engine" />
-          <div className="mt-6 grid gap-4">
-            <input value={quizForm.date} onChange={(event) => setQuizForm((current) => ({ ...current, date: event.target.value }))} type="date" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <select
-              value={quizAiForm.provider}
-              onChange={(event) => setQuizAiForm((current) => ({ ...current, provider: event.target.value }))}
-              className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
-            >
-              {aiProviderOptions.map((provider) => (
-                <option key={provider.id} value={provider.id} disabled={!provider.available && provider.id !== 'auto'}>
-                  {provider.label} {provider.available ? '' : '(Not configured)'}
-                </option>
-              ))}
-            </select>
-            <input value={quizAiForm.subject} onChange={(event) => setQuizAiForm((current) => ({ ...current, subject: event.target.value }))} placeholder="AI subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={quizAiForm.topic} onChange={(event) => setQuizAiForm((current) => ({ ...current, topic: event.target.value }))} placeholder="AI topic focus" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <div className="grid gap-4 md:grid-cols-2">
-              <select value={quizAiForm.difficulty} onChange={(event) => setQuizAiForm((current) => ({ ...current, difficulty: event.target.value }))} className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none">
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-              </select>
-              <input type="number" value={quizAiForm.questionCount} onChange={(event) => setQuizAiForm((current) => ({ ...current, questionCount: Number(event.target.value) }))} placeholder="AI question count" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            </div>
-            <textarea value={quizAiForm.instructions} onChange={(event) => setQuizAiForm((current) => ({ ...current, instructions: event.target.value }))} placeholder="Optional AI instructions: quick recall, mixed topics, one-liners, etc." className="h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <div className="flex flex-wrap gap-3">
-              <button onClick={() => void generateDailyQuizDraft()} disabled={generatingQuiz} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white disabled:opacity-60">
-                {generatingQuiz ? 'Generating quiz draft...' : 'Generate with AI'}
-              </button>
-              <span className="self-center text-sm text-[var(--ink-soft)]">AI can prepare a multi-question quiz. Review the JSON before saving.</span>
-            </div>
-            <input value={quizForm.prompt} onChange={(event) => setQuizForm((current) => ({ ...current, prompt: event.target.value }))} placeholder="Quiz question" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <input value={quizForm.options} onChange={(event) => setQuizForm((current) => ({ ...current, options: event.target.value }))} placeholder="Comma-separated options" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <div className="grid gap-4 md:grid-cols-2">
-              <input value={quizForm.answer} onChange={(event) => setQuizForm((current) => ({ ...current, answer: event.target.value }))} placeholder="Correct answer" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-              <input value={quizForm.topic} onChange={(event) => setQuizForm((current) => ({ ...current, topic: event.target.value }))} placeholder="Topic" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            </div>
-            <textarea value={quizForm.explanation} onChange={(event) => setQuizForm((current) => ({ ...current, explanation: event.target.value }))} placeholder="Explanation" className="h-28 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <textarea value={quizForm.questionsJson} onChange={(event) => setQuizForm((current) => ({ ...current, questionsJson: event.target.value }))} placeholder='Questions JSON (optional for multi-question quiz): [{"prompt":"...","options":["A","B","C","D"],"answer":"A","explanation":"...","topic":"..."}]' className="h-36 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-            <div>
-              <button onClick={() => void createQuiz()} disabled={busy} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white">
-                Create daily quiz
-              </button>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-        <SectionHeader title="Recent device activity" caption="Login sessions and device events" />
-        <div className="mt-6 grid gap-3 lg:grid-cols-2">
-          {(overview.adminOverview?.recentDeviceActivity || []).map((activity) => (
-            <div key={activity._id} className="rounded-[22px] bg-[var(--accent-cream)] p-4">
-              <p className="text-sm font-semibold text-[var(--ink)]">{formatEventLabel(activity.eventType)}</p>
-              <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">{activity.device || 'unknown device'}</p>
-              <p className="mt-3 text-sm text-[var(--ink-soft)]">User: {activity.userId}</p>
-              <p className="mt-1 text-sm text-[var(--ink-soft)]">{formatDateTime(activity.createdAt)}</p>
-            </div>
+            </button>
           ))}
         </div>
       </section>
+
+      {adminMessage && (
+        <div className="rounded-[24px] border border-[var(--success)]/18 bg-[var(--success-soft)] px-5 py-4 text-sm text-[var(--success)]">
+          {adminMessage}
+        </div>
+      )}
+
+      {activeAdminSection === 'overview' && (
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <MetricCard title="Active users" value={`${overview.adminOverview?.activeUsers || 0}`} hint="Current registered learners" icon={UserCircle2} />
+            <MetricCard title="Active sessions" value={`${overview.adminOverview?.activeSessions || 0}`} hint="Single-session protection" icon={ShieldCheck} />
+            <MetricCard title="Revenue" value={currency.format(overview.adminOverview?.revenue || 0)} hint="Paid backend totals" icon={Wallet} />
+            <MetricCard title="Participation" value={`${overview.adminOverview?.testParticipation || 0}`} hint="Quiz plus mock submissions" icon={ClipboardCheck} />
+            <MetricCard title="Capacity target" value={overview.adminOverview?.concurrentCapacityTarget || '10K'} hint="Target concurrency" icon={Gauge} />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+              <SectionHeader title="Operational posture" caption="What this admin system is optimized for" />
+              <div className="mt-6 space-y-4">
+                <div className="rounded-[24px] bg-[var(--accent-cream)] p-5 text-sm leading-7 text-[var(--ink-soft)]">
+                  This admin panel now separates strategy from execution. Use overview for readiness, then move into focused tabs for course catalog changes, curriculum work, assessments, and security checks.
+                </div>
+                <div className="rounded-[24px] border border-[var(--line)] bg-white p-5">
+                  <p className="text-sm font-semibold text-[var(--ink)]">AI provider status</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {aiProviderOptions.map((provider) => (
+                      <span
+                        key={provider.id}
+                        className={cn(
+                          'rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em]',
+                          provider.available
+                            ? provider.mode === 'fallback'
+                              ? 'bg-[var(--accent-cream)] text-[var(--accent-rust)]'
+                              : 'bg-[var(--success-soft)] text-[var(--success)]'
+                            : 'bg-slate-100 text-slate-500',
+                        )}
+                      >
+                        {provider.label} • {provider.available ? provider.mode : 'off'}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-sm text-[var(--ink-soft)]">
+                    For low-cost production use, set `GEMINI_API_KEY`. For any other model vendor, configure `AI_API_KEY`, `AI_BASE_URL`, and `AI_MODEL`.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+              <SectionHeader title="Recent device activity" caption="Latest security and session events" />
+              <div className="mt-6 grid gap-3">
+                {(overview.adminOverview?.recentDeviceActivity || []).slice(0, 6).map((activity) => (
+                  <div key={activity._id} className="rounded-[22px] bg-[var(--accent-cream)] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--ink)]">{formatEventLabel(activity.eventType)}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">{activity.device || 'unknown device'}</p>
+                      </div>
+                      <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+                        {formatDateTime(activity.createdAt)}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-[var(--ink-soft)]">User: {activity.userId}</p>
+                  </div>
+                ))}
+                {(overview.adminOverview?.recentDeviceActivity || []).length === 0 && (
+                  <div className="rounded-[22px] border border-dashed border-[var(--line)] p-5 text-sm text-[var(--ink-soft)]">
+                    No recent device activity is available yet.
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {activeAdminSection === 'courses' && (
+        <div className="space-y-6">
+          <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+            <SectionHeader title="Create course" caption="Catalog, pricing, and publishing baseline" />
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <input value={courseForm.title} onChange={(event) => setCourseForm((current) => ({ ...current, title: event.target.value }))} placeholder="Course title" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={courseForm.subject} onChange={(event) => setCourseForm((current) => ({ ...current, subject: event.target.value }))} placeholder="Subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={courseForm.instructor} onChange={(event) => setCourseForm((current) => ({ ...current, instructor: event.target.value }))} placeholder="Instructor" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={courseForm.officialChannelUrl} onChange={(event) => setCourseForm((current) => ({ ...current, officialChannelUrl: event.target.value }))} placeholder="Official channel URL" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input type="number" value={courseForm.price} onChange={(event) => setCourseForm((current) => ({ ...current, price: Number(event.target.value) }))} placeholder="Price" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={courseForm.category} onChange={(event) => setCourseForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={courseForm.level} onChange={(event) => setCourseForm((current) => ({ ...current, level: event.target.value }))} placeholder="Level" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <textarea value={courseForm.description} onChange={(event) => setCourseForm((current) => ({ ...current, description: event.target.value }))} placeholder="Course description" className="md:col-span-2 h-32 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <div className="md:col-span-2">
+                <button onClick={() => void createCourse()} disabled={busy} className="rounded-2xl bg-[var(--ink)] px-5 py-4 font-semibold text-white">
+                  Create course
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <AdminCourseManager courses={overview.courses || []} onCoursesChanged={onRefresh} />
+        </div>
+      )}
+
+      {activeAdminSection === 'curriculum' && (
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+              <SectionHeader title="Curriculum flow" caption="Build in this order" />
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                {[
+                  ['1', 'Create course', 'Define the catalog shell, pricing, and instructor details first.'],
+                  ['2', 'Add subject tree', 'Build subject and chapter structure before you attach content.'],
+                  ['3', 'Upload protected video', 'Attach topic videos into the exact subject or chapter path.'],
+                ].map(([step, title, text]) => (
+                  <div key={step} className="rounded-[22px] bg-[var(--accent-cream)] p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Step {step}</p>
+                    <p className="mt-2 text-lg font-semibold text-[var(--ink)]">{title}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--ink-soft)]">{text}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+              <SectionHeader title="Content estate" caption="Current platform size" />
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                <MetricCard title="Courses" value={`${overview.courses.length}`} hint="Catalog entries now live" icon={BookOpen} />
+                <MetricCard title="Subjects" value={`${overview.courses.reduce((sum, course) => sum + (course.modules?.length || 0), 0)}`} hint="Subject nodes across all courses" icon={GraduationCap} />
+                <MetricCard title="Topics" value={`${overview.courses.reduce((sum, course) => sum + ((course.lessonCount || 0) || 0), 0)}`} hint="Lesson topics available to learners" icon={Video} />
+              </div>
+            </section>
+          </div>
+
+          <AdminModuleManager courses={overview.courses || []} onModulesChanged={onRefresh} />
+          <AdminVideoUpload courses={overview.courses || []} onVideoUploaded={onRefresh} />
+        </div>
+      )}
+
+      {activeAdminSection === 'assessments' && (
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-2">
+            <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+              <SectionHeader title="Create mock test" caption="Sectional, topic-wise, or full-length" />
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <select
+                  value={mockAiForm.provider}
+                  onChange={(event) => setMockAiForm((current) => ({ ...current, provider: event.target.value }))}
+                  className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+                >
+                  {aiProviderOptions.map((provider) => (
+                    <option key={provider.id} value={provider.id} disabled={!provider.available && provider.id !== 'auto'}>
+                      {provider.label} {provider.available ? '' : '(Not configured)'}
+                    </option>
+                  ))}
+                </select>
+                <input value={mockAiForm.subject} onChange={(event) => setMockAiForm((current) => ({ ...current, subject: event.target.value }))} placeholder="AI subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input value={mockAiForm.topic} onChange={(event) => setMockAiForm((current) => ({ ...current, topic: event.target.value }))} placeholder="AI topic focus" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <select value={mockAiForm.difficulty} onChange={(event) => setMockAiForm((current) => ({ ...current, difficulty: event.target.value }))} className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none">
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+                <input type="number" value={mockAiForm.questionCount} onChange={(event) => setMockAiForm((current) => ({ ...current, questionCount: Number(event.target.value) }))} placeholder="AI question count" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input type="number" value={mockAiForm.durationMinutes} onChange={(event) => setMockAiForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="AI duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <textarea
+                  value={mockAiForm.instructions}
+                  onChange={(event) => setMockAiForm((current) => ({ ...current, instructions: event.target.value }))}
+                  placeholder="Optional AI instructions: chapter mix, exam style, calculation-heavy, etc."
+                  className="md:col-span-2 h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+                />
+                <div className="md:col-span-2 flex flex-wrap gap-3">
+                  <button onClick={() => void generateMockTestDraft()} disabled={generatingMock} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white disabled:opacity-60">
+                    {generatingMock ? 'Generating mock draft...' : 'Generate with AI'}
+                  </button>
+                  <span className="self-center text-sm text-[var(--ink-soft)]">AI fills the JSON draft below. You can edit it before saving.</span>
+                </div>
+                <input value={mockTestForm.title} onChange={(event) => setMockTestForm((current) => ({ ...current, title: event.target.value }))} placeholder="Mock test title" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input value={mockTestForm.topic} onChange={(event) => setMockTestForm((current) => ({ ...current, topic: event.target.value }))} placeholder="Topic / section" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input value={mockTestForm.category} onChange={(event) => setMockTestForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input value={mockTestForm.type} onChange={(event) => setMockTestForm((current) => ({ ...current, type: event.target.value }))} placeholder="Type" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input type="number" value={mockTestForm.durationMinutes} onChange={(event) => setMockTestForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="Duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input type="number" step="0.01" value={mockTestForm.negativeMarking} onChange={(event) => setMockTestForm((current) => ({ ...current, negativeMarking: Number(event.target.value) }))} placeholder="Negative marking" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <textarea
+                  value={mockTestForm.questionsJson}
+                  onChange={(event) => setMockTestForm((current) => ({ ...current, questionsJson: event.target.value }))}
+                  placeholder='Questions JSON: [{"id":"q1","questionText":"...","options":["A","B","C","D"],"correctOption":1,"explanation":"...","marks":1,"topic":"Network Theory"}]'
+                  className="md:col-span-2 h-36 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+                />
+                <div className="md:col-span-2">
+                  <button onClick={() => void createMockTest()} disabled={busy} className="rounded-2xl bg-[var(--ink)] px-5 py-4 font-semibold text-white">
+                    Create mock test
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+              <SectionHeader title="Create daily quiz" caption="Engagement + streak engine" />
+              <div className="mt-6 grid gap-4">
+                <input value={quizForm.date} onChange={(event) => setQuizForm((current) => ({ ...current, date: event.target.value }))} type="date" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <select
+                  value={quizAiForm.provider}
+                  onChange={(event) => setQuizAiForm((current) => ({ ...current, provider: event.target.value }))}
+                  className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+                >
+                  {aiProviderOptions.map((provider) => (
+                    <option key={provider.id} value={provider.id} disabled={!provider.available && provider.id !== 'auto'}>
+                      {provider.label} {provider.available ? '' : '(Not configured)'}
+                    </option>
+                  ))}
+                </select>
+                <input value={quizAiForm.subject} onChange={(event) => setQuizAiForm((current) => ({ ...current, subject: event.target.value }))} placeholder="AI subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input value={quizAiForm.topic} onChange={(event) => setQuizAiForm((current) => ({ ...current, topic: event.target.value }))} placeholder="AI topic focus" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <select value={quizAiForm.difficulty} onChange={(event) => setQuizAiForm((current) => ({ ...current, difficulty: event.target.value }))} className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none">
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                  <input type="number" value={quizAiForm.questionCount} onChange={(event) => setQuizAiForm((current) => ({ ...current, questionCount: Number(event.target.value) }))} placeholder="AI question count" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                </div>
+                <textarea value={quizAiForm.instructions} onChange={(event) => setQuizAiForm((current) => ({ ...current, instructions: event.target.value }))} placeholder="Optional AI instructions: quick recall, mixed topics, one-liners, etc." className="h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <div className="flex flex-wrap gap-3">
+                  <button onClick={() => void generateDailyQuizDraft()} disabled={generatingQuiz} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white disabled:opacity-60">
+                    {generatingQuiz ? 'Generating quiz draft...' : 'Generate with AI'}
+                  </button>
+                  <span className="self-center text-sm text-[var(--ink-soft)]">AI can prepare a multi-question quiz. Review the JSON before saving.</span>
+                </div>
+                <input value={quizForm.prompt} onChange={(event) => setQuizForm((current) => ({ ...current, prompt: event.target.value }))} placeholder="Quiz question" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <input value={quizForm.options} onChange={(event) => setQuizForm((current) => ({ ...current, options: event.target.value }))} placeholder="Comma-separated options" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <input value={quizForm.answer} onChange={(event) => setQuizForm((current) => ({ ...current, answer: event.target.value }))} placeholder="Correct answer" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <input value={quizForm.topic} onChange={(event) => setQuizForm((current) => ({ ...current, topic: event.target.value }))} placeholder="Topic" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                </div>
+                <textarea value={quizForm.explanation} onChange={(event) => setQuizForm((current) => ({ ...current, explanation: event.target.value }))} placeholder="Explanation" className="h-28 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <textarea value={quizForm.questionsJson} onChange={(event) => setQuizForm((current) => ({ ...current, questionsJson: event.target.value }))} placeholder='Questions JSON (optional for multi-question quiz): [{"prompt":"...","options":["A","B","C","D"],"answer":"A","explanation":"...","topic":"..."}]' className="h-36 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                <div>
+                  <button onClick={() => void createQuiz()} disabled={busy} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white">
+                    Create daily quiz
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {activeAdminSection === 'security' && (
+        <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+          <SectionHeader title="Recent device activity" caption="Login sessions and device events" />
+          <div className="mt-6 grid gap-3 lg:grid-cols-2">
+            {(overview.adminOverview?.recentDeviceActivity || []).map((activity) => (
+              <div key={activity._id} className="rounded-[22px] bg-[var(--accent-cream)] p-4">
+                <p className="text-sm font-semibold text-[var(--ink)]">{formatEventLabel(activity.eventType)}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">{activity.device || 'unknown device'}</p>
+                <p className="mt-3 text-sm text-[var(--ink-soft)]">User: {activity.userId}</p>
+                <p className="mt-1 text-sm text-[var(--ink-soft)]">{formatDateTime(activity.createdAt)}</p>
+              </div>
+            ))}
+            {(overview.adminOverview?.recentDeviceActivity || []).length === 0 && (
+              <div className="rounded-[22px] border border-dashed border-[var(--line)] p-6 text-sm text-[var(--ink-soft)]">
+                No device events are available yet.
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 };
@@ -5381,7 +6223,6 @@ const AppContent = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [resumeTarget, setResumeTarget] = useState<{ courseId: string; lessonId?: string | null } | null>(null);
-  const [liveNavigationTarget, setLiveNavigationTarget] = useState<string | null>(null);
   const [savedTopicIds, setSavedTopicIds] = useState<string[]>([]);
 
   const refreshOverview = async (background = true) => {
@@ -5405,7 +6246,7 @@ const AppContent = () => {
     }
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     void refreshOverview(false);
   }, [user]);
 
@@ -5416,14 +6257,9 @@ const AppContent = () => {
 
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
-    const liveClassId = params.get('liveClassId');
 
-    if (tab === 'live') {
-      setActiveTab('live');
-    }
-
-    if (liveClassId) {
-      setLiveNavigationTarget(liveClassId);
+    if (tab && tab in shellTabMeta) {
+      setActiveTab(tab as TabKey);
     }
   }, []);
 
@@ -5500,39 +6336,21 @@ const AppContent = () => {
   };
 
   const openNotification = (notification: NotificationItem) => {
-    const target = getNotificationNavigationTarget(notification);
-
-    if (target?.tab === 'live' && target.liveClassId) {
-      setActiveTab('live');
-      setLiveNavigationTarget(target.liveClassId);
-
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        url.searchParams.set('tab', 'live');
-        url.searchParams.set('liveClassId', target.liveClassId);
-        window.history.replaceState({}, '', `${url.pathname}?${url.searchParams.toString()}`);
-      }
-      return;
-    }
-
     if (notification.actionUrl && typeof window !== 'undefined') {
       window.location.href = notification.actionUrl;
     }
   };
 
-  if (loading || loadingOverview) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--page-bg)]">
-        <div className="flex flex-col items-center gap-4 text-[var(--ink-soft)]">
-          <LoaderCircle className="h-12 w-12 animate-spin text-[var(--accent-rust)]" />
-          <p className="text-sm font-medium">Loading unified prep platform…</p>
-        </div>
-      </div>
-    );
+  if (loading || loadingOverview || (user && !overview)) {
+    return <LoadingShell />;
   }
 
-  if (!user || !overview) {
+  if (!user) {
     return <AuthScreen publicOverview={publicOverview} />;
+  }
+
+  if (!overview) {
+    return <LoadingShell />;
   }
 
   return (
@@ -5543,7 +6361,6 @@ const AppContent = () => {
       onLogout={logout}
       onRefresh={() => refreshOverview(true)}
       resumeTarget={resumeTarget}
-      liveNavigationTarget={liveNavigationTarget}
       onContinueLearningNavigate={(courseId, lessonId) => setResumeTarget({ courseId, lessonId })}
       onOpenNotification={openNotification}
       onResumeNavigationHandled={() => setResumeTarget(null)}

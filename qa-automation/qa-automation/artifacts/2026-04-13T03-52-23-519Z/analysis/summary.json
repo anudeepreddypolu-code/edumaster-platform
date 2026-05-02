@@ -1,0 +1,121 @@
+{
+  "captures": [
+    {
+      "stepId": "launch",
+      "label": "app-launch",
+      "state": "loading",
+      "durationMs": 6956,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/screenshots/launch-loading-app-launch.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/sources/launch-loading-app-launch.xml",
+      "timestamp": "2026-04-13T03:52:45.700Z"
+    },
+    {
+      "stepId": "login-error",
+      "label": "invalid-login",
+      "state": "error",
+      "durationMs": 8735,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/screenshots/login-error-error-invalid-login.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/sources/login-error-error-invalid-login.xml",
+      "timestamp": "2026-04-13T03:52:55.654Z",
+      "notes": [
+        "Intentional invalid login to capture error state."
+      ]
+    },
+    {
+      "stepId": "login-success",
+      "label": "login-success",
+      "state": "success",
+      "durationMs": 8445,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/screenshots/login-success-success-login-success.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/sources/login-success-success-login-success.xml",
+      "timestamp": "2026-04-13T03:53:05.079Z"
+    }
+  ],
+  "failures": [
+    {
+      "stepId": "launch",
+      "title": "Slow screen transition",
+      "description": "App launch took 6956ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-04-13T03:52:45.713Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/screenshots/launch-loading-app-launch.png"
+    },
+    {
+      "stepId": "login-error",
+      "title": "Slow screen transition",
+      "description": "Invalid login error state took 8735ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-04-13T03:52:55.666Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/screenshots/login-error-error-invalid-login.png"
+    },
+    {
+      "stepId": "login-error",
+      "title": "Expected content missing",
+      "description": "Expected text was not found on the page: \"Unable\"",
+      "severity": "medium",
+      "timestamp": "2026-04-13T03:52:55.666Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/screenshots/login-error-error-invalid-login.png"
+    },
+    {
+      "stepId": "login-success",
+      "title": "Slow screen transition",
+      "description": "Login success took 8445ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-04-13T03:53:05.103Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/screenshots/login-success-success-login-success.png"
+    },
+    {
+      "stepId": "login-success",
+      "title": "Potential layout overflow risk",
+      "description": "The screen may be relying on rigid sizing that is risky on smaller Android viewports.",
+      "severity": "low",
+      "timestamp": "2026-04-13T03:53:05.103Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/screenshots/login-success-success-login-success.png"
+    },
+    {
+      "stepId": "fatal",
+      "title": "Audit crashed",
+      "description": "Element <button data-testid=\"nav-overview\" class=\"flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-medium transition bg-white text-[var(--ink)] shadow-sm\">\n  <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-layout-dashboard h-5 w-5\" aria-hidden=\"true\">\n    <rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\"></rect>\n    <rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\"></rect>\n    <rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\"></rect>\n    <rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\"></rect>\n  </svg>\n  Overview\n</button> did not become interactable",
+      "severity": "critical",
+      "timestamp": "2026-04-13T03:53:11.919Z"
+    }
+  ],
+  "findings": [
+    {
+      "category": "responsiveness",
+      "severity": "high",
+      "title": "Perceived loading speed needs stronger feedback",
+      "evidence": "At least one core screen crossed the configured slow threshold.",
+      "recommendation": "Add skeleton loaders and preserve layout while data loads so transitions feel intentional instead of blocked."
+    },
+    {
+      "category": "spacing",
+      "severity": "medium",
+      "title": "Some layouts may be too rigid for Android widths",
+      "evidence": "DOM heuristics suggest fixed-height or fixed-width regions in complex screens.",
+      "recommendation": "Reduce fixed panel heights, prefer stacked sections on narrow screens, and make large data cards wrap more aggressively."
+    },
+    {
+      "category": "clarity",
+      "severity": "low",
+      "title": "Global search was not surfaced during audit",
+      "evidence": "Cross-feature discovery becomes harder when students must manually browse every module.",
+      "recommendation": "Keep search persistent in the shell and expose quick actions for lessons, mocks, and live classes."
+    },
+    {
+      "category": "hierarchy",
+      "severity": "medium",
+      "title": "Information hierarchy should prioritize student actions over raw density",
+      "evidence": "Dashboard, analytics, and practice surfaces contain many cards and metrics competing for attention.",
+      "recommendation": "Lead each screen with one primary action, one progress summary, and move secondary metrics below the fold."
+    },
+    {
+      "category": "visual-noise",
+      "severity": "medium",
+      "title": "The product would benefit from calmer visual grouping",
+      "evidence": "Many surfaces use similarly weighted cards, making it harder to distinguish primary vs secondary information.",
+      "recommendation": "Use quieter containers for supporting information, stronger section spacing, and one accent surface per screen."
+    }
+  ],
+  "generatedFlutterFile": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T03-52-23-519Z/generated_flutter/improved_ui.dart"
+}

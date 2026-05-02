@@ -1,0 +1,32 @@
+logLevel: info
+
+authMethod: http
+authHTTPAddress: http://app:5000/api/live-classes/ingest/on-publish
+authHTTPExclude:
+  - action: read
+  - action: playback
+  - action: api
+  - action: metrics
+  - action: pprof
+
+rtmp: yes
+rtmpAddress: :1935
+
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsSegmentCount: 6
+hlsSegmentDuration: 6s
+
+record: yes
+recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S.mp4
+recordFormat: fmp4
+recordPartDuration: 1s
+recordSegmentDuration: 2h
+
+pathDefaults:
+  source: publisher
+
+paths:
+  all:
+    source: publisher

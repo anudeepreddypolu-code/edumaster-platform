@@ -10,16 +10,50 @@ dotenv.config();
 
 const require = createRequire(import.meta.url);
 const { app: backendApp } = require("./backend/server.cjs");
-const { requireAuth } = require("./backend/middleware/auth.js");
+const { attachUserFromToken, requireAuth } = require("./backend/middleware/auth.js");
+const { appConfig, getProductionConfigDiagnostics } = require("./backend/lib/config.js");
+const { connectDatabase } = require("./backend/lib/database.js");
 const { paymentRepository, platformRepository, coursesRepository } = require("./backend/lib/repositories.js");
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
+const buildMediaPermissionsPolicy = () => {
+  const allowedOrigins = [`https://${appConfig.jitsiMeetDomain}`];
+
+  if (appConfig.livekitUrl) {
+    try {
+      const livekitUrl = new URL(appConfig.livekitUrl);
+      if (livekitUrl.protocol === "wss:") {
+        livekitUrl.protocol = "https:";
+      } else if (livekitUrl.protocol === "ws:") {
+        livekitUrl.protocol = "http:";
+      }
+      const livekitOrigin = livekitUrl.origin;
+      if (livekitOrigin.startsWith('https://')) {
+        allowedOrigins.push(livekitOrigin);
+      }
+    } catch {
+      // Ignore malformed LiveKit URL in local/dev environments.
+    }
+  }
+
+  const originList = Array.from(new Set(allowedOrigins)).map((origin) => `"${origin}"`).join(' ');
+  return [
+    `camera=(self ${originList})`,
+    `microphone=(self ${originList})`,
+    `display-capture=(self ${originList})`,
+    `speaker-selection=(self ${originList})`,
+    `fullscreen=(self ${originList})`,
+    `autoplay=(self ${originList})`,
+  ].join(', ');
+};
+
 const addRootSecurityHeaders = (_req: express.Request, res: express.Response, next: express.NextFunction) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", buildMediaPermissionsPolicy());
   next();
 };
 
@@ -62,6 +96,28 @@ const sendRootError = (res: express.Response, error: unknown) => {
 };
 
 async function startServer() {
+  const diagnostics = getProductionConfigDiagnostics();
+  if (diagnostics.errors.length > 0) {
+    throw new Error(`Production configuration invalid:\n- ${diagnostics.errors.join("\n- ")}`);
+  }
+
+  diagnostics.warnings.forEach((warning: string) => {
+    console.warn(`[config] ${warning}`);
+  });
+
+  const databaseState = await connectDatabase();
+  if (!databaseState.connected && !databaseState.mode) {
+    throw new Error("Database initialization failed.");
+  }
+
+  if (!databaseState.connected) {
+    if (!appConfig.allowMemoryFallback) {
+      throw new Error(`Persistent database unavailable: ${databaseState.reason}`);
+    }
+
+    console.warn(`Database unavailable, starting in memory mode: ${databaseState.reason}`);
+  }
+
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
   const HOST = process.env.HOST || "0.0.0.0";
@@ -439,7 +495,9 @@ async function startServer() {
   const server = http.createServer(app);
 
   server.listen(PORT, HOST, () => {
-    console.log(`Server running on http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
+    console.log(
+      `Server running on http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT} (${databaseState.mode})`,
+    );
   });
 
   const shutdown = (signal: string) => {

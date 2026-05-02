@@ -1,0 +1,14 @@
+{
+  "captures": [
+    {
+      "stepId": "overview-dashboard",
+      "label": "overview-dashboard",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-21T05-02-01-242Z/screenshots/overview-dashboard-overview-dashboard.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-21T05-02-01-242Z/sources/overview-dashboard-overview-dashboard.html",
+      "timestamp": "2026-04-21T05:02:07.952Z"
+    }
+  ],
+  "failures": []
+}

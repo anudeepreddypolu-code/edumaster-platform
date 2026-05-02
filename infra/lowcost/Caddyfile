@@ -1,0 +1,16 @@
+{$APP_DOMAIN} {
+  encode gzip zstd
+  reverse_proxy app:5000
+}
+
+{$LIVE_DOMAIN} {
+  encode gzip zstd
+
+  @hls_manifest path *.m3u8
+  header @hls_manifest Cache-Control "public, max-age=2, stale-while-revalidate=6"
+
+  @hls_segments path *.ts *.m4s *.mp4
+  header @hls_segments Cache-Control "public, max-age=86400, immutable"
+
+  reverse_proxy mediamtx:8888
+}

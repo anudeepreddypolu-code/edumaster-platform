@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import Hls from 'hls.js';
-import { BookOpen, ChevronLeft, ChevronRight, LoaderCircle, Lock, Maximize2, MessageSquare, Minimize2, PlayCircle, Radio, Video, Wallet } from 'lucide-react';
+import { BookOpen, CalendarClock, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Lock, Maximize2, MessageSquare, Minimize2, PlayCircle, Radio, Search, Sparkles, Video, Wallet } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { ProtectedLivePlayback } from './ProtectedLivePlayback';
 import { EduService } from '../EduService';
@@ -22,6 +22,9 @@ const formatPlaybackTime = (seconds: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 };
 
+const getCoursePurchaseLabel = (course: CourseCard) =>
+  course.price === 0 ? 'Start free course' : `Buy course for ${currency.format(course.price)}`;
+
 let youtubeIframeApiPromise: Promise<void> | null = null;
 
 const loadYouTubeIframeApi = () => {
@@ -38,7 +41,7 @@ const loadYouTubeIframeApi = () => {
   }
 
   youtubeIframeApiPromise = new Promise<void>((resolve) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[data-edumaster-youtube-api="true"]');
+    const existing = document.querySelector<HTMLScriptElement>('script[data-varonenglish-youtube-api="true"]');
     if (existing) {
       const previous = (window as any).onYouTubeIframeAPIReady;
       (window as any).onYouTubeIframeAPIReady = () => {
@@ -51,7 +54,7 @@ const loadYouTubeIframeApi = () => {
     const script = document.createElement('script');
     script.src = 'https://www.youtube.com/iframe_api';
     script.async = true;
-    script.dataset.edumasterYoutubeApi = 'true';
+    script.dataset.varonenglishYoutubeApi = 'true';
 
     const previous = (window as any).onYouTubeIframeAPIReady;
     (window as any).onYouTubeIframeAPIReady = () => {
@@ -266,15 +269,92 @@ const ProtectedYouTubePlayer = ({
 };
 
 const SectionHeader = ({ title, caption }: { title: string; caption: string }) => (
-  <div className="flex items-end justify-between gap-4">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--ink-soft)]">{caption}</p>
-      <h2 className="mt-2 text-2xl font-semibold text-[var(--ink)]">{title}</h2>
+      <h2 className="mt-2 text-xl font-semibold text-[var(--ink)] sm:text-2xl">{title}</h2>
     </div>
   </div>
 );
 
-const buildResumeStorageKey = (userId: string, courseId: string) => `edumaster.resume.${userId}.${courseId}`;
+const FilterChip = ({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={cn(
+      'rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition',
+      active
+        ? 'border-[var(--accent-rust)] bg-[#fff1e7] text-[var(--accent-rust)] shadow-[0_10px_20px_rgba(201,106,43,0.12)]'
+        : 'border-white/80 bg-white/82 text-[var(--ink-soft)] hover:border-[var(--accent-rust)]/30 hover:text-[var(--ink)]',
+    )}
+  >
+    {label}
+  </button>
+);
+
+const StudyMetric = ({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) => (
+  <div className="rounded-[22px] border border-white/75 bg-white/88 p-4 shadow-[0_16px_30px_rgba(15,23,42,0.05)] backdrop-blur">
+    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">{label}</p>
+    <p className="mt-3 text-2xl font-semibold text-[var(--ink)]">{value}</p>
+    <p className="mt-2 text-sm leading-6 text-[var(--ink-soft)]">{hint}</p>
+  </div>
+);
+
+const QuickActionTile = ({
+  title,
+  description,
+  icon: Icon,
+  onClick,
+  accent = false,
+  testId,
+}: {
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  onClick: () => void;
+  accent?: boolean;
+  testId?: string;
+}) => (
+  <button
+    onClick={onClick}
+    data-testid={testId}
+    className={cn(
+      'flex w-full items-start justify-between gap-4 rounded-[22px] border p-4 text-left transition duration-200 hover:-translate-y-0.5',
+      accent
+        ? 'border-[var(--accent-rust)]/20 bg-[linear-gradient(135deg,#fff6ee_0%,#fffdf9_100%)] shadow-[0_18px_30px_rgba(201,106,43,0.10)]'
+        : 'border-[var(--line)] bg-white hover:border-[var(--accent-rust)]/25 hover:shadow-[0_16px_28px_rgba(15,23,42,0.06)]',
+    )}
+  >
+    <div className="min-w-0">
+      <p className="text-base font-semibold text-[var(--ink)]">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-[var(--ink-soft)]">{description}</p>
+    </div>
+    <div className={cn(
+      'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
+      accent ? 'bg-[var(--accent-rust)] text-white' : 'bg-[var(--accent-cream)] text-[var(--accent-rust)]',
+    )}>
+      <Icon className="h-5 w-5" />
+    </div>
+  </button>
+);
+
+const buildResumeStorageKey = (userId: string, courseId: string) => `varonenglish.resume.${userId}.${courseId}`;
 
 type ResumeRecord = {
   lessonId: string;
@@ -285,7 +365,7 @@ type ResumeRecord = {
 };
 
 type WindowWithProgressFlush = Window & {
-  __edumasterFlushProgress?: () => Promise<void>;
+  __varonenglishFlushProgress?: () => Promise<void>;
 };
 
 type PlaybackSnapshot = {
@@ -503,6 +583,40 @@ const getLiveClassContextLabel = (liveClass: LiveClass, fallback: string) =>
   || liveClass.topicTags?.[0]
   || fallback;
 
+const getLiveClassFilter = (liveClass: LiveClass): 'live' | 'upcoming' | 'recorded' => {
+  const state = getLiveClassState(liveClass);
+  if (state === 'live') {
+    return 'live';
+  }
+  if (state === 'scheduled') {
+    return 'upcoming';
+  }
+  return 'recorded';
+};
+
+const getLiveClassActionLabel = (liveClass: LiveClass | null) => {
+  if (!liveClass) {
+    return 'Open session';
+  }
+
+  const state = getLiveClassState(liveClass);
+  if (state === 'live') {
+    return 'Join live class';
+  }
+  if (state === 'scheduled') {
+    return 'View schedule';
+  }
+  return 'Watch recording';
+};
+
+const formatSessionDuration = (durationMinutes?: number | null) => {
+  if (!durationMinutes) {
+    return 'Duration pending';
+  }
+
+  return `${durationMinutes} min${durationMinutes === 1 ? '' : 's'}`;
+};
+
 const getStandaloneModuleLessonEntries = (module: CourseCard['modules'][number] | null) =>
   module
     ? [
@@ -610,6 +724,7 @@ const CourseLessonItem = ({
       <div className="flex items-start gap-3">
         <button
           onClick={onSelect}
+          data-testid={`course-topic-${lesson.id}`}
           className={cn(
             'flex min-w-0 flex-1 items-start gap-3 text-left',
             !isSelectable && 'opacity-90',
@@ -686,6 +801,7 @@ const PlayerRailLessonItem = ({
 }) => (
   <button
     onClick={onSelect}
+    data-testid={`course-lesson-${lesson.id}`}
     className={cn(
       'w-full border-b border-[#eef2f7] px-4 py-4 text-left transition',
       selected ? 'bg-[#edf5ff]' : 'bg-white hover:bg-[#f8fbff]',
@@ -725,10 +841,16 @@ export const CoursesTab = ({
   onToggleSavedTopic: (courseId: string, lessonId: string) => void;
 }) => {
   const { user } = useAuth();
-  const enrolledCourseCount = useMemo(
-    () => overview.courses.filter((course) => course.enrolled).length,
+  const isAdmin = user?.role === 'admin';
+  const enrolledCourses = useMemo(
+    () => overview.courses.filter((course) => course.enrolled),
     [overview.courses],
   );
+  const enrolledCourseCount = useMemo(
+    () => enrolledCourses.length,
+    [enrolledCourses],
+  );
+  const defaultCourseId = initialCourseId || null;
   const [lessonProgressOverrides, setLessonProgressOverrides] = useState<Record<string, {
     lessonId: string;
     progressPercent: number;
@@ -740,9 +862,9 @@ export const CoursesTab = ({
   const [courseQuery, setCourseQuery] = useState('');
   const [accessFilter, setAccessFilter] = useState<'all' | 'unlocked' | 'premium' | 'free'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(initialCourseId || overview.courses[0]?._id || null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(defaultCourseId);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(initialLessonId || null);
-  const [courseWorkspaceTab, setCourseWorkspaceTab] = useState<'dashboard' | 'subjects' | 'player'>(initialLessonId ? 'player' : 'dashboard');
+  const [courseWorkspaceTab, setCourseWorkspaceTab] = useState<'dashboard' | 'subjects' | 'player' | 'sessions'>(initialLessonId ? 'player' : 'dashboard');
   const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [busyCourseId, setBusyCourseId] = useState<string | null>(null);
@@ -757,11 +879,14 @@ export const CoursesTab = ({
   const [loadingRecordingAccess, setLoadingRecordingAccess] = useState(false);
   const [recordingAccessError, setRecordingAccessError] = useState<string | null>(null);
   const [securityBlocked, setSecurityBlocked] = useState(false);
-  const [studySidebarTab, setStudySidebarTab] = useState<'notes' | 'assistant' | 'replays'>('notes');
+  const [studySidebarTab, setStudySidebarTab] = useState<'notes' | 'assistant'>('notes');
+  const [sessionViewFilter, setSessionViewFilter] = useState<'all' | 'live' | 'upcoming' | 'recorded'>('all');
   const [showReplayPlayer, setShowReplayPlayer] = useState(false);
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerViewportRef = useRef<HTMLDivElement | null>(null);
+  const courseWorkspaceSectionRef = useRef<HTMLDivElement | null>(null);
+  const pendingWorkspaceScrollRef = useRef(false);
   const hlsRef = useRef<Hls | null>(null);
   const lastProgressSyncRef = useRef<Record<string, number>>({});
   const appliedResumeRef = useRef<Record<string, number>>({});
@@ -795,11 +920,32 @@ export const CoursesTab = ({
     () => ['all', ...Array.from(new Set(overview.courses.map((course) => course.category).filter(Boolean)))],
     [overview.courses],
   );
+  const visibleCoursePool = useMemo(
+    () => {
+      if (courseView === 'catalog') {
+        return overview.courses;
+      }
+
+      if (!isAdmin) {
+        return enrolledCourses;
+      }
+
+      const focusedCourse = selectedCourseId
+        ? overview.courses.find((course) => course._id === selectedCourseId)
+        : null;
+
+      if (focusedCourse && !focusedCourse.enrolled && !enrolledCourses.some((course) => course._id === focusedCourse._id)) {
+        return [focusedCourse, ...enrolledCourses];
+      }
+
+      return enrolledCourses;
+    },
+    [courseView, enrolledCourses, isAdmin, overview.courses, selectedCourseId],
+  );
   const filteredCourses = useMemo(() => {
     const normalizedQuery = deferredCourseQuery.trim().toLowerCase();
 
-    return overview.courses.filter((course) => {
-      const matchesView = courseView === 'catalog' || Boolean(course.enrolled);
+    return visibleCoursePool.filter((course) => {
       const matchesQuery = !normalizedQuery || [
         course.title,
         course.subject,
@@ -808,19 +954,34 @@ export const CoursesTab = ({
         course.instructor,
       ].some((value) => String(value || '').toLowerCase().includes(normalizedQuery));
 
-      const matchesAccess = accessFilter === 'all'
+      const matchesAccess = courseView === 'my'
+        ? true
+        : accessFilter === 'all'
         || (accessFilter === 'unlocked' && Boolean(course.enrolled))
         || (accessFilter === 'premium' && !course.enrolled && course.price > 0)
         || (accessFilter === 'free' && course.price === 0);
 
-      const matchesCategory = categoryFilter === 'all' || course.category === categoryFilter;
+      const matchesCategory = courseView === 'my' || categoryFilter === 'all' || course.category === categoryFilter;
 
-      return matchesView && matchesQuery && matchesAccess && matchesCategory;
+      return matchesQuery && matchesAccess && matchesCategory;
     });
-  }, [overview.courses, courseView, deferredCourseQuery, accessFilter, categoryFilter]);
+  }, [visibleCoursePool, deferredCourseQuery, courseView, accessFilter, categoryFilter]);
+  const studentPreviewCourse = useMemo(() => {
+    if (isAdmin || !initialCourseId || selectedCourseId !== initialCourseId) {
+      return null;
+    }
+
+    const previewCourse = overview.courses.find((course) => course._id === selectedCourseId) || null;
+    return previewCourse && !previewCourse.enrolled ? previewCourse : null;
+  }, [initialCourseId, isAdmin, overview.courses, selectedCourseId]);
+  const isStudentCoursePreview = !isAdmin && Boolean(studentPreviewCourse);
+  const courseCards = useMemo(
+    () => (filteredCourses.length > 0 ? filteredCourses : studentPreviewCourse ? [studentPreviewCourse] : []),
+    [filteredCourses, studentPreviewCourse],
+  );
   const selectedCourse = useMemo(
-    () => filteredCourses.find((course) => course._id === selectedCourseId) || filteredCourses[0] || null,
-    [filteredCourses, selectedCourseId],
+    () => studentPreviewCourse || filteredCourses.find((course) => course._id === selectedCourseId) || filteredCourses[0] || null,
+    [filteredCourses, selectedCourseId, studentPreviewCourse],
   );
   const selectedModule = useMemo(
     () => selectedCourse?.modules.find((module) => module.id === selectedModuleId) || selectedCourse?.modules[0] || null,
@@ -860,6 +1021,12 @@ export const CoursesTab = ({
     () => [...selectedCourseLiveSessions, ...selectedCourseUpcomingSessions, ...selectedCourseRecordings],
     [selectedCourseLiveSessions, selectedCourseUpcomingSessions, selectedCourseRecordings],
   );
+  const filteredCourseSessions = useMemo(
+    () => sessionViewFilter === 'all'
+      ? selectedCourseSessions
+      : selectedCourseSessions.filter((session) => getLiveClassFilter(session) === sessionViewFilter),
+    [selectedCourseSessions, sessionViewFilter],
+  );
   const selectedCourseSession = useMemo(
     () => selectedCourseSessions.find((item) => item._id === selectedRecordingId) || selectedCourseSessions[0] || null,
     [selectedCourseSessions, selectedRecordingId],
@@ -869,23 +1036,14 @@ export const CoursesTab = ({
     [selectedModule],
   );
 
-  useEffect(() => {
-    if (!selectedCourseId && filteredCourses[0]) {
-      setSelectedCourseId(filteredCourses[0]._id);
-    }
-  }, [filteredCourses, selectedCourseId]);
 
-  useEffect(() => {
-    const visibleIds = new Set(filteredCourses.map((course) => course._id));
-    if (selectedCourseId && visibleIds.has(selectedCourseId)) {
-      return;
-    }
-
-    setSelectedCourseId(filteredCourses[0]?._id || null);
-  }, [filteredCourses, selectedCourseId]);
 
   useEffect(() => {
     if (initialCourseId) {
+      const targetCourse = overview.courses.find((course) => course._id === initialCourseId) || null;
+      if (targetCourse) {
+        setCourseView(targetCourse.enrolled ? 'my' : 'catalog');
+      }
       setSelectedCourseId(initialCourseId);
     }
     if (initialLessonId) {
@@ -896,7 +1054,13 @@ export const CoursesTab = ({
     if (initialCourseId || initialLessonId) {
       onResumeNavigationHandled?.();
     }
-  }, [initialCourseId, initialLessonId, onResumeNavigationHandled]);
+  }, [initialCourseId, initialLessonId, onResumeNavigationHandled, overview.courses]);
+
+  useEffect(() => {
+    if (courseView === 'my' && enrolledCourseCount === 0) {
+      setCourseView('catalog');
+    }
+  }, [courseView, enrolledCourseCount]);
 
   useEffect(() => {
     if (!selectedCourse) {
@@ -943,23 +1107,44 @@ export const CoursesTab = ({
 
   useEffect(() => {
     setShowReplayPlayer(false);
-  }, [selectedRecordingId, studySidebarTab, selectedCourse?._id, selectedLessonId]);
+  }, [selectedRecordingId, courseWorkspaceTab, selectedCourse?._id, selectedLessonId]);
 
   const handleUnlock = async (course: CourseCard) => {
     if (!user) {
       return;
     }
 
+    const openUnlockedCourse = (targetCourse: CourseCard) => {
+      const firstLessonEntry = getModuleLessonEntries(targetCourse)[0] || null;
+      const firstLessonLocation = firstLessonEntry ? findLessonLocation(targetCourse, firstLessonEntry.lesson.id) : null;
+
+      pendingWorkspaceScrollRef.current = true;
+      setSelectedCourseId(targetCourse._id);
+      setShowReplayPlayer(false);
+      setStudySidebarTab('notes');
+
+      if (firstLessonEntry) {
+        setSelectedModuleId(firstLessonLocation?.module.id || targetCourse.modules[0]?.id || null);
+        setSelectedLessonId(firstLessonEntry.lesson.id);
+        setCourseWorkspaceTab('player');
+        return;
+      }
+
+      setSelectedModuleId(targetCourse.modules[0]?.id || null);
+      setCourseWorkspaceTab('subjects');
+    };
+
     setBusyCourseId(course._id);
     try {
       if (course.price === 0) {
         await EduService.enrollInCourse(course._id, 'free-course');
         await onRefresh();
+        openUnlockedCourse(course);
         return;
       }
 
       const checkout = await EduService.unlockCourse(course);
-      const popup = window.open(checkout.url, 'edumaster-stripe-checkout', 'popup=yes,width=520,height=760');
+      const popup = window.open(checkout.url, 'varonenglish-stripe-checkout', 'popup=yes,width=520,height=760');
 
       if (!popup) {
         throw new Error('Stripe popup was blocked. Please allow popups and try again.');
@@ -1021,6 +1206,7 @@ export const CoursesTab = ({
       });
 
       await onRefresh();
+      openUnlockedCourse(course);
     } finally {
       setBusyCourseId(null);
     }
@@ -1192,7 +1378,7 @@ export const CoursesTab = ({
   }, [selectedCourse?._id, selectedLesson?.id, selectedLesson?.type, selectedLessonAccess?.reason, canAccessLesson]);
 
   useEffect(() => {
-    if (studySidebarTab !== 'replays' || !selectedRecordingId || !user) {
+    if (courseWorkspaceTab !== 'sessions' || !selectedRecordingId || !user) {
       setSelectedRecordingAccess(null);
       setRecordingAccessError(null);
       setLoadingRecordingAccess(false);
@@ -1224,7 +1410,7 @@ export const CoursesTab = ({
     return () => {
       cancelled = true;
     };
-  }, [selectedRecordingId, studySidebarTab, user]);
+  }, [selectedRecordingId, courseWorkspaceTab, user]);
 
   useEffect(() => {
     setLessonProgressOverrides({});
@@ -1445,13 +1631,13 @@ export const CoursesTab = ({
     }
 
     const globalWindow = window as WindowWithProgressFlush;
-    globalWindow.__edumasterFlushProgress = async () => {
+    globalWindow.__varonenglishFlushProgress = async () => {
       await flushTrackedPlayback();
     };
 
     return () => {
-      if (globalWindow.__edumasterFlushProgress) {
-        delete globalWindow.__edumasterFlushProgress;
+      if (globalWindow.__varonenglishFlushProgress) {
+        delete globalWindow.__varonenglishFlushProgress;
       }
     };
   }, []);
@@ -1522,8 +1708,21 @@ export const CoursesTab = ({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    if (!pendingWorkspaceScrollRef.current || !courseWorkspaceSectionRef.current || typeof window === 'undefined') {
+      return;
+    }
+
+    const target = courseWorkspaceSectionRef.current;
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      pendingWorkspaceScrollRef.current = false;
+    });
+  }, [selectedCourse?._id, courseWorkspaceTab]);
+
   const handleSelectCourse = (courseId: string) => {
     void flushTrackedPlayback();
+    pendingWorkspaceScrollRef.current = true;
     setSelectedCourseId(courseId);
     setCourseWorkspaceTab('dashboard');
     setStudySidebarTab('notes');
@@ -1531,6 +1730,7 @@ export const CoursesTab = ({
   };
 
   const handleSelectLesson = (lessonId: string) => {
+    debugger
     void flushTrackedPlayback();
     setSelectedLessonId(lessonId);
     setCourseWorkspaceTab('player');
@@ -1600,91 +1800,169 @@ export const CoursesTab = ({
 
   return (
     <div className="space-y-5">
-      <section className={cn(
-        'overflow-hidden rounded-[34px] border border-[var(--line)] bg-white shadow-[0_22px_70px_rgba(15,23,42,0.07)]',
-        immersiveCourseView
-          ? 'p-4'
-          : 'bg-[radial-gradient(circle_at_top_right,rgba(201,106,43,0.18),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(22,32,51,0.08),transparent_22%),linear-gradient(180deg,#fffaf2_0%,#fffdf8_100%)] p-6',
-      )}>
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <SectionHeader
-            title={immersiveCourseView ? 'Course Switcher' : courseView === 'my' ? 'Study room' : 'Course catalog'}
-            caption={immersiveCourseView ? 'Change course without losing your place' : 'Choose course → open topic → study without confusion'}
-          />
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setCourseView('my')}
-              className={cn(
-                'rounded-full px-4 py-2 text-sm font-semibold transition',
-                courseView === 'my' ? 'bg-[var(--card-dark)] text-white' : 'bg-[var(--accent-cream)] text-[var(--ink-soft)]',
+      {!selectedCourse ? (
+        <section className={cn(
+          'overflow-hidden rounded-[34px] border border-[var(--line)] bg-white shadow-[0_22px_70px_rgba(15,23,42,0.07)]',
+          immersiveCourseView
+            ? 'p-4'
+            : 'bg-[radial-gradient(circle_at_top_right,rgba(201,106,43,0.18),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(22,32,51,0.08),transparent_22%),linear-gradient(180deg,#fffaf2_0%,#fffdf8_100%)] p-6',
+        )}>
+        <div className={cn('grid gap-5', immersiveCourseView ? 'xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.85fr)]' : 'xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.9fr)]')}>
+          <div>
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <SectionHeader
+                title={immersiveCourseView ? 'Switch course' : isStudentCoursePreview ? 'Course preview' : courseView === 'my' ? 'My courses' : 'All courses'}
+                caption={immersiveCourseView
+                  ? 'Change course without losing your place'
+                  : isStudentCoursePreview
+                    ? 'Review the full course structure here. Buy or unlock it to start the lesson videos.'
+                    : courseView === 'my'
+                      ? 'Open the courses you already unlocked and jump back into the right lesson.'
+                      : 'Browse every course, apply filters, and buy what you need without leaving this tab.'}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setCourseView('my')}
+                    className={cn(
+                      'rounded-full px-4 py-2 text-sm font-semibold transition',
+                      courseView === 'my' ? 'bg-[var(--card-dark)] text-white' : 'bg-[var(--accent-cream)] text-[var(--ink-soft)]',
+                    )}
+                  >
+                    My courses ({enrolledCourseCount})
+                  </button>
+                  <button
+                    onClick={() => setCourseView('catalog')}
+                    className={cn(
+                      'rounded-full px-4 py-2 text-sm font-semibold transition',
+                      courseView === 'catalog' ? 'bg-[var(--card-dark)] text-white' : 'bg-[var(--accent-cream)] text-[var(--ink-soft)]',
+                    )}
+                  >
+                    All courses ({overview.courses.length})
+                  </button>
+                </div>
+                {isStudentCoursePreview && (
+                  <div className="rounded-full bg-white/80 px-4 py-2 text-sm font-semibold text-[var(--accent-rust)] shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+                    Previewing this course
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className={cn('grid gap-3', immersiveCourseView ? 'mt-4 lg:grid-cols-[minmax(0,1.5fr)_200px_200px]' : 'mt-5 lg:grid-cols-[minmax(0,1.5fr)_220px_220px]')}>
+              <label className="flex items-center gap-3 rounded-[22px] border border-[var(--line)] bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition focus-within:border-[var(--accent-rust)]">
+                <Search className="h-4 w-4 text-[var(--ink-soft)]" />
+                <input
+                  value={courseQuery}
+                  onChange={(event) => setCourseQuery(event.target.value)}
+                  placeholder={courseView === 'my' ? 'Search your courses or subjects' : 'Search all courses, subjects, or teachers'}
+                  className="w-full bg-transparent text-[var(--ink)] outline-none placeholder:text-[var(--ink-soft)]/85"
+                />
+              </label>
+              {courseView === 'catalog' ? (
+                <>
+                  <select
+                    value={accessFilter}
+                    onChange={(event) => setAccessFilter(event.target.value as typeof accessFilter)}
+                    className="rounded-[22px] border border-[var(--line)] bg-white px-4 py-3 text-[var(--ink)] outline-none shadow-[0_8px_20px_rgba(15,23,42,0.04)]"
+                  >
+                    <option value="all">All access types</option>
+                    <option value="unlocked">Unlocked</option>
+                    <option value="premium">Premium</option>
+                    <option value="free">Free</option>
+                  </select>
+                  <select
+                    value={categoryFilter}
+                    onChange={(event) => setCategoryFilter(event.target.value)}
+                    className="rounded-[22px] border border-[var(--line)] bg-white px-4 py-3 text-[var(--ink)] outline-none shadow-[0_8px_20px_rgba(15,23,42,0.04)]"
+                  >
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category === 'all' ? 'All categories' : category}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <div className="rounded-[22px] border border-[var(--line)] bg-white px-4 py-3 text-sm text-[var(--ink-soft)] shadow-[0_8px_20px_rgba(15,23,42,0.04)] lg:col-span-2">
+                  {isStudentCoursePreview
+                    ? 'You are previewing this course. Complete payment to unlock lesson videos.'
+                    : 'Switch to All courses to browse, filter, and buy from this same screen.'}
+                </div>
               )}
-            >
-              My courses
-            </button>
-            <button
-              onClick={() => setCourseView('catalog')}
-              className={cn(
-                'rounded-full px-4 py-2 text-sm font-semibold transition',
-                courseView === 'catalog' ? 'bg-[var(--card-dark)] text-white' : 'bg-[var(--accent-cream)] text-[var(--ink-soft)]',
-              )}
-            >
-              Explore catalog
-            </button>
+            </div>
+
+            {!immersiveCourseView && courseView === 'catalog' && categories.length > 1 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {categories.slice(0, 6).map((category) => (
+                  <FilterChip
+                    key={category}
+                    active={categoryFilter === category}
+                    label={category === 'all' ? 'All categories' : category}
+                    onClick={() => setCategoryFilter(category)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
+
+          {!immersiveCourseView && selectedCourse && (
+            <div className="rounded-[30px] border border-[#22324b] bg-[linear-gradient(135deg,#172033_0%,#22324b_100%)] p-5 text-white shadow-[0_24px_44px_rgba(15,23,42,0.16)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/60">Course overview</p>
+              <h3 className="mt-3 text-2xl font-semibold leading-tight">{selectedCourse.title}</h3>
+              <p className="mt-2 text-sm text-white/74">{selectedCourse.subject} • {selectedCourse.instructor}</p>
+              <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/12">
+                <div className="h-full rounded-full bg-[#72ff9b]" style={{ width: `${selectedCourseSnapshot.progressPercent}%` }} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-white/74">
+                <span className="rounded-full bg-white/10 px-3 py-2">{selectedCourseSnapshot.progressPercent}% complete</span>
+                <span className="rounded-full bg-white/10 px-3 py-2">{selectedCourseSnapshot.completedLessons}/{selectedCourseSnapshot.totalLessons} topics done</span>
+                <span className="rounded-full bg-white/10 px-3 py-2">{selectedCourseSavedCount} saved</span>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <button
+                  type="button"
+                  onClick={() => continueLessonEntry && handleSelectLesson(continueLessonEntry.lesson.id)}
+                  disabled={!continueLessonEntry}
+                  className="rounded-[18px] bg-white px-4 py-3 text-sm font-semibold text-[#172033] disabled:opacity-50"
+                >
+                  {selectedCourse.continueLesson ? 'Continue lesson' : 'Start lesson'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCourseWorkspaceTab('subjects')}
+                  className="rounded-[18px] border border-white/18 bg-white/10 px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Open subjects
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCourseWorkspaceTab('sessions')}
+                  className="rounded-[18px] border border-white/18 bg-white/10 px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Live & replays
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className={cn('grid gap-3', immersiveCourseView ? 'mt-4 lg:grid-cols-[minmax(0,1.5fr)_200px_200px]' : 'mt-5 lg:grid-cols-[minmax(0,1.5fr)_220px_220px]')}>
-          <input
-            value={courseQuery}
-            onChange={(event) => setCourseQuery(event.target.value)}
-            placeholder="Search courses, exams, subjects, or instructors"
-            className="rounded-[22px] border border-[var(--line)] bg-white px-4 py-3 text-[var(--ink)] outline-none transition focus:border-[var(--accent-rust)]"
-          />
-          <select
-            value={accessFilter}
-            onChange={(event) => setAccessFilter(event.target.value as typeof accessFilter)}
-            className="rounded-[22px] border border-[var(--line)] bg-white px-4 py-3 text-[var(--ink)] outline-none"
-          >
-            <option value="all">All access types</option>
-            <option value="unlocked">Unlocked</option>
-            <option value="premium">Premium</option>
-            <option value="free">Free</option>
-          </select>
-          <select
-            value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
-            className="rounded-[22px] border border-[var(--line)] bg-white px-4 py-3 text-[var(--ink)] outline-none"
-          >
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category === 'all' ? 'All categories' : category}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-3 text-sm text-[var(--ink-soft)]">
-          <span className="rounded-full bg-white px-4 py-2">{filteredCourses.length} course{filteredCourses.length === 1 ? '' : 's'} visible</span>
-          <span className="rounded-full bg-white px-4 py-2">{filteredCourses.filter((course) => course.enrolled).length} unlocked</span>
-          <span className="rounded-full bg-white px-4 py-2">{filteredCourses.reduce((sum, course) => sum + (course.lessonCount || 0), 0)} total topics</span>
-        </div>
-
-        {filteredCourses.length === 0 ? (
+        {courseCards.length === 0 ? (
           <div className="mt-6 rounded-[24px] border border-dashed border-[var(--line)] bg-white/70 p-6 text-center text-[var(--ink-soft)]">
             {courseView === 'my'
-              ? 'You have not unlocked any courses yet. Switch to Explore catalog to browse available courses.'
+              ? 'You have not unlocked any courses yet. Switch to All courses to browse and buy from here.'
               : 'No courses match your current search and filters. Try a different keyword or category.'}
           </div>
         ) : (
           immersiveCourseView ? (
             <div className="mt-4 overflow-x-auto pb-2">
-              <div className="flex min-w-max gap-3">
-                {filteredCourses.map((course) => (
+              <div className="grid grid-flow-col auto-cols-[minmax(260px,82vw)] gap-3 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-2 2xl:grid-cols-3">
+                {courseCards.map((course) => (
                   <button
                     key={course._id}
                     onClick={() => handleSelectCourse(course._id)}
                     className={cn(
-                      'flex w-[280px] shrink-0 items-center gap-3 rounded-[24px] border px-4 py-4 text-left transition sm:w-[320px]',
+                      'flex w-full items-center gap-3 rounded-[24px] border px-4 py-4 text-left transition sm:w-auto',
                       selectedCourse?._id === course._id
                         ? 'border-[var(--accent-rust)] bg-[var(--accent-cream)] text-[var(--ink)]'
                         : 'border-[var(--line)] bg-white text-[var(--ink-soft)] hover:border-[var(--accent-rust)]/40',
@@ -1700,61 +1978,112 @@ export const CoursesTab = ({
               </div>
             </div>
           ) : (
-            <div className="mt-6 overflow-x-auto pb-2">
-              <div className="flex min-w-max gap-4">
-                {filteredCourses.map((course) => (
-                  <button
-                    key={course._id}
-                    onClick={() => handleSelectCourse(course._id)}
-                    className={cn(
-                      'w-[300px] rounded-[26px] border p-4 text-left transition',
-                      selectedCourse?._id === course._id
-                        ? 'border-[var(--accent-rust)] bg-[var(--accent-cream)] shadow-[0_16px_30px_rgba(201,106,43,0.12)]'
-                        : 'border-[var(--line)] bg-white hover:border-[var(--accent-rust)]/35',
-                    )}
-                  >
-                    <div className="flex gap-4">
-                      <img src={course.thumbnailUrl} alt={course.title} className="h-20 w-20 shrink-0 rounded-[20px] object-cover" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--ink-soft)]">{course.category}</p>
-                          <span className={cn(
-                            'rounded-full px-3 py-1 text-xs font-semibold',
-                            course.enrolled
-                              ? 'bg-[var(--success-soft)] text-[var(--success)]'
-                              : course.price === 0
-                                ? 'bg-[#f3f0ff] text-[#5c45a5]'
-                                : 'bg-[#fff3eb] text-[var(--accent-rust)]',
-                          )}>
-                            {course.enrolled ? 'Unlocked' : course.price === 0 ? 'Free' : 'Premium'}
-                          </span>
+            <div className="mt-6 overflow-x-auto pb-2 lg:overflow-visible">
+              <div className={cn(
+                'grid gap-4',
+                (isAdmin || courseView === 'catalog' || isStudentCoursePreview)
+                  ? 'grid-flow-col auto-cols-[minmax(300px,86vw)] lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-2 2xl:grid-cols-3'
+                  : 'grid-flow-row auto-cols-auto md:grid-cols-2 2xl:grid-cols-3',
+              )}>
+                {courseCards.map((course) => {
+                  const courseSnapshot = getCourseProgressSnapshot(course, lessonProgressOverrides);
+                  return (
+                    <button
+                      key={course._id}
+                      onClick={() => handleSelectCourse(course._id)}
+                      className={cn(
+                        'rounded-[28px] border p-4 text-left transition duration-200 hover:-translate-y-0.5',
+                        selectedCourse?._id === course._id
+                          ? 'border-[var(--accent-rust)] bg-[var(--accent-cream)] shadow-[0_16px_30px_rgba(201,106,43,0.12)]'
+                          : 'border-[var(--line)] bg-white hover:border-[var(--accent-rust)]/35',
+                      )}
+                    >
+                      <div className="flex gap-4">
+                        <img src={course.thumbnailUrl} alt={course.title} className="h-20 w-20 shrink-0 rounded-[20px] object-cover shadow-[0_14px_28px_rgba(15,23,42,0.12)]" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--ink-soft)]">{course.category}</p>
+                            <span className={cn(
+                              'rounded-full px-3 py-1 text-xs font-semibold',
+                              course.enrolled
+                                ? 'bg-[var(--success-soft)] text-[var(--success)]'
+                                : course.price === 0
+                                  ? 'bg-[#eef7ff] text-[#2484d8]'
+                                  : 'bg-[#fff3eb] text-[var(--accent-rust)]',
+                            )}>
+                              {course.enrolled ? 'Active' : course.price === 0 ? 'Free' : currency.format(course.price)}
+                            </span>
+                          </div>
+                          <h3 className="mt-2 line-clamp-2 text-lg font-semibold text-[var(--ink)]">{course.title}</h3>
+                          <p className="mt-2 text-sm text-[var(--ink-soft)]">{course.subject}</p>
+                          <p className="mt-3 text-xs font-medium text-[var(--ink-soft)]/80">{course.lessonCount || 0} topics • {course.instructor}</p>
                         </div>
-                        <h3 className="mt-2 line-clamp-2 text-lg font-semibold text-[var(--ink)]">{course.title}</h3>
-                        <p className="mt-2 text-sm text-[var(--ink-soft)]">{course.subject}</p>
-                        <p className="mt-3 text-xs font-medium text-[var(--ink-soft)]/80">{course.lessonCount || 0} topics • {course.instructor}</p>
                       </div>
-                    </div>
-                  </button>
-                ))}
+
+                      {course.enrolled ? (
+                        <div className="mt-4 rounded-[18px] bg-white/80 px-4 py-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-soft)]">Progress</p>
+                          <div className="mt-2 flex items-center justify-between gap-3">
+                            <p className="text-lg font-semibold text-[var(--ink)]">{courseSnapshot.progressPercent}% done</p>
+                            <p className="text-sm text-[var(--ink-soft)]">{courseSnapshot.completedLessons}/{courseSnapshot.totalLessons}</p>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--line)]">
+                            <div className="h-full rounded-full bg-[var(--accent-rust)]" style={{ width: `${courseSnapshot.progressPercent}%` }} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-[18px] bg-white/80 px-4 py-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-soft)]">Course access</p>
+                          <p className="mt-2 text-sm leading-6 text-[var(--ink-soft)]">
+                            {course.price === 0 ? 'Start this free course instantly.' : 'Buy this course here to access subjects, lessons, and video.'}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <span className="text-sm text-[var(--ink-soft)]">
+                          {course.enrolled ? 'Tap to open subjects and lessons' : 'Tap to preview details and buy'}
+                        </span>
+                        <span className="rounded-full bg-[#172033] px-4 py-2 text-sm font-semibold text-white">
+                          {selectedCourse?._id === course._id ? 'Opened' : 'Open'}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )
         )}
       </section>
 
-      {selectedCourse ? (
-        <section className="overflow-hidden rounded-[34px] border border-[var(--line)] bg-white shadow-[0_24px_70px_rgba(15,23,42,0.07)]">
+      ) : (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setSelectedCourseId(null)}
+              className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink-soft)] transition hover:border-[var(--ink)] hover:text-[var(--ink)]"
+            >
+              ← Back to courses
+            </button>
+          </div>
+        <section
+          ref={courseWorkspaceSectionRef}
+          className="overflow-hidden rounded-[34px] border border-[var(--line)] bg-white shadow-[0_24px_70px_rgba(15,23,42,0.07)]"
+        >
           <div className={cn(
             'text-white',
             immersiveCourseView
               ? 'bg-[linear-gradient(135deg,#1f2937_0%,#162033_100%)] px-5 py-5'
-              : 'bg-[radial-gradient(circle_at_top_right,rgba(201,106,43,0.34),transparent_24%),linear-gradient(135deg,#1f2937_0%,#162033_100%)] px-6 py-7',
+              : 'bg-[linear-gradient(135deg,#1a253b_0%,#22324b_100%)] px-5 py-5 sm:px-6',
           )}>
             <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">Course Hub</p>
-                <h2 className={cn('font-semibold', immersiveCourseView ? 'mt-2 text-2xl' : 'mt-3 text-3xl')}>{selectedCourse.title}</h2>
-                <p className="mt-2 text-sm text-white/80">{selectedCourse.subject} • {selectedCourse.instructor} • {selectedCourse.validityDays} day access</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/72">Course workspace</p>
+                <h2 className={cn('font-semibold', immersiveCourseView ? 'mt-2 text-2xl' : 'mt-2 text-2xl sm:text-[2rem]')}>{selectedCourse.title}</h2>
+                <p className="mt-2 text-sm text-white/78">
+                  {selectedCourse.subject} • {selectedCourse.instructor} • {selectedCourse.validityDays} day access
+                </p>
                 <div className={cn('h-2 w-full max-w-[420px] overflow-hidden rounded-full bg-white/15', immersiveCourseView ? 'mt-4' : 'mt-5')}>
                   <div className="h-full rounded-full bg-[#72ff9b]" style={{ width: `${selectedCourseSnapshot.progressPercent}%` }} />
                 </div>
@@ -1774,7 +2103,7 @@ export const CoursesTab = ({
                     className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 font-semibold text-[#2638d8] transition hover:bg-white/90 disabled:opacity-60"
                   >
                     {busyCourseId === selectedCourse._id ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
-                    {selectedCourse.price === 0 ? 'Start free course' : `Unlock ${currency.format(selectedCourse.price)}`}
+                    {getCoursePurchaseLabel(selectedCourse)}
                   </button>
                 )}
                 {selectedCourse.officialChannelUrl && (
@@ -1791,18 +2120,20 @@ export const CoursesTab = ({
             </div>
           </div>
 
-          <div className="border-b border-[var(--line)] bg-white px-6">
-            <div className="flex flex-wrap gap-8">
+          <div className="border-b border-[var(--line)] bg-white px-4 sm:px-6">
+            <div className="flex gap-5 overflow-x-auto">
               {[
-                { key: 'dashboard', label: 'Dashboard' },
-                { key: 'subjects', label: 'Subject View' },
-                { key: 'player', label: 'Lesson Player' },
+                { key: 'dashboard', label: 'Home' },
+                { key: 'subjects', label: 'Subjects' },
+                { key: 'player', label: 'Lesson' },
+                { key: 'sessions', label: 'Live & replays' },
               ].map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setCourseWorkspaceTab(tab.key as typeof courseWorkspaceTab)}
+                  data-testid={`course-workspace-${tab.key}`}
                   className={cn(
-                    'border-b-2 px-2 py-4 text-sm font-semibold transition',
+                    'shrink-0 border-b-2 px-2 py-4 text-sm font-semibold transition',
                     courseWorkspaceTab === tab.key
                       ? 'border-[var(--accent-rust)] text-[var(--accent-rust)]'
                       : 'border-transparent text-[var(--ink-soft)] hover:text-[var(--ink)]',
@@ -1815,172 +2146,160 @@ export const CoursesTab = ({
           </div>
 
           {courseWorkspaceTab === 'dashboard' ? (
-            <div className="grid gap-6 bg-[var(--accent-cream)]/35 p-6 xl:grid-cols-[minmax(0,1.3fr)_320px]">
-              <div className="space-y-6">
-                <section className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">Suggested Activity</p>
-                      <h3 className="mt-3 text-2xl font-semibold text-[var(--ink)]">{continueLessonEntry?.lesson.title || 'Start your first topic'}</h3>
-                      <p className="mt-2 text-sm text-[var(--ink-soft)]">
-                        {continueLessonEntry
-                          ? [continueLessonEntry.moduleTitle, continueLessonEntry.chapterTitle, `${continueLessonEntry.lesson.durationMinutes} mins`].filter(Boolean).join(' • ')
-                          : 'Open a topic to start learning.'}
-                      </p>
+            <div className="space-y-5 bg-[var(--accent-cream)]/35 p-4 sm:p-6">
+              <section className="overflow-hidden rounded-[30px] border border-[var(--line)] bg-[linear-gradient(135deg,#fffdfa_0%,#fff5e6_100%)] p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">Course home</p>
+                    <h3 className="mt-3 text-2xl font-semibold text-[var(--ink)]">
+                      {continueLessonEntry?.lesson.title || selectedCourse.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-[var(--ink-soft)]">
+                      {continueLessonEntry
+                        ? [continueLessonEntry.moduleTitle, continueLessonEntry.chapterTitle, `${continueLessonEntry.lesson.durationMinutes} mins`].filter(Boolean).join(' • ')
+                        : 'Choose a subject and open the first lesson. This screen keeps the next move obvious.'}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-[var(--ink-soft)]">
+                        {selectedCourseSnapshot.progressPercent}% course progress
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-[var(--ink-soft)]">
+                        {selectedCourseSavedCount} saved topics
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-[var(--ink-soft)]">
+                        {selectedCourseSessions.length} live & replay session{selectedCourseSessions.length === 1 ? '' : 's'}
+                      </span>
                     </div>
+                  </div>
+                  <div className="grid w-full gap-3 sm:grid-cols-2 lg:max-w-[360px]">
                     <button
+                      type="button"
                       onClick={() => continueLessonEntry && handleSelectLesson(continueLessonEntry.lesson.id)}
                       disabled={!continueLessonEntry}
-                      className="rounded-[16px] bg-[var(--accent-rust)] px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(201,106,43,0.22)] disabled:opacity-50"
+                      className="rounded-[18px] bg-[var(--accent-rust)] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(201,106,43,0.22)] disabled:opacity-50"
                     >
-                      {selectedCourse.continueLesson ? 'Continue learning' : 'Start lesson'}
+                      {selectedCourse.continueLesson ? 'Continue lesson' : 'Start lesson'}
                     </button>
-                  </div>
-                </section>
-
-                <section>
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">Your Subjects</p>
-                      <h3 className="mt-2 text-3xl font-semibold text-[var(--ink)]">Course modules</h3>
-                    </div>
                     <button
+                      type="button"
                       onClick={() => setCourseWorkspaceTab('subjects')}
-                      className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--accent-rust)]"
+                      className="rounded-[18px] border border-[var(--line)] bg-white px-5 py-3 text-sm font-semibold text-[var(--ink)]"
                     >
-                      View all
+                      Open subjects
                     </button>
-                  </div>
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    {selectedCourse.modules.map((module) => {
-                      const snapshot = getModuleProgressSnapshot(module, lessonProgressMap);
-                      const nextEntry = getStandaloneModuleLessonEntries(module).find((entry) => !lessonProgressMap.get(entry.lesson.id)?.completed)
-                        || getStandaloneModuleLessonEntries(module)[0];
-
-                      return (
-                        <div key={module.id} className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
-                          <div className="flex items-start gap-4">
-                            <img src={selectedCourse.thumbnailUrl} alt={selectedCourse.title} className="h-20 w-32 rounded-[18px] object-cover" />
-                            <div className="min-w-0 flex-1">
-                              <p className="inline-flex rounded-full bg-[#eef6ff] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2484d8]">Subject module</p>
-                              <h4 className="mt-3 line-clamp-2 text-2xl font-semibold leading-tight text-[var(--ink)]">{module.title}</h4>
-                              <div className="mt-3 flex items-center gap-2 text-sm text-[var(--ink-soft)]">
-                                <span>{snapshot.progressPercent}%</span>
-                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--line)]">
-                                  <div className="h-full rounded-full bg-[var(--accent-rust)]" style={{ width: `${snapshot.progressPercent}%` }} />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-5 rounded-[20px] bg-[var(--accent-cream)] p-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Suggested activity</p>
-                            <p className="mt-3 text-lg font-semibold text-[var(--ink)]">{nextEntry?.lesson.title || 'No lesson available'}</p>
-                            <p className="mt-1 text-sm text-[var(--ink-soft)]">{nextEntry ? `${nextEntry.lesson.durationMinutes} mins lesson` : 'Add lessons in admin to begin.'}</p>
-                          </div>
-
-                          <div className="mt-5 flex flex-wrap gap-3">
-                            <button
-                              onClick={() => {
-                                setSelectedModuleId(module.id);
-                                setCourseWorkspaceTab('subjects');
-                              }}
-                              className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)]"
-                            >
-                              Open subject
-                            </button>
-                            {nextEntry && (
-                              <button
-                                onClick={() => handleSelectLesson(nextEntry.lesson.id)}
-                                className="rounded-full bg-[var(--accent-rust)] px-4 py-2 text-sm font-semibold text-white"
-                              >
-                                Continue learning
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              </div>
-
-              <aside className="space-y-4">
-                <div className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Quick actions</p>
-                  <div className="mt-4 space-y-3">
                     <button
+                      type="button"
                       onClick={() => setCourseWorkspaceTab('player')}
-                      className="flex w-full items-center justify-between rounded-[18px] bg-[var(--accent-cream)] px-4 py-4 text-left"
+                      className="rounded-[18px] border border-[var(--line)] bg-white px-5 py-3 text-sm font-semibold text-[var(--ink)]"
                     >
-                      <span>
-                        <span className="block text-base font-semibold text-[var(--ink)]">Lesson player</span>
-                        <span className="mt-1 block text-sm text-[var(--ink-soft)]">Resume the protected player experience</span>
-                      </span>
-                      <ChevronRight className="h-5 w-5 text-[var(--accent-rust)]" />
+                      Lesson player
                     </button>
                     <button
-                      onClick={() => {
-                        setStudySidebarTab('assistant');
-                        setCourseWorkspaceTab('player');
-                      }}
-                      className="flex w-full items-center justify-between rounded-[18px] bg-[var(--accent-cream)] px-4 py-4 text-left"
+                      type="button"
+                      onClick={() => setCourseWorkspaceTab('sessions')}
+                      className="rounded-[18px] border border-[var(--line)] bg-white px-5 py-3 text-sm font-semibold text-[var(--ink)]"
                     >
-                      <span>
-                        <span className="block text-base font-semibold text-[var(--ink)]">Doubts</span>
-                        <span className="mt-1 block text-sm text-[var(--ink-soft)]">Ask the AI helper for topic clarity</span>
-                      </span>
-                      <MessageSquare className="h-5 w-5 text-[var(--accent-rust)]" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setStudySidebarTab('replays');
-                        setCourseWorkspaceTab('player');
-                      }}
-                      className="flex w-full items-center justify-between rounded-[18px] bg-[var(--accent-cream)] px-4 py-4 text-left"
-                    >
-                      <span>
-                        <span className="block text-base font-semibold text-[var(--ink)]">Sessions</span>
-                        <span className="mt-1 block text-sm text-[var(--ink-soft)]">
-                          {selectedCourseLiveSessions.length > 0
-                            ? `${selectedCourseLiveSessions.length} live now`
-                            : `${selectedCourseSessions.length} session${selectedCourseSessions.length === 1 ? '' : 's'} available`}
-                        </span>
-                      </span>
-                      {selectedCourseLiveSessions.length > 0 ? (
-                        <Radio className="h-5 w-5 text-[var(--accent-rust)]" />
-                      ) : (
-                        <Video className="h-5 w-5 text-[var(--accent-rust)]" />
-                      )}
+                      Live & replays
                     </button>
                   </div>
+                </div>
+              </section>
+
+              <section className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-[24px] border border-[var(--line)] bg-white p-4 shadow-[0_16px_30px_rgba(15,23,42,0.04)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Course progress</p>
+                  <p className="mt-3 text-3xl font-semibold text-[var(--ink)]">{selectedCourseSnapshot.progressPercent}%</p>
+                  <p className="mt-2 text-sm text-[var(--ink-soft)]">{selectedCourseSnapshot.completedLessons}/{selectedCourseSnapshot.totalLessons} topics completed</p>
+                </div>
+                <div className="rounded-[24px] border border-[var(--line)] bg-white p-4 shadow-[0_16px_30px_rgba(15,23,42,0.04)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Subjects</p>
+                  <p className="mt-3 text-3xl font-semibold text-[var(--ink)]">{selectedCourse.modules.length}</p>
+                  <p className="mt-2 text-sm text-[var(--ink-soft)]">Subjects available in this course</p>
+                </div>
+                <div className="rounded-[24px] border border-[var(--line)] bg-white p-4 shadow-[0_16px_30px_rgba(15,23,42,0.04)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Live & replays</p>
+                  <p className="mt-3 text-3xl font-semibold text-[var(--ink)]">{selectedCourseLiveSessions.length + selectedCourseUpcomingSessions.length}</p>
+                  <p className="mt-2 text-sm text-[var(--ink-soft)]">Live or upcoming classes in this course</p>
+                </div>
+              </section>
+
+              <section className="rounded-[30px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">Subjects</p>
+                    <h3 className="mt-2 text-2xl font-semibold text-[var(--ink)]">Choose a subject and continue</h3>
+                    <p className="mt-2 text-sm text-[var(--ink-soft)]">Keep the first screen short. Open a subject, then open a lesson.</p>
+                  </div>
+                  <button
+                    onClick={() => setCourseWorkspaceTab('subjects')}
+                    className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--accent-rust)]"
+                  >
+                    View all subjects
+                  </button>
                 </div>
 
-                <div className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Course stats</p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                    <div className="rounded-[18px] bg-[var(--accent-cream)] p-4">
-                      <p className="text-sm text-[var(--ink-soft)]">Saved topics</p>
-                      <p className="mt-2 text-2xl font-semibold text-[var(--ink)]">{selectedCourseSavedCount}</p>
-                    </div>
-                    <div className="rounded-[18px] bg-[var(--accent-cream)] p-4">
-                      <p className="text-sm text-[var(--ink-soft)]">Modules</p>
-                      <p className="mt-2 text-2xl font-semibold text-[var(--ink)]">{selectedCourse.modules.length}</p>
-                    </div>
-                    <div className="rounded-[18px] bg-[var(--accent-cream)] p-4">
-                      <p className="text-sm text-[var(--ink-soft)]">Sessions</p>
-                      <p className="mt-2 text-2xl font-semibold text-[var(--ink)]">{selectedCourseSessions.length}</p>
-                    </div>
-                  </div>
+                <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                  {selectedCourse.modules.slice(0, 4).map((module) => {
+                    const snapshot = getModuleProgressSnapshot(module, lessonProgressMap);
+                    const nextEntry = getStandaloneModuleLessonEntries(module).find((entry) => !lessonProgressMap.get(entry.lesson.id)?.completed)
+                      || getStandaloneModuleLessonEntries(module)[0];
+
+                    return (
+                      <div key={module.id} className="rounded-[24px] border border-[var(--line)] bg-[var(--accent-cream)]/45 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-base font-semibold text-[var(--ink)]">{module.title}</p>
+                            <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                              {snapshot.completedLessons}/{snapshot.totalLessons} lessons completed
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[var(--accent-rust)]">
+                            {snapshot.progressPercent}%
+                          </span>
+                        </div>
+
+                        <div className="mt-4 rounded-[18px] bg-white px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Next lesson</p>
+                          <p className="mt-2 text-sm font-semibold text-[var(--ink)]">{nextEntry?.lesson.title || 'No lesson available yet'}</p>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedModuleId(module.id);
+                              setCourseWorkspaceTab('subjects');
+                            }}
+                            className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)]"
+                          >
+                            Open subject
+                          </button>
+                          {nextEntry && (
+                            <button
+                              onClick={() => handleSelectLesson(nextEntry.lesson.id)}
+                              className="rounded-full bg-[var(--accent-rust)] px-4 py-2 text-sm font-semibold text-white"
+                            >
+                              Continue lesson
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </aside>
+
+                {selectedCourse.modules.length > 4 && (
+                  <p className="mt-4 text-sm text-[var(--ink-soft)]">
+                    {selectedCourse.modules.length - 4} more subject{selectedCourse.modules.length - 4 === 1 ? '' : 's'} are available in the Subjects tab.
+                  </p>
+                )}
+              </section>
             </div>
           ) : courseWorkspaceTab === 'subjects' ? (
-            <div className="grid gap-6 bg-[var(--accent-cream)]/35 p-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <aside className="rounded-[26px] border border-[var(--line)] bg-white shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+            <div className="grid gap-5 bg-[var(--accent-cream)]/35 p-4 sm:p-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+              <aside className="rounded-[26px] border border-[var(--line)] bg-white shadow-[0_18px_35px_rgba(15,23,42,0.04)] lg:sticky lg:top-6 lg:self-start">
                 <div className="border-b border-[var(--line)] px-5 py-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">Subjects</p>
-                  <p className="mt-2 text-lg font-semibold text-[var(--ink)]">Course curriculum</p>
+                  <p className="mt-2 text-lg font-semibold text-[var(--ink)]">Choose a subject</p>
                 </div>
                 <div className="space-y-1 p-3">
                   {selectedCourse.modules.map((module) => {
@@ -2017,7 +2336,7 @@ export const CoursesTab = ({
                         onClick={() => handleSelectLesson(selectedModuleEntries[0].lesson.id)}
                         className="rounded-[16px] bg-[var(--accent-rust)] px-6 py-3 text-sm font-semibold text-white"
                       >
-                        Open subject lessons
+                        Open first lesson
                       </button>
                     )}
                   </div>
@@ -2082,21 +2401,340 @@ export const CoursesTab = ({
                 </div>
               </div>
             </div>
+          ) : courseWorkspaceTab === 'sessions' ? (
+            <div className="grid gap-5 bg-[var(--accent-cream)]/35 p-4 sm:p-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+              <div className="space-y-5">
+                <section className="rounded-[28px] border border-[var(--line)] bg-[linear-gradient(135deg,#172033_0%,#2a3b58_100%)] p-5 text-white shadow-[0_20px_45px_rgba(15,23,42,0.16)]">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Course sessions</p>
+                      <h3 className="mt-3 text-2xl font-semibold">Live classes, upcoming schedule, and replay archive</h3>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-white/78">
+                        Keep recorded sessions separate from lesson study so students can quickly decide whether they want to join live, check the plan, or watch a replay.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 sm:min-w-[280px]">
+                      <div className="rounded-[18px] bg-white/10 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-white/65">Live</p>
+                        <p className="mt-2 text-2xl font-semibold">{selectedCourseLiveSessions.length}</p>
+                      </div>
+                      <div className="rounded-[18px] bg-white/10 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-white/65">Upcoming</p>
+                        <p className="mt-2 text-2xl font-semibold">{selectedCourseUpcomingSessions.length}</p>
+                      </div>
+                      <div className="rounded-[18px] bg-white/10 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-white/65">Recordings</p>
+                        <p className="mt-2 text-2xl font-semibold">{selectedCourseRecordings.length}</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Browse archive</p>
+                      <h3 className="mt-2 text-xl font-semibold text-[var(--ink)]">Find the right session fast</h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {([
+                        ['all', 'All sessions'],
+                        ['live', 'Live now'],
+                        ['upcoming', 'Upcoming'],
+                        ['recorded', 'Recordings'],
+                      ] as const).map(([filter, label]) => (
+                        <button
+                          key={filter}
+                          onClick={() => setSessionViewFilter(filter)}
+                          className={cn(
+                            'rounded-full px-4 py-2 text-sm font-semibold transition',
+                            sessionViewFilter === filter
+                              ? 'bg-[var(--card-dark)] text-white'
+                              : 'bg-[var(--accent-cream)] text-[var(--ink-soft)]',
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                {filteredCourseSessions.length === 0 ? (
+                  <div className="rounded-[24px] border border-dashed border-[var(--line)] bg-white p-6 text-sm text-[var(--ink-soft)]">
+                    No sessions match this filter yet. Try another view or schedule a live class from admin.
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {(sessionViewFilter === 'all' || sessionViewFilter === 'live') && selectedCourseLiveSessions.length > 0 && (
+                      <section className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+                        <div className="flex items-center gap-3">
+                          <Radio className="h-5 w-5 text-[var(--accent-rust)]" />
+                          <div>
+                            <p className="text-lg font-semibold text-[var(--ink)]">Live now</p>
+                            <p className="text-sm text-[var(--ink-soft)]">Enter the ongoing class directly from the course hub.</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 space-y-3">
+                          {selectedCourseLiveSessions.map((session) => (
+                            <button
+                              key={session._id}
+                              onClick={() => setSelectedRecordingId(session._id)}
+                              data-testid={`course-session-${session._id}`}
+                              className={cn(
+                                'w-full rounded-[22px] border p-4 text-left transition',
+                                selectedRecordingId === session._id
+                                  ? 'border-[#8ec5ff] bg-[#eef6ff]'
+                                  : 'border-[#e2ebf4] bg-white hover:border-[#c8d8ea]',
+                              )}
+                            >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={cn('rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]', getLiveClassChipClasses(session))}>
+                                      {getLiveClassLabel(session)}
+                                    </span>
+                                    <span className="rounded-full bg-[var(--accent-cream)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                                      {formatSessionDuration(session.durationMinutes)}
+                                    </span>
+                                  </div>
+                                  <p className="mt-3 text-lg font-semibold text-[var(--ink)]">{session.title}</p>
+                                  <p className="mt-1 text-sm text-[var(--ink-soft)]">{session.instructor} • {formatSessionDateTime(session.startTime)}</p>
+                                  <p className="mt-2 text-xs font-medium uppercase tracking-[0.12em] text-[#8a9ab0]">
+                                    {getLiveClassContextLabel(session, selectedCourse?.subject || 'Course session')}
+                                  </p>
+                                </div>
+                                <ChevronRight className="h-5 w-5 text-[var(--accent-rust)]" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {(sessionViewFilter === 'all' || sessionViewFilter === 'upcoming') && selectedCourseUpcomingSessions.length > 0 && (
+                      <section className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+                        <div className="flex items-center gap-3">
+                          <CalendarClock className="h-5 w-5 text-[var(--accent-rust)]" />
+                          <div>
+                            <p className="text-lg font-semibold text-[var(--ink)]">Upcoming sessions</p>
+                            <p className="text-sm text-[var(--ink-soft)]">Students can see what is next without digging through the lesson player.</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 space-y-3">
+                          {selectedCourseUpcomingSessions.map((session) => (
+                            <button
+                              key={session._id}
+                              onClick={() => setSelectedRecordingId(session._id)}
+                              data-testid={`course-session-${session._id}`}
+                              className={cn(
+                                'w-full rounded-[22px] border p-4 text-left transition',
+                                selectedRecordingId === session._id
+                                  ? 'border-[#8ec5ff] bg-[#eef6ff]'
+                                  : 'border-[#e2ebf4] bg-white hover:border-[#c8d8ea]',
+                              )}
+                            >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={cn('rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]', getLiveClassChipClasses(session))}>
+                                      {getLiveClassLabel(session)}
+                                    </span>
+                                    <span className="rounded-full bg-[var(--accent-cream)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                                      {formatSessionDuration(session.durationMinutes)}
+                                    </span>
+                                  </div>
+                                  <p className="mt-3 text-lg font-semibold text-[var(--ink)]">{session.title}</p>
+                                  <p className="mt-1 text-sm text-[var(--ink-soft)]">{session.instructor} • {formatSessionDateTime(session.startTime)}</p>
+                                  <p className="mt-2 text-xs font-medium uppercase tracking-[0.12em] text-[#8a9ab0]">
+                                    {getLiveClassContextLabel(session, selectedCourse?.subject || 'Course session')}
+                                  </p>
+                                </div>
+                                <ChevronRight className="h-5 w-5 text-[var(--accent-rust)]" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {(sessionViewFilter === 'all' || sessionViewFilter === 'recorded') && selectedCourseRecordingGroups.length > 0 && (
+                      <section className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+                        <div className="flex items-center gap-3">
+                          <Video className="h-5 w-5 text-[var(--accent-rust)]" />
+                          <div>
+                            <p className="text-lg font-semibold text-[var(--ink)]">Recorded session archive</p>
+                            <p className="text-sm text-[var(--ink-soft)]">Grouped by subject and chapter so replay browsing feels organized.</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 space-y-4">
+                          {selectedCourseRecordingGroups.map((group) => (
+                            <div key={group.key} className="rounded-[22px] bg-[var(--accent-cream)] p-4">
+                              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                  <p className="text-base font-semibold text-[var(--ink)]">{group.moduleTitle}</p>
+                                  <p className="text-sm text-[var(--ink-soft)]">{group.chapterTitle || 'Course-wide sessions'} • {group.recordings.length} replay{group.recordings.length === 1 ? '' : 's'}</p>
+                                </div>
+                              </div>
+                              <div className="mt-3 space-y-3">
+                                {group.recordings.map((session) => (
+                                  <button
+                                    key={session._id}
+                                    onClick={() => setSelectedRecordingId(session._id)}
+                                    data-testid={`course-session-${session._id}`}
+                                    className={cn(
+                                      'w-full rounded-[18px] border p-4 text-left transition',
+                                      selectedRecordingId === session._id
+                                        ? 'border-[#8ec5ff] bg-[#eef6ff]'
+                                        : 'border-white/60 bg-white hover:border-[#c8d8ea]',
+                                    )}
+                                  >
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                      <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className={cn('rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]', getLiveClassChipClasses(session))}>
+                                            {getLiveClassLabel(session)}
+                                          </span>
+                                          <span className="rounded-full bg-[var(--accent-cream)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                                            {formatSessionDuration(session.durationMinutes)}
+                                          </span>
+                                        </div>
+                                        <p className="mt-3 text-base font-semibold text-[var(--ink)]">{session.title}</p>
+                                        <p className="mt-1 text-sm text-[var(--ink-soft)]">{session.instructor} • {formatSessionDateTime(session.startTime)}</p>
+                                      </div>
+                                      <ChevronRight className="h-5 w-5 text-[var(--accent-rust)]" />
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+                <div className="rounded-[28px] border border-[var(--line)] bg-white p-5 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">Selected session</p>
+                  {selectedCourseSession ? (
+                    <div className="mt-4 space-y-4">
+                      <div className="rounded-[22px] bg-[var(--accent-cream)] p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={cn('rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]', getLiveClassChipClasses(selectedCourseSession))}>
+                            {getLiveClassLabel(selectedCourseSession)}
+                          </span>
+                          <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                            {formatSessionDuration(selectedCourseSession.durationMinutes)}
+                          </span>
+                        </div>
+                        <h3 className="mt-3 text-xl font-semibold text-[var(--ink)]">{selectedCourseSession.title}</h3>
+                        <p className="mt-2 text-sm text-[var(--ink-soft)]">{selectedCourseSession.instructor} • {formatSessionDateTime(selectedCourseSession.startTime)}</p>
+                        <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">
+                          {getLiveClassContextLabel(selectedCourseSession, selectedCourse?.subject || 'Course session')}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                        <div className="rounded-[18px] bg-[#f8fbff] p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a9ab0]">Attend</p>
+                          <p className="mt-2 text-sm font-semibold text-[#172033]">{selectedCourseSession.attendees} learners joined</p>
+                        </div>
+                        <div className="rounded-[18px] bg-[#f8fbff] p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a9ab0]">Format</p>
+                          <p className="mt-2 text-sm font-semibold text-[#172033]">{selectedCourseSession.provider} • {selectedCourseSession.mode}</p>
+                        </div>
+                      </div>
+
+                      {!user ? (
+                        <div className="rounded-[18px] border border-dashed border-[#dbe4ef] p-4 text-sm text-[#607089]">
+                          Log in to open this protected session inside the course archive.
+                        </div>
+                      ) : loadingRecordingAccess ? (
+                        <div className="flex items-center gap-3 rounded-[18px] border border-[#dbe4ef] p-4 text-sm text-[#607089]">
+                          <LoaderCircle className="h-5 w-5 animate-spin" />
+                          Preparing secure session access…
+                        </div>
+                      ) : recordingAccessError ? (
+                        <div className="rounded-[18px] border border-dashed border-[#dbe4ef] p-4 text-sm text-[#607089]">
+                          {recordingAccessError}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {selectedCourseSessionState === 'scheduled' ? (
+                            <div className="rounded-[18px] bg-[#f8fbff] p-4 text-sm leading-6 text-[#607089]">
+                              Starts {formatSessionDateTime(selectedCourseSession.startTime)}. Students should see this schedule clearly even before playback is available.
+                            </div>
+                          ) : !selectedCourseSession.replayReady && selectedCourseSessionState !== 'live' ? (
+                            <div className="rounded-[18px] bg-[#f8fbff] p-4 text-sm leading-6 text-[#607089]">
+                              Recording is being prepared. Keep the detail panel visible so this state feels intentional, not broken.
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setShowReplayPlayer(true)}
+                              disabled={!selectedRecordingAccess}
+                              data-testid="course-session-primary-action"
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-[#172033] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                            >
+                              {getLiveClassActionLabel(selectedCourseSession)}
+                            </button>
+                          )}
+
+                          {(selectedRecordingAccess?.replayLessonId || selectedCourseSession.replayLessonId) && (
+                            <button
+                              onClick={() => {
+                                const targetLessonId = selectedRecordingAccess?.replayLessonId || selectedCourseSession.replayLessonId;
+                                if (targetLessonId) {
+                                  handleSelectLesson(targetLessonId);
+                                  setCourseWorkspaceTab('player');
+                                  setStudySidebarTab('notes');
+                                }
+                              }}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#dbe4ef] bg-white px-4 py-3 text-sm font-semibold text-[#172033]"
+                            >
+                              Open linked lesson topic
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-[18px] border border-dashed border-[#dbe4ef] p-4 text-sm text-[#607089]">
+                      Choose a live class or recording to inspect the details here.
+                    </div>
+                  )}
+                </div>
+
+                {showReplayPlayer && selectedRecordingAccess && (
+                  <div className="overflow-hidden rounded-[28px] border border-[var(--line)] bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.04)]">
+                    <div className="rounded-[22px] bg-[#172033] p-4 text-white">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/65">Session player</p>
+                      <p className="mt-2 text-lg font-semibold">{selectedCourseSession?.title || selectedRecordingAccess.title}</p>
+                    </div>
+                    <div className="mt-3 overflow-hidden rounded-[20px]">
+                      <ProtectedLivePlayback access={selectedRecordingAccess} />
+                    </div>
+                  </div>
+                )}
+              </aside>
+            </div>
           ) : selectedLesson ? (
-            <div className="grid gap-0 xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)_280px]">
-              <aside className="border-b border-[#e7edf5] bg-white xl:border-b-0 xl:border-r">
+            <div className="grid gap-0 xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)_320px]">
+              <aside className="border-b border-[#e7edf5] bg-white xl:border-b-0 xl:border-r xl:sticky xl:top-0 xl:h-screen">
                 <div className="border-b border-[#edf2f7] px-4 py-4">
                   <button
                     onClick={() => setCourseWorkspaceTab('subjects')}
                     className="inline-flex items-center gap-2 text-sm font-semibold text-[#22a8d4]"
                   >
                     <ChevronLeft className="h-4 w-4" />
-                    Show all course modules
+                    Back to subjects
                   </button>
                   <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-[#8a9ab0]">Current module</p>
                   <h3 className="mt-2 text-xl font-semibold text-[#172033]">{selectedModule?.title || selectedCourse.title}</h3>
                 </div>
-                <div className="max-h-[calc(100vh-220px)] overflow-y-auto">
+                <div className="max-h-[calc(100vh-220px)] overflow-y-auto xl:max-h-[calc(100vh-120px)]">
                   {selectedModuleEntries.map((entry, index) => (
                     <PlayerRailLessonItem
                       key={entry.lesson.id}
@@ -2120,7 +2758,7 @@ export const CoursesTab = ({
                         className="inline-flex items-center gap-2 text-sm font-semibold text-[#22a8d4]"
                       >
                         <ChevronLeft className="h-4 w-4" />
-                        Back to subject view
+                        Back to subjects
                       </button>
                       <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#8a9ab0]">
                         {[selectedCourse.title, selectedLessonMeta?.moduleTitle, selectedLessonMeta?.chapterTitle].filter(Boolean).join(' • ')}
@@ -2349,7 +2987,7 @@ export const CoursesTab = ({
                               className="inline-flex items-center gap-2 rounded-full bg-[var(--accent-rust)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                             >
                               {busyCourseId === selectedCourse._id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-                              {selectedCourse.price === 0 ? 'Start free course' : `Unlock ${currency.format(selectedCourse.price)}`}
+                              {getCoursePurchaseLabel(selectedCourse)}
                             </button>
                           )}
                           {previousLessonEntry && (
@@ -2463,10 +3101,9 @@ export const CoursesTab = ({
                 </div>
               </main>
 
-              <aside className="border-t border-[#e7edf5] bg-white xl:col-span-2 2xl:col-span-1 2xl:border-l 2xl:border-t-0">
-                <div className="grid grid-cols-3 border-b border-[#edf2f7]">
+              <aside className="border-t border-[#e7edf5] bg-white xl:col-span-2 2xl:col-span-1 2xl:border-l 2xl:border-t-0 2xl:sticky 2xl:top-0 2xl:h-screen">
+                <div className="grid grid-cols-2 border-b border-[#edf2f7]">
                   {[
-                    { key: 'replays', label: 'Sessions', icon: Video },
                     { key: 'notes', label: 'Notes', icon: BookOpen },
                     { key: 'assistant', label: 'AI Help', icon: MessageSquare },
                   ].map((tab) => {
@@ -2489,7 +3126,25 @@ export const CoursesTab = ({
                   })}
                 </div>
 
-                <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-5">
+                <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-5 2xl:max-h-[calc(100vh-76px)]">
+                  <div className="mb-4 rounded-[18px] border border-[#e2ebf4] bg-[#f8fbff] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[#172033]">Session archive</p>
+                        <p className="mt-2 text-sm leading-6 text-[#607089]">
+                          Open live classes and replays without leaving the lesson screen.
+                        </p>
+                      </div>
+                      <Clock3 className="mt-1 h-5 w-5 text-[#22a8d4]" />
+                    </div>
+                    <button
+                      onClick={() => setCourseWorkspaceTab('sessions')}
+                      className="mt-4 inline-flex w-full items-center justify-center rounded-[14px] bg-[#172033] px-4 py-3 text-sm font-semibold text-white"
+                    >
+                      Open sessions workspace
+                    </button>
+                  </div>
+
                   {studySidebarTab === 'notes' && (
                     <div className="space-y-4">
                       <div className="rounded-[18px] bg-[#f8fbff] p-4">
@@ -2556,122 +3211,6 @@ export const CoursesTab = ({
                       )}
                     </div>
                   )}
-
-                  {studySidebarTab === 'replays' && (
-                    <div className="space-y-4">
-                      <div className="rounded-[18px] bg-[#f8fbff] p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-[#172033]">Sessions</p>
-                            <p className="mt-1 text-sm text-[#607089]">Live classes and recordings for this course.</p>
-                          </div>
-                          <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#172033]">
-                            {selectedCourseSessions.length}
-                          </span>
-                        </div>
-                      </div>
-
-                      {selectedCourseSessions.length === 0 ? (
-                        <div className="rounded-[18px] border border-dashed border-[#dbe4ef] p-4 text-sm text-[#607089]">
-                          No live sessions or recordings are available for this course yet.
-                        </div>
-                      ) : (
-                        <>
-                          <div className="space-y-2">
-                            {selectedCourseSessions.map((session) => (
-                              <button
-                                key={session._id}
-                                onClick={() => setSelectedRecordingId(session._id)}
-                                className={cn(
-                                  'w-full rounded-[18px] border p-4 text-left transition',
-                                  selectedRecordingId === session._id
-                                    ? 'border-[#8ec5ff] bg-[#eef6ff]'
-                                    : 'border-[#e2ebf4] bg-white hover:border-[#c8d8ea]',
-                                )}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-base font-semibold leading-6 text-[#172033]">{session.title}</p>
-                                    <p className="mt-1 text-sm text-[#607089]">{session.instructor} • {formatSessionDateTime(session.startTime)}</p>
-                                    <p className="mt-2 text-xs font-medium uppercase tracking-[0.12em] text-[#8a9ab0]">
-                                      {getLiveClassContextLabel(session, selectedCourse?.subject || 'Course session')}
-                                    </p>
-                                  </div>
-                                  <span className={cn(
-                                    'shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]',
-                                    getLiveClassChipClasses(session),
-                                  )}>
-                                    {getLiveClassLabel(session)}
-                                  </span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-
-                          {!user ? (
-                            <div className="rounded-[18px] border border-dashed border-[#dbe4ef] p-4 text-sm text-[#607089]">
-                              Log in to open protected sessions inside the course experience.
-                            </div>
-                          ) : loadingRecordingAccess ? (
-                            <div className="flex items-center gap-3 rounded-[18px] border border-[#dbe4ef] p-4 text-sm text-[#607089]">
-                              <LoaderCircle className="h-5 w-5 animate-spin" />
-                              Preparing secure session access…
-                            </div>
-                          ) : recordingAccessError ? (
-                            <div className="rounded-[18px] border border-dashed border-[#dbe4ef] p-4 text-sm text-[#607089]">
-                              {recordingAccessError}
-                            </div>
-                          ) : selectedCourseSession ? (
-                            <div className="space-y-4">
-                              <div className="rounded-[18px] border border-[#e2ebf4] bg-white p-4">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <span className={cn(
-                                      'inline-flex rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]',
-                                      getLiveClassChipClasses(selectedCourseSession),
-                                    )}>
-                                      {getLiveClassLabel(selectedCourseSession)}
-                                    </span>
-                                    <p className="mt-3 text-lg font-semibold text-[#172033]">{selectedCourseSession.title}</p>
-                                    <p className="mt-2 text-sm text-[#607089]">
-                                      {selectedCourseSession.instructor} • {formatSessionDateTime(selectedCourseSession.startTime)}
-                                    </p>
-                                  </div>
-                                  <span className="rounded-full bg-[#f8fbff] px-3 py-2 text-[11px] font-medium text-[#607089]">
-                                    {getLiveClassContextLabel(selectedCourseSession, selectedCourse?.subject || 'Course session')}
-                                  </span>
-                                </div>
-
-                                {selectedCourseSessionState === 'scheduled' ? (
-                                  <div className="mt-4 rounded-[14px] bg-[#f8fbff] px-4 py-3 text-sm text-[#607089]">
-                                    Starts {formatSessionDateTime(selectedCourseSession.startTime)}
-                                  </div>
-                                ) : !selectedCourseSession.replayReady && selectedCourseSessionState !== 'live' ? (
-                                  <div className="mt-4 rounded-[14px] bg-[#f8fbff] px-4 py-3 text-sm text-[#607089]">
-                                    Recording is being prepared.
-                                  </div>
-                                ) : !showReplayPlayer ? (
-                                  <button
-                                    onClick={() => setShowReplayPlayer(true)}
-                                    disabled={!selectedRecordingAccess}
-                                    className="mt-4 inline-flex rounded-full bg-[#172033] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                                  >
-                                    {selectedCourseSessionState === 'live' ? 'Join live class' : 'Watch recording'}
-                                  </button>
-                                ) : null}
-                              </div>
-
-                              {showReplayPlayer && selectedRecordingAccess && (
-                                <div className="overflow-hidden rounded-[18px] border border-[#e2ebf4] bg-white">
-                                  <ProtectedLivePlayback access={selectedRecordingAccess} />
-                                </div>
-                              )}
-                            </div>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
               </aside>
             </div>
@@ -2681,9 +3220,6 @@ export const CoursesTab = ({
             </div>
           )}
         </section>
-      ) : (
-        <div className="rounded-[24px] border border-dashed border-[#dbe4ef] bg-white p-8 text-[#607089]">
-          Select a course to view modules, topics, and the lesson player.
         </div>
       )}
     </div>

@@ -17,7 +17,7 @@ const createForm = (course: CourseCard | null) => ({
   instructor: course?.instructor || '',
   officialChannelUrl: course?.officialChannelUrl || '',
   price: course?.price || 0,
-  validityDays: course?.validityDays || 365,
+  validityDays: course?.validityDays || 183,
   level: course?.level || 'Full Course',
   thumbnailUrl: course?.thumbnailUrl || '',
 });

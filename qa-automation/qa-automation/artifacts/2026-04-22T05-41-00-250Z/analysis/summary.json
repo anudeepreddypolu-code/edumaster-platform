@@ -1,0 +1,122 @@
+{
+  "captures": [
+    {
+      "stepId": "tests-home-desktop",
+      "label": "tests-home-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-home-desktop-tests-home-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-home-desktop-tests-home-desktop.html",
+      "timestamp": "2026-04-22T05:41:09.292Z"
+    },
+    {
+      "stepId": "tests-detail-desktop",
+      "label": "tests-detail-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-detail-desktop-tests-detail-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-detail-desktop-tests-detail-desktop.html",
+      "timestamp": "2026-04-22T05:41:10.141Z"
+    },
+    {
+      "stepId": "tests-instructions-desktop",
+      "label": "tests-instructions-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-instructions-desktop-tests-instructions-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-instructions-desktop-tests-instructions-desktop.html",
+      "timestamp": "2026-04-22T05:41:10.878Z"
+    },
+    {
+      "stepId": "tests-confirmation-desktop",
+      "label": "tests-confirmation-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-confirmation-desktop-tests-confirmation-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-confirmation-desktop-tests-confirmation-desktop.html",
+      "timestamp": "2026-04-22T05:41:11.534Z"
+    },
+    {
+      "stepId": "tests-exam-desktop",
+      "label": "tests-exam-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-exam-desktop-tests-exam-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-exam-desktop-tests-exam-desktop.html",
+      "timestamp": "2026-04-22T05:41:12.720Z"
+    },
+    {
+      "stepId": "tests-home-mobile",
+      "label": "tests-home-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-home-mobile-tests-home-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-home-mobile-tests-home-mobile.html",
+      "timestamp": "2026-04-22T05:41:20.976Z"
+    },
+    {
+      "stepId": "tests-detail-mobile",
+      "label": "tests-detail-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-detail-mobile-tests-detail-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-detail-mobile-tests-detail-mobile.html",
+      "timestamp": "2026-04-22T05:41:21.803Z"
+    },
+    {
+      "stepId": "tests-instructions-mobile",
+      "label": "tests-instructions-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-instructions-mobile-tests-instructions-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-instructions-mobile-tests-instructions-mobile.html",
+      "timestamp": "2026-04-22T05:41:22.540Z"
+    },
+    {
+      "stepId": "tests-confirmation-mobile",
+      "label": "tests-confirmation-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-confirmation-mobile-tests-confirmation-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-confirmation-mobile-tests-confirmation-mobile.html",
+      "timestamp": "2026-04-22T05:41:23.218Z"
+    },
+    {
+      "stepId": "tests-exam-mobile",
+      "label": "tests-exam-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-exam-mobile-tests-exam-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-exam-mobile-tests-exam-mobile.html",
+      "timestamp": "2026-04-22T05:41:27.314Z"
+    },
+    {
+      "stepId": "tests-palette-mobile",
+      "label": "tests-palette-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-palette-mobile-tests-palette-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-palette-mobile-tests-palette-mobile.html",
+      "timestamp": "2026-04-22T05:41:27.947Z"
+    },
+    {
+      "stepId": "tests-result-mobile",
+      "label": "tests-result-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-result-mobile-tests-result-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-result-mobile-tests-result-mobile.html",
+      "timestamp": "2026-04-22T05:41:29.358Z"
+    },
+    {
+      "stepId": "tests-solutions-mobile",
+      "label": "tests-solutions-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/screenshots/tests-solutions-mobile-tests-solutions-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T05-41-00-250Z/sources/tests-solutions-mobile-tests-solutions-mobile.html",
+      "timestamp": "2026-04-22T05:41:30.184Z"
+    }
+  ],
+  "failures": []
+}

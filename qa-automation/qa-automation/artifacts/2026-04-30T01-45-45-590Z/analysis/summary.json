@@ -1,0 +1,30 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T01-45-45-590Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T01-45-45-590Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-04-30T01:46:17.376Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    },
+    {
+      "stepId": "class-created",
+      "label": "class-created",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T01-45-45-590Z/screenshots/class-created-class-created.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-30T01-45-45-590Z/sources/class-created-class-created.html",
+      "timestamp": "2026-04-30T01:46:20.690Z",
+      "notes": [
+        "Live class created from admin flow."
+      ]
+    }
+  ],
+  "failures": [],
+  "error": "Live classes list page did not open. Visible text: "
+}

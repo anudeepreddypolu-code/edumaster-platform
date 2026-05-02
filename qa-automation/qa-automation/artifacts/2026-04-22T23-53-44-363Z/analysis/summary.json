@@ -1,0 +1,238 @@
+{
+  "captures": [
+    {
+      "stepId": "course-overview-desktop",
+      "label": "course-overview-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-overview-desktop-course-overview-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-overview-desktop-course-overview-desktop.html",
+      "timestamp": "2026-04-22T23:53:53.364Z",
+      "notes": [
+        "Desktop shell before entering Courses."
+      ]
+    },
+    {
+      "stepId": "course-screen-desktop",
+      "label": "course-screen-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-screen-desktop-course-screen-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-screen-desktop-course-screen-desktop.html",
+      "timestamp": "2026-04-22T23:53:53.773Z",
+      "notes": [
+        "Desktop course screen."
+      ]
+    },
+    {
+      "stepId": "course-page-desktop",
+      "label": "course-page-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-page-desktop-course-page-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-page-desktop-course-page-desktop.html",
+      "timestamp": "2026-04-22T23:53:54.004Z",
+      "notes": [
+        "Desktop course details screen."
+      ]
+    },
+    {
+      "stepId": "course-lesson-video-desktop",
+      "label": "course-lesson-video-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-video-desktop-course-lesson-video-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-video-desktop-course-lesson-video-desktop.html",
+      "timestamp": "2026-04-22T23:53:54.305Z",
+      "notes": [
+        "Desktop lesson video state."
+      ]
+    },
+    {
+      "stepId": "course-lesson-desktop-video",
+      "label": "course-lesson-desktop-video",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-desktop-video-course-lesson-desktop-video.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-desktop-video-course-lesson-desktop-video.html",
+      "timestamp": "2026-04-22T23:53:54.483Z",
+      "notes": [
+        "Lesson video state before playback."
+      ]
+    },
+    {
+      "stepId": "course-lesson-desktop-cbt",
+      "label": "course-lesson-desktop-cbt",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-desktop-cbt-course-lesson-desktop-cbt.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-desktop-cbt-course-lesson-desktop-cbt.html",
+      "timestamp": "2026-04-22T23:54:13.836Z",
+      "notes": [
+        "CBT tab after video completion."
+      ]
+    },
+    {
+      "stepId": "course-lesson-desktop-explanation",
+      "label": "course-lesson-desktop-explanation",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-desktop-explanation-course-lesson-desktop-explanation.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-desktop-explanation-course-lesson-desktop-explanation.html",
+      "timestamp": "2026-04-22T23:54:14.118Z",
+      "notes": [
+        "Explanation video unlocked after CBT submission."
+      ]
+    },
+    {
+      "stepId": "course-lesson-desktop-explanation-complete",
+      "label": "course-lesson-desktop-explanation-complete",
+      "state": "success",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-desktop-explanation-complete-course-lesson-desktop-explanation-complete.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-desktop-explanation-complete-course-lesson-desktop-explanation-complete.html",
+      "timestamp": "2026-04-22T23:54:16.809Z",
+      "notes": [
+        "Explanation completed and autoplay countdown started."
+      ]
+    },
+    {
+      "stepId": "course-lesson-desktop-next-lesson",
+      "label": "course-lesson-desktop-next-lesson",
+      "state": "success",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-desktop-next-lesson-course-lesson-desktop-next-lesson.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-desktop-next-lesson-course-lesson-desktop-next-lesson.html",
+      "timestamp": "2026-04-22T23:54:19.969Z",
+      "notes": [
+        "Next lesson opened after autoplay."
+      ]
+    },
+    {
+      "stepId": "course-overview-mobile",
+      "label": "course-overview-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-overview-mobile-course-overview-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-overview-mobile-course-overview-mobile.html",
+      "timestamp": "2026-04-22T23:54:26.931Z",
+      "notes": [
+        "Mobile shell before entering Courses."
+      ]
+    },
+    {
+      "stepId": "course-screen-mobile",
+      "label": "course-screen-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-screen-mobile-course-screen-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-screen-mobile-course-screen-mobile.html",
+      "timestamp": "2026-04-22T23:54:27.299Z",
+      "notes": [
+        "Mobile course screen."
+      ]
+    },
+    {
+      "stepId": "course-page-mobile",
+      "label": "course-page-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-page-mobile-course-page-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-page-mobile-course-page-mobile.html",
+      "timestamp": "2026-04-22T23:54:27.490Z",
+      "notes": [
+        "Mobile course details screen."
+      ]
+    },
+    {
+      "stepId": "course-lesson-video-mobile",
+      "label": "course-lesson-video-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-video-mobile-course-lesson-video-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-video-mobile-course-lesson-video-mobile.html",
+      "timestamp": "2026-04-22T23:54:27.682Z",
+      "notes": [
+        "Mobile lesson video state."
+      ]
+    },
+    {
+      "stepId": "course-lesson-mobile-video",
+      "label": "course-lesson-mobile-video",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-mobile-video-course-lesson-mobile-video.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-mobile-video-course-lesson-mobile-video.html",
+      "timestamp": "2026-04-22T23:54:27.782Z",
+      "notes": [
+        "Lesson video state before playback."
+      ]
+    },
+    {
+      "stepId": "course-lesson-mobile-cbt",
+      "label": "course-lesson-mobile-cbt",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-mobile-cbt-course-lesson-mobile-cbt.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-mobile-cbt-course-lesson-mobile-cbt.html",
+      "timestamp": "2026-04-22T23:54:47.086Z",
+      "notes": [
+        "CBT tab after video completion."
+      ]
+    },
+    {
+      "stepId": "course-lesson-mobile-explanation",
+      "label": "course-lesson-mobile-explanation",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-mobile-explanation-course-lesson-mobile-explanation.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-mobile-explanation-course-lesson-mobile-explanation.html",
+      "timestamp": "2026-04-22T23:54:47.242Z",
+      "notes": [
+        "Explanation video unlocked after CBT submission."
+      ]
+    },
+    {
+      "stepId": "course-lesson-mobile-explanation-complete",
+      "label": "course-lesson-mobile-explanation-complete",
+      "state": "success",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-mobile-explanation-complete-course-lesson-mobile-explanation-complete.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-mobile-explanation-complete-course-lesson-mobile-explanation-complete.html",
+      "timestamp": "2026-04-22T23:54:49.792Z",
+      "notes": [
+        "Explanation completed and autoplay countdown started."
+      ]
+    },
+    {
+      "stepId": "course-lesson-mobile-next-lesson",
+      "label": "course-lesson-mobile-next-lesson",
+      "state": "success",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-lesson-mobile-next-lesson-course-lesson-mobile-next-lesson.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/sources/course-lesson-mobile-next-lesson-course-lesson-mobile-next-lesson.html",
+      "timestamp": "2026-04-22T23:54:52.964Z",
+      "notes": [
+        "Next lesson opened after autoplay."
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "stepId": "course-overview-mobile",
+      "title": "Missing required UI element",
+      "description": "Required selector not found: [data-testid=\"mobile-nav-overview\"]",
+      "severity": "high",
+      "timestamp": "2026-04-22T23:54:26.931Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-overview-mobile-course-overview-mobile.png"
+    },
+    {
+      "stepId": "course-overview-mobile",
+      "title": "Missing required UI element",
+      "description": "Required selector not found: [data-testid=\"mobile-nav-courses\"]",
+      "severity": "high",
+      "timestamp": "2026-04-22T23:54:26.932Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T23-53-44-363Z/screenshots/course-overview-mobile-course-overview-mobile.png"
+    }
+  ]
+}

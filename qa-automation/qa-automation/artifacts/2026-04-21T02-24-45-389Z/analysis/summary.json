@@ -1,0 +1,23 @@
+{
+  "captures": [
+    {
+      "stepId": "overview-dashboard",
+      "label": "overview-dashboard",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-21T02-24-45-389Z/screenshots/overview-dashboard-overview-dashboard.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-21T02-24-45-389Z/sources/overview-dashboard-overview-dashboard.html",
+      "timestamp": "2026-04-21T02:24:52.463Z"
+    }
+  ],
+  "failures": [
+    {
+      "stepId": "overview-dashboard",
+      "title": "Expected content missing",
+      "description": "Expected text was not found on the page: \"Circuits & Network Reduction\"",
+      "severity": "medium",
+      "timestamp": "2026-04-21T02:24:52.463Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-21T02-24-45-389Z/screenshots/overview-dashboard-overview-dashboard.png"
+    }
+  ]
+}

@@ -23,15 +23,22 @@ const attachUserFromToken = async (req, token) => {
       return false;
     }
 
-    const activeSessionId = await sessionRepository.getActiveSessionId(user._id?.toString?.() || String(user._id), user.session || null);
-    if (decoded.session && decoded.session !== (activeSessionId || null)) {
-      return false;
+    const persistedSessionId = user.session || null;
+    const activeSessionId = await sessionRepository.getActiveSessionId(
+      user._id?.toString?.() || String(user._id),
+      persistedSessionId,
+    );
+    if (decoded.session) {
+      const validSessionIds = [activeSessionId, persistedSessionId].filter(Boolean);
+      if (validSessionIds.length > 0 && !validSessionIds.includes(decoded.session)) {
+        return false;
+      }
     }
 
     req.user = {
       id: user._id?.toString?.() || String(user._id),
       role: user.role,
-      session: user.session || null,
+      session: persistedSessionId,
     };
 
     return true;
@@ -63,4 +70,5 @@ const attachAuthIfPresent = async (req, _res, next) => {
 module.exports = {
   requireAuth,
   attachAuthIfPresent,
+  attachUserFromToken,
 };

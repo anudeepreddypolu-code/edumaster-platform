@@ -1,0 +1,242 @@
+{
+  "captures": [
+    {
+      "stepId": "launch",
+      "label": "app-launch",
+      "state": "loading",
+      "durationMs": 7276,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/launch-loading-app-launch.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/launch-loading-app-launch.xml",
+      "timestamp": "2026-04-13T04:16:30.227Z"
+    },
+    {
+      "stepId": "login-error",
+      "label": "invalid-login",
+      "state": "error",
+      "durationMs": 9659,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/login-error-error-invalid-login.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/login-error-error-invalid-login.xml",
+      "timestamp": "2026-04-13T04:16:40.197Z",
+      "notes": [
+        "Intentional invalid login to capture error state."
+      ]
+    },
+    {
+      "stepId": "login-success",
+      "label": "login-success",
+      "state": "success",
+      "durationMs": 23628,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/login-success-success-login-success.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/login-success-success-login-success.xml",
+      "timestamp": "2026-04-13T04:17:04.213Z"
+    },
+    {
+      "stepId": "dashboard",
+      "label": "Dashboard success",
+      "state": "ui",
+      "durationMs": 1516,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/dashboard-ui-dashboard-success.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/dashboard-ui-dashboard-success.xml",
+      "timestamp": "2026-04-13T04:17:06.360Z"
+    },
+    {
+      "stepId": "courses",
+      "label": "Courses screen",
+      "state": "ui",
+      "durationMs": 1534,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/courses-ui-courses-screen.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/courses-ui-courses-screen.xml",
+      "timestamp": "2026-04-13T04:17:08.718Z"
+    },
+    {
+      "stepId": "tests",
+      "label": "Mock tests screen",
+      "state": "ui",
+      "durationMs": 1452,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/tests-ui-mock-tests-screen.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/tests-ui-mock-tests-screen.xml",
+      "timestamp": "2026-04-13T04:17:21.588Z"
+    },
+    {
+      "stepId": "live",
+      "label": "Live classes screen",
+      "state": "ui",
+      "durationMs": 1545,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/live-ui-live-classes-screen.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/live-ui-live-classes-screen.xml",
+      "timestamp": "2026-04-13T04:17:23.713Z"
+    },
+    {
+      "stepId": "revision",
+      "label": "Revision screen",
+      "state": "ui",
+      "durationMs": 1502,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/revision-ui-revision-screen.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/revision-ui-revision-screen.xml",
+      "timestamp": "2026-04-13T04:17:25.601Z"
+    },
+    {
+      "stepId": "plans",
+      "label": "Plans and profile area",
+      "state": "ui",
+      "durationMs": 1590,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/plans-ui-plans-and-profile-area.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/plans-ui-plans-and-profile-area.xml",
+      "timestamp": "2026-04-13T04:17:27.427Z"
+    },
+    {
+      "stepId": "search-results",
+      "label": "search-results-ui",
+      "state": "ui",
+      "durationMs": 1568,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/search-results-ui-search-results-ui.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/search-results-ui-search-results-ui.xml",
+      "timestamp": "2026-04-13T04:17:29.717Z"
+    },
+    {
+      "stepId": "search-empty",
+      "label": "search-empty-state",
+      "state": "empty",
+      "durationMs": 3421,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/search-empty-empty-search-empty-state.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/sources/search-empty-empty-search-empty-state.xml",
+      "timestamp": "2026-04-13T04:17:33.402Z"
+    }
+  ],
+  "failures": [
+    {
+      "stepId": "launch",
+      "title": "Slow screen transition",
+      "description": "App launch took 7276ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-04-13T04:16:30.243Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/launch-loading-app-launch.png"
+    },
+    {
+      "stepId": "login-error",
+      "title": "Slow screen transition",
+      "description": "Invalid login error state took 9659ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-04-13T04:16:40.211Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/login-error-error-invalid-login.png"
+    },
+    {
+      "stepId": "login-error",
+      "title": "Expected content missing",
+      "description": "Expected text was not found on the page: \"Unable\"",
+      "severity": "medium",
+      "timestamp": "2026-04-13T04:16:40.211Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/login-error-error-invalid-login.png"
+    },
+    {
+      "stepId": "login-success",
+      "title": "Slow screen transition",
+      "description": "Login success took 23628ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-04-13T04:17:04.233Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/login-success-success-login-success.png"
+    },
+    {
+      "stepId": "login-success",
+      "title": "Potential layout overflow risk",
+      "description": "The screen may be relying on rigid sizing that is risky on smaller Android viewports.",
+      "severity": "low",
+      "timestamp": "2026-04-13T04:17:04.233Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/login-success-success-login-success.png"
+    },
+    {
+      "stepId": "dashboard",
+      "title": "Potential layout overflow risk",
+      "description": "The screen may be relying on rigid sizing that is risky on smaller Android viewports.",
+      "severity": "low",
+      "timestamp": "2026-04-13T04:17:06.385Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/dashboard-ui-dashboard-success.png"
+    },
+    {
+      "stepId": "courses",
+      "title": "Potential layout overflow risk",
+      "description": "The screen may be relying on rigid sizing that is risky on smaller Android viewports.",
+      "severity": "low",
+      "timestamp": "2026-04-13T04:17:08.985Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/courses-ui-courses-screen.png"
+    },
+    {
+      "stepId": "tests",
+      "title": "Potential layout overflow risk",
+      "description": "The screen may be relying on rigid sizing that is risky on smaller Android viewports.",
+      "severity": "low",
+      "timestamp": "2026-04-13T04:17:21.618Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/tests-ui-mock-tests-screen.png"
+    },
+    {
+      "stepId": "live",
+      "title": "Potential layout overflow risk",
+      "description": "The screen may be relying on rigid sizing that is risky on smaller Android viewports.",
+      "severity": "low",
+      "timestamp": "2026-04-13T04:17:23.732Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/live-ui-live-classes-screen.png"
+    },
+    {
+      "stepId": "revision",
+      "title": "Visible error state detected",
+      "description": "The DOM contains visible error messaging or failure keywords.",
+      "severity": "high",
+      "timestamp": "2026-04-13T04:17:25.620Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/revision-ui-revision-screen.png"
+    },
+    {
+      "stepId": "revision",
+      "title": "Potential layout overflow risk",
+      "description": "The screen may be relying on rigid sizing that is risky on smaller Android viewports.",
+      "severity": "low",
+      "timestamp": "2026-04-13T04:17:25.620Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/revision-ui-revision-screen.png"
+    },
+    {
+      "stepId": "plans",
+      "title": "Potential layout overflow risk",
+      "description": "The screen may be relying on rigid sizing that is risky on smaller Android viewports.",
+      "severity": "low",
+      "timestamp": "2026-04-13T04:17:27.446Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/screenshots/plans-ui-plans-and-profile-area.png"
+    }
+  ],
+  "findings": [
+    {
+      "category": "navigation",
+      "severity": "medium",
+      "title": "High feature density across primary navigation",
+      "evidence": "The app exposes many top-level destinations, which can increase cognitive load on smaller Android devices.",
+      "recommendation": "Keep bottom navigation focused on 4-5 destinations and move secondary tools like revision and analytics into contextual entry points or a \"More\" surface."
+    },
+    {
+      "category": "responsiveness",
+      "severity": "high",
+      "title": "Perceived loading speed needs stronger feedback",
+      "evidence": "At least one core screen crossed the configured slow threshold.",
+      "recommendation": "Add skeleton loaders and preserve layout while data loads so transitions feel intentional instead of blocked."
+    },
+    {
+      "category": "spacing",
+      "severity": "medium",
+      "title": "Some layouts may be too rigid for Android widths",
+      "evidence": "DOM heuristics suggest fixed-height or fixed-width regions in complex screens.",
+      "recommendation": "Reduce fixed panel heights, prefer stacked sections on narrow screens, and make large data cards wrap more aggressively."
+    },
+    {
+      "category": "hierarchy",
+      "severity": "medium",
+      "title": "Information hierarchy should prioritize student actions over raw density",
+      "evidence": "Dashboard, analytics, and practice surfaces contain many cards and metrics competing for attention.",
+      "recommendation": "Lead each screen with one primary action, one progress summary, and move secondary metrics below the fold."
+    },
+    {
+      "category": "visual-noise",
+      "severity": "medium",
+      "title": "The product would benefit from calmer visual grouping",
+      "evidence": "Many surfaces use similarly weighted cards, making it harder to distinguish primary vs secondary information.",
+      "recommendation": "Use quieter containers for supporting information, stronger section spacing, and one accent surface per screen."
+    }
+  ],
+  "generatedFlutterFile": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-13T04-16-11-052Z/generated_flutter/improved_ui.dart"
+}

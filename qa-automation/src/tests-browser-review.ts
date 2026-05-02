@@ -1,0 +1,629 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import puppeteer from 'puppeteer-core';
+import { config } from './config.js';
+import { selectors } from './selectors.js';
+import { CaptureRecord, FailureRecord } from './types.js';
+import { artifactPath, createRunContext, sleep, writeJson, writeText } from './utils.js';
+
+const apiOrigin = (() => {
+  const url = new URL(config.baseUrl);
+  if (url.hostname === '10.0.2.2') {
+    url.hostname = '127.0.0.1';
+  }
+  return url.origin;
+})();
+
+const desktopViewport = { width: 1536, height: 1024 };
+const mobileViewport = { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 };
+
+const loginAndSeedStorage = async (page: puppeteer.Page, email: string, password: string) => {
+  const response = await fetch(new URL('/backend/api/auth/login', apiOrigin), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      password,
+      device: 'QA Tests Review',
+      forceLogoutOtherSessions: true,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.token) {
+    throw new Error(payload?.error || payload?.message || 'Unable to login for tests review');
+  }
+
+  await page.evaluate((token) => {
+    window.localStorage.setItem('edumaster.jwt', token);
+  }, payload.token as string);
+};
+
+const takeScreenshot = async (
+  page: puppeteer.Page,
+  ctx: Awaited<ReturnType<typeof createRunContext>>,
+  stepId: string,
+  label: string,
+) => {
+  const screenshotPath = artifactPath(ctx.screenshotDir, stepId, label, 'png');
+  const sourcePath = artifactPath(ctx.sourceDir, stepId, label, 'html');
+  const originalViewport = page.viewport();
+  const fullHeight = await page.evaluate(() =>
+    Math.max(
+      document.body.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight,
+      document.documentElement.clientHeight,
+    ),
+  );
+
+  if (originalViewport && fullHeight > originalViewport.height) {
+    await page.setViewport({ ...originalViewport, height: Math.min(fullHeight, 12000) });
+    await sleep(100);
+  }
+
+  await page.screenshot({ path: screenshotPath });
+
+  if (originalViewport && fullHeight > originalViewport.height) {
+    await page.setViewport(originalViewport);
+    await sleep(100);
+  }
+  await fs.writeFile(sourcePath, await page.content(), 'utf8');
+  return { screenshotPath, sourcePath };
+};
+
+const recordFailure = (
+  failures: FailureRecord[],
+  stepId: string,
+  title: string,
+  description: string,
+  screenshotPath?: string,
+) => {
+  failures.push({
+    stepId,
+    title,
+    description,
+    severity: 'high',
+    timestamp: new Date().toISOString(),
+    screenshotPath,
+  });
+};
+
+const openTestsTab = async (page: puppeteer.Page, mode: 'desktop' | 'mobile') => {
+  const preferredSelector = mode === 'desktop' ? selectors.navTests : selectors.mobileNavTests;
+  const clickedPreferred = await page.evaluate((targetSelector) => {
+    const element = document.querySelector(targetSelector) as HTMLElement | null;
+    if (!element) {
+      return false;
+    }
+
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return true;
+  }, preferredSelector);
+
+  if (clickedPreferred) {
+    return;
+  }
+
+  await page.evaluate(() => {
+    const candidate = [...document.querySelectorAll('button')].find((button) =>
+      /(mock tests|tests)/i.test((button.textContent || '').trim()),
+    ) as HTMLButtonElement | undefined;
+    candidate?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+};
+
+const waitForAnySelector = async (page: puppeteer.Page, selectorList: string[], timeout = 30000) => {
+  await page.waitForFunction(
+    (selectorsToCheck) => selectorsToCheck.some((selector) => Boolean(document.querySelector(selector))),
+    { timeout },
+    selectorList,
+  );
+};
+
+const clickFirstAvailable = async (page: puppeteer.Page, selectorList: string[], textMatchers: RegExp[] = []) => {
+  for (const selector of selectorList) {
+    const clicked = await page.evaluate((targetSelector) => {
+      const element = document.querySelector(targetSelector) as HTMLElement | null;
+      if (!element) {
+        return false;
+      }
+
+      element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return true;
+    }, selector);
+
+    if (clicked) {
+      return true;
+    }
+  }
+
+  if (textMatchers.length > 0) {
+    const matched = await page.evaluate((patterns) => {
+      const regexes = patterns.map((pattern) => new RegExp(pattern, 'i'));
+      const button = [...document.querySelectorAll('button, a')].find((element) =>
+        regexes.some((regex) => regex.test((element.textContent || '').trim())),
+      ) as HTMLElement | undefined;
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return Boolean(button);
+    }, textMatchers.map((pattern) => pattern.source));
+
+    return matched;
+  }
+
+  return false;
+};
+
+const ensureChecked = async (page: puppeteer.Page, selector: string) => {
+  const clickedSelector = await page.evaluate((targetSelector) => {
+    const checkbox = document.querySelector(targetSelector) as HTMLInputElement | null;
+    if (!checkbox) {
+      return false;
+    }
+
+    checkbox.click();
+    return true;
+  }, selector);
+
+  if (clickedSelector) {
+    return true;
+  }
+
+  const checked = await page.evaluate(() => {
+    const checkbox = document.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    checkbox?.click();
+    return Boolean(checkbox);
+  });
+
+  return checked;
+};
+
+const goToBaseAndLogin = async (page: puppeteer.Page) => {
+  await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await loginAndSeedStorage(page, process.env.QA_LOGIN_EMAIL || config.loginEmail, process.env.QA_LOGIN_PASSWORD || config.loginPassword);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForSelector(selectors.shellReady, { timeout: 30000 });
+};
+
+const captureStep = async (
+  page: puppeteer.Page,
+  ctx: Awaited<ReturnType<typeof createRunContext>>,
+  captures: CaptureRecord[],
+  stepId: string,
+  label: string,
+) => {
+  const { screenshotPath, sourcePath } = await takeScreenshot(page, ctx, stepId, label);
+  captures.push({
+    stepId,
+    label,
+    state: 'ui',
+    durationMs: 0,
+    screenshotPath,
+    sourcePath,
+    timestamp: new Date().toISOString(),
+  });
+  return screenshotPath;
+};
+
+const reviewDesktopFlow = async (
+  page: puppeteer.Page,
+  ctx: Awaited<ReturnType<typeof createRunContext>>,
+  captures: CaptureRecord[],
+  failures: FailureRecord[],
+) => {
+  await page.setViewport(desktopViewport);
+  await goToBaseAndLogin(page);
+  await openTestsTab(page, 'desktop');
+  await waitForAnySelector(page, [selectors.testsFigmaPage, selectors.firstTestCard]);
+  await sleep(600);
+
+  const homeShot = await captureStep(page, ctx, captures, 'tests-home-desktop', 'tests-home-desktop');
+  if (!(await page.$(selectors.testsHomeDesktop))) {
+    recordFailure(
+      failures,
+      'tests-home-desktop',
+      'Desktop tests home does not match target structure',
+      'Expected a dedicated desktop Test Series home screen, but the current implementation only exposes the legacy mock-test grid.',
+      homeShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [selectors.testsOpenPrimary, selectors.firstTestCard], [/open exam instructions/i, /resume now/i, /start now/i]);
+  await sleep(700);
+
+  const hasDetail = Boolean(await page.$(selectors.testsDetailDesktop));
+  if (hasDetail) {
+    await captureStep(page, ctx, captures, 'tests-detail-desktop', 'tests-detail-desktop');
+    await clickFirstAvailable(page, [selectors.testsOpenInstructions], [/resume now/i, /start now/i, /go to test series/i, /paper/i]);
+    await sleep(600);
+  } else {
+    recordFailure(
+      failures,
+      'tests-detail-desktop',
+      'Desktop test detail screen missing',
+      'The current flow jumps directly from the home list into instructions instead of rendering the dedicated series detail page from the Figma.',
+      homeShot,
+    );
+  }
+
+  await waitForAnySelector(page, [selectors.testsInstructionsDesktop, 'button[data-testid="test-player-close"]']);
+  const instructionsShot = await captureStep(page, ctx, captures, 'tests-instructions-desktop', 'tests-instructions-desktop');
+  if (!(await page.$(selectors.testsInstructionsDesktop))) {
+    recordFailure(
+      failures,
+      'tests-instructions-desktop',
+      'Desktop instructions screen is still using the legacy CBT layout',
+      'The instructions screen is not using the new exact desktop instructions composition required by the Figma.',
+      instructionsShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [selectors.testsInstructionsNext], [/^next$/i]);
+  await sleep(500);
+  await waitForAnySelector(page, [selectors.testsConfirmationDesktop, selectors.testsExamDesktop, 'input[type="checkbox"]']);
+
+  const hasConfirmation = Boolean(await page.$(selectors.testsConfirmationDesktop)) || Boolean(await page.$('input[type="checkbox"]'));
+  const confirmationShot = await captureStep(page, ctx, captures, 'tests-confirmation-desktop', 'tests-confirmation-desktop');
+  if (!hasConfirmation || !(await page.$(selectors.testsConfirmationDesktop))) {
+    recordFailure(
+      failures,
+      'tests-confirmation-desktop',
+      'Desktop confirmation screen is not matching target',
+      'The confirmation screen should mirror the Figma confirmation layout before the exam begins.',
+      confirmationShot,
+    );
+  }
+
+  await ensureChecked(page, selectors.testsConfirmationCheckbox);
+  await clickFirstAvailable(page, [selectors.testsConfirmationBegin], [/i am ready to begin/i, /ready to begin/i]);
+  await sleep(900);
+  await waitForAnySelector(page, [selectors.testsExamDesktop, 'button']);
+
+  const examShot = await captureStep(page, ctx, captures, 'tests-exam-desktop', 'tests-exam-desktop');
+  if (!(await page.$(selectors.testsExamDesktop))) {
+    recordFailure(
+      failures,
+      'tests-exam-desktop',
+      'Desktop exam screen is not matching the target layout',
+      'The main desktop test-taking screen still differs from the Figma in structure, palette treatment, and controls.',
+      examShot,
+    );
+  }
+
+  const clickedDesktopOption = await page.evaluate(() => {
+    const firstOption = document.querySelector('input[type="radio"]') as HTMLInputElement | null;
+    firstOption?.click();
+    return Boolean(firstOption);
+  });
+  await sleep(250);
+  const selectedDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-desktop-selected', 'tests-exam-desktop-selected');
+  const hasDesktopSelection = await page.evaluate(() => Boolean(document.querySelector('input[type="radio"]:checked')));
+  if (!clickedDesktopOption || !hasDesktopSelection) {
+    recordFailure(
+      failures,
+      'tests-exam-desktop-selected',
+      'Desktop answer selection state did not apply',
+      'Selecting an option in the desktop exam should immediately show the chosen radio state before navigation.',
+      selectedDesktopShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [], [/save & next/i]);
+  await sleep(400);
+  const savedDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-desktop-saved-next', 'tests-exam-desktop-saved-next');
+  if (!(await page.$(selectors.testsExamDesktop))) {
+    recordFailure(
+      failures,
+      'tests-exam-desktop-saved-next',
+      'Desktop save & next interaction broke the exam flow',
+      'Saving the first desktop answer should advance to the next question while keeping the palette and counts updated.',
+      savedDesktopShot,
+    );
+  }
+
+  const clickedSecondDesktopOption = await page.evaluate(() => {
+    const options = [...document.querySelectorAll('input[type="radio"]')] as HTMLInputElement[];
+    const secondOption = options[1] || options[0] || null;
+    secondOption?.click();
+    return Boolean(secondOption);
+  });
+  await sleep(250);
+  await clickFirstAvailable(page, [], [/save & next/i]);
+  await sleep(400);
+  const returnedToQuestionTwo = await page.evaluate(() => {
+    const target = document.querySelector('[data-testid="tests-desktop-jump-2"]') as HTMLElement | null;
+    target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return Boolean(target);
+  });
+  await sleep(350);
+  await clickFirstAvailable(page, [], [/mark for review/i]);
+  await sleep(250);
+  const reviewDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-desktop-review-state', 'tests-exam-desktop-review-state');
+  if (!(await page.$(selectors.testsExamDesktop)) || !clickedSecondDesktopOption || !returnedToQuestionTwo) {
+    recordFailure(
+      failures,
+      'tests-exam-desktop-review-state',
+      'Desktop review/save interaction broke the exam flow',
+      'Saving, revisiting, and toggling review on a desktop question should keep the user inside the exam with the updated question state.',
+      reviewDesktopShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [], [/symbols/i]);
+  await sleep(300);
+  const symbolsDesktopShot = await captureStep(page, ctx, captures, 'tests-symbols-desktop', 'tests-symbols-desktop');
+  if (!(await page.$(selectors.testsDesktopSymbolsOverlay))) {
+    recordFailure(
+      failures,
+      'tests-symbols-desktop',
+      'Desktop symbols interaction did not open the symbols panel',
+      'Clicking SYMBOLS should open the dedicated legend overlay that matches the Figma exam interaction.',
+      symbolsDesktopShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [], [/instructions/i]);
+  await sleep(300);
+  const instructionsOverlayDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-instructions-desktop', 'tests-exam-instructions-desktop');
+  if (!(await page.$(selectors.testsDesktopInstructionsOverlay))) {
+    recordFailure(
+      failures,
+      'tests-exam-instructions-desktop',
+      'Desktop instructions interaction did not open the in-exam instructions overlay',
+      'Clicking INSTRUCTIONS from the desktop exam should open the large scrollable instructions overlay.',
+      instructionsOverlayDesktopShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [], [/overall test summary/i]);
+  await sleep(300);
+  const summaryDesktopShot = await captureStep(page, ctx, captures, 'tests-summary-desktop', 'tests-summary-desktop');
+  if (!(await page.$(selectors.testsDesktopSummaryOverlay))) {
+    recordFailure(
+      failures,
+      'tests-summary-desktop',
+      'Desktop overall summary interaction did not open the summary overlay',
+      'Clicking OVERALL TEST SUMMARY should open the centered summary state from the Figma.',
+      summaryDesktopShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [], [/overall test summary/i]);
+  await sleep(250);
+  await clickFirstAvailable(page, [selectors.testsExamSubmit], [/submit test/i, /submit/i]);
+  await sleep(800);
+
+  const resultDesktopShot = await captureStep(page, ctx, captures, 'tests-result-desktop', 'tests-result-desktop');
+  if (!(await page.$(selectors.testsResultDesktop))) {
+    recordFailure(
+      failures,
+      'tests-result-desktop',
+      'Desktop result screen missing',
+      'Submitting the desktop exam should open the dedicated result summary screen.',
+      resultDesktopShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [selectors.testsViewSolutionsDesktop], [/view solutions/i, /view analysis/i, /solutions/i]);
+  await sleep(700);
+  const solutionsDesktopShot = await captureStep(page, ctx, captures, 'tests-solutions-desktop', 'tests-solutions-desktop');
+  if (!(await page.$(selectors.testsSolutionsDesktop))) {
+    recordFailure(
+      failures,
+      'tests-solutions-desktop',
+      'Desktop solutions screen missing',
+      'The desktop result flow should include the solutions and analysis screen after clicking View Solutions.',
+      solutionsDesktopShot,
+    );
+  }
+};
+
+const reviewMobileFlow = async (
+  page: puppeteer.Page,
+  ctx: Awaited<ReturnType<typeof createRunContext>>,
+  captures: CaptureRecord[],
+  failures: FailureRecord[],
+) => {
+  await page.setViewport(mobileViewport);
+  await goToBaseAndLogin(page);
+  await openTestsTab(page, 'mobile');
+  await waitForAnySelector(page, [selectors.testsFigmaPage, selectors.firstTestCard]);
+  await sleep(700);
+
+  const homeShot = await captureStep(page, ctx, captures, 'tests-home-mobile', 'tests-home-mobile');
+  if (!(await page.$(selectors.testsHomeMobile))) {
+    recordFailure(
+      failures,
+      'tests-home-mobile',
+      'Mobile tests home does not match target structure',
+      'Expected the dedicated mobile Test Series home screen with horizontal card rails and search header.',
+      homeShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [selectors.testsOpenPrimary, selectors.firstTestCard], [/open exam instructions/i, /resume now/i, /start now/i]);
+  await sleep(700);
+
+  const hasDetail = Boolean(await page.$(selectors.testsDetailMobile));
+  if (hasDetail) {
+    await captureStep(page, ctx, captures, 'tests-detail-mobile', 'tests-detail-mobile');
+    await clickFirstAvailable(page, [selectors.testsOpenInstructions], [/resume now/i, /start now/i, /paper/i]);
+    await sleep(600);
+  } else {
+    recordFailure(
+      failures,
+      'tests-detail-mobile',
+      'Mobile test detail screen missing',
+      'The mobile flow should open a dedicated test detail page before instructions.',
+      homeShot,
+    );
+  }
+
+  await waitForAnySelector(page, [selectors.testsInstructionsMobile, selectors.testsInstructionsDesktop, 'button[data-testid="test-player-close"]']);
+  const instructionsShot = await captureStep(page, ctx, captures, 'tests-instructions-mobile', 'tests-instructions-mobile');
+  if (!(await page.$(selectors.testsInstructionsMobile))) {
+    recordFailure(
+      failures,
+      'tests-instructions-mobile',
+      'Mobile instructions screen is not matching target',
+      'The mobile instructions screen should have the exact single-column composition from the Figma.',
+      instructionsShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [selectors.testsInstructionsNext], [/^next$/i]);
+  await sleep(500);
+  await waitForAnySelector(page, [selectors.testsConfirmationMobile, selectors.testsConfirmationDesktop, 'input[type="checkbox"]']);
+  const confirmationShot = await captureStep(page, ctx, captures, 'tests-confirmation-mobile', 'tests-confirmation-mobile');
+  if (!(await page.$(selectors.testsConfirmationMobile))) {
+    recordFailure(
+      failures,
+      'tests-confirmation-mobile',
+      'Mobile confirmation screen is not matching target',
+      'The mobile confirmation screen should follow the Figma confirmation card and CTA layout.',
+      confirmationShot,
+    );
+  }
+
+  await ensureChecked(page, selectors.testsConfirmationCheckbox);
+  await clickFirstAvailable(page, [selectors.testsConfirmationBegin], [/i am ready to begin/i, /ready to begin/i]);
+  await sleep(900);
+  await waitForAnySelector(page, [selectors.testsExamMobile, selectors.testsExamDesktop, 'button']);
+
+  await page.evaluate(() => {
+    const firstOption = document.querySelector('input[type="radio"]') as HTMLInputElement | null;
+    firstOption?.click();
+  });
+  await sleep(200);
+  await clickFirstAvailable(page, [], [/save & next/i]);
+  await sleep(250);
+
+  await page.evaluate(() => {
+    const firstOption = document.querySelector('input[type="radio"]') as HTMLInputElement | null;
+    firstOption?.click();
+  });
+  await sleep(200);
+  await clickFirstAvailable(page, [], [/save & next/i]);
+  await sleep(250);
+
+  await clickFirstAvailable(page, [], [/mark review/i]);
+  await sleep(250);
+  await clickFirstAvailable(page, [], [/save & next/i]);
+  await sleep(250);
+
+  await page.evaluate(() => {
+    const firstOption = document.querySelector('input[type="radio"]') as HTMLInputElement | null;
+    firstOption?.click();
+  });
+  await sleep(200);
+  await clickFirstAvailable(page, [], [/mark review/i]);
+  await sleep(250);
+  await clickFirstAvailable(page, [selectors.testsMobileJumpQuestion1]);
+  await sleep(300);
+
+  const examShot = await captureStep(page, ctx, captures, 'tests-exam-mobile', 'tests-exam-mobile');
+  if (!(await page.$(selectors.testsExamMobile))) {
+    recordFailure(
+      failures,
+      'tests-exam-mobile',
+      'Mobile exam screen is not matching target',
+      'The mobile exam interface should match the compact Figma layout with palette access and bottom action bar.',
+      examShot,
+    );
+  }
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await clickFirstAvailable(page, [selectors.testsPaletteOpen], [/question palette/i, /palette/i, /menu/i]);
+  await sleep(500);
+  const paletteShot = await captureStep(page, ctx, captures, 'tests-palette-mobile', 'tests-palette-mobile');
+  if (!(await page.$(selectors.testsMobilePalette))) {
+    recordFailure(
+      failures,
+      'tests-palette-mobile',
+      'Mobile question palette screen missing',
+      'The mobile flow should open a dedicated question palette state matching the Figma.',
+      paletteShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [selectors.testsPaletteClose], [/close/i, /^x$/i, /back/i]);
+  await sleep(400);
+  await clickFirstAvailable(page, [selectors.testsExamSubmit], [/submit test/i, /submit/i]);
+  await sleep(800);
+
+  const resultShot = await captureStep(page, ctx, captures, 'tests-result-mobile', 'tests-result-mobile');
+  if (!(await page.$(selectors.testsResultMobile))) {
+    recordFailure(
+      failures,
+      'tests-result-mobile',
+      'Mobile test result screen missing',
+      'After submitting, the mobile flow should show the result summary screen from the Figma.',
+      resultShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [selectors.testsViewSolutions], [/view solutions/i, /view analysis/i, /solutions/i]);
+  await sleep(700);
+  const solutionsShot = await captureStep(page, ctx, captures, 'tests-solutions-mobile', 'tests-solutions-mobile');
+  if (!(await page.$(selectors.testsSolutionsMobile))) {
+    recordFailure(
+      failures,
+      'tests-solutions-mobile',
+      'Mobile solutions screen missing',
+      'The mobile flow should include the dedicated solutions and analysis screen after results.',
+      solutionsShot,
+    );
+  }
+};
+
+export const runTestsReview = async (): Promise<{ captures: CaptureRecord[]; failures: FailureRecord[] }> => {
+  const ctx = await createRunContext();
+  const captures: CaptureRecord[] = [];
+  const failures: FailureRecord[] = [];
+
+  const browser = await puppeteer.launch({
+    executablePath: process.env.QA_CHROME_EXECUTABLE || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    headless: true,
+    args: [
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--no-sandbox',
+    ],
+  });
+
+  try {
+    const desktopPage = await browser.newPage();
+    await reviewDesktopFlow(desktopPage, ctx, captures, failures);
+    await desktopPage.close();
+
+    const mobilePage = await browser.newPage();
+    await reviewMobileFlow(mobilePage, ctx, captures, failures);
+    await mobilePage.close();
+
+    await writeJson(path.join(ctx.analysisDir, 'summary.json'), { captures, failures });
+    await writeText(
+      path.join(ctx.logDir, 'run.log'),
+      `Run ${ctx.runId}\nCaptures: ${captures.length}\nFailures: ${failures.length}\n`,
+    );
+
+    if (failures.length > 0) {
+      throw new Error(failures.map((failure) => `${failure.title}: ${failure.description}`).join('\n'));
+    }
+
+    return { captures, failures };
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
+};
+
+if (process.argv[1]?.endsWith('tests-browser-review.ts')) {
+  runTestsReview()
+    .then((summary) => {
+      console.log(`Tests review complete: ${summary.captures.length} captures, ${summary.failures.length} failures.`);
+    })
+    .catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
+}

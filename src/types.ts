@@ -111,6 +111,7 @@ export interface MockTest {
   title: string;
   description: string;
   category: string;
+  course?: string;
   type: string;
   durationMinutes: number;
   totalMarks: number;
@@ -185,11 +186,14 @@ export interface DailyQuizState {
 
 export interface LiveClass {
   _id: string;
+  linkageType?: 'standalone' | 'course' | 'mock-test' | string | null;
   courseId?: string | null;
   moduleId?: string | null;
   moduleTitle?: string | null;
   chapterId?: string | null;
   chapterTitle?: string | null;
+  mockTestId?: string | null;
+  mockTestTitle?: string | null;
   title: string;
   instructor: string;
   startTime: string;
@@ -198,10 +202,18 @@ export interface LiveClass {
   mode: 'live' | 'replay' | string;
   status?: 'scheduled' | 'live' | 'ended' | 'cancelled' | string;
   livePlaybackUrl?: string | null;
-  livePlaybackType?: 'hls' | 'iframe' | 'source' | 'webrtc' | 'livekit' | string | null;
+  livePlaybackType?: 'hls' | 'iframe' | 'source' | 'webrtc' | 'livekit' | 'jitsi' | string | null;
+  ingestServerUrl?: string | null;
+  ingestStreamKey?: string | null;
+  roomName?: string | null;
   embedUrl?: string | null;
   roomUrl?: string | null;
   recordingUrl?: string | null;
+  recordingStorageProvider?: string | null;
+  recordingStoragePath?: string | null;
+  recordingPublishedAt?: string | null;
+  recordingExpiresAt?: string | null;
+  recordingDurationMinutes?: number | null;
   replayCourseId?: string | null;
   replayLessonId?: string | null;
   chatEnabled: boolean;
@@ -213,6 +225,85 @@ export interface LiveClass {
   joinEnabled?: boolean;
   replayReady?: boolean;
   topicTags: string[];
+  posterUrl?: string | null;
+  description?: string | null;
+  teacherProfile?: LiveTeacherProfile | null;
+  sessionNotes?: string[];
+  resources?: LiveClassResource[];
+  activePoll?: LiveClassPoll | null;
+}
+
+export interface LiveTeacherProfile {
+  name?: string | null;
+  role?: string | null;
+  experience?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
+}
+
+export interface LiveClassResource {
+  id: string;
+  title: string;
+  type?: string | null;
+  url?: string | null;
+  description?: string | null;
+  lines?: string[];
+}
+
+export interface LiveClassPollOption {
+  id: string;
+  text: string;
+}
+
+export interface LiveClassPoll {
+  question: string;
+  status?: 'draft' | 'live' | 'closed' | string;
+  options: LiveClassPollOption[];
+}
+
+export interface LiveClassChatMessage {
+  _id: string;
+  liveClassId: string;
+  userId: string;
+  userName: string;
+  kind: 'chat' | 'doubt' | string;
+  message: string;
+  createdAt: string;
+}
+
+export interface LiveSessionParticipant {
+  userId: string;
+  name: string;
+  role: 'student' | 'admin' | string;
+  joinedAt: string;
+  lastSeenAt: string | null;
+  micMuted: boolean;
+  videoEnabled: boolean;
+  handRaised: boolean;
+  handStatus: 'idle' | 'pending' | 'approved' | 'rejected' | string;
+  canSpeak: boolean;
+  isScreenSharing: boolean;
+  isPresenting: boolean;
+  removed: boolean;
+}
+
+export interface LiveClassSessionState {
+  liveClassId: string;
+  status: 'scheduled' | 'live' | 'ended' | 'cancelled' | string;
+  roomName: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  activePresenterId: string | null;
+  participants: LiveSessionParticipant[];
+}
+
+export interface LiveClassEventPayload {
+  event: string;
+  liveClassId: string;
+  timestamp: string;
+  session?: LiveClassSessionState;
+  participant?: LiveSessionParticipant;
+  message?: LiveClassChatMessage;
 }
 
 export interface LiveClassAccess {
@@ -221,13 +312,15 @@ export interface LiveClassAccess {
   provider: string;
   mode: string;
   status: string;
-  accessType: 'live-stream' | 'embedded-room' | 'replay-lesson' | 'recording-link' | 'webrtc-live' | 'livekit-room' | 'upcoming' | string;
+  accessType: 'live-stream' | 'embedded-room' | 'jitsi-room' | 'replay-lesson' | 'recording-link' | 'webrtc-live' | 'livekit-room' | 'upcoming' | string;
   streamUrl: string | null;
   streamFormat: 'hls' | 'source' | string | null;
   embedUrl: string | null;
   roomUrl: string | null;
   liveRoomName?: string | null;
   liveKitUrl?: string | null;
+  liveKitToken?: string | null;
+  liveKitIdentity?: string | null;
   replayPlayback: ProtectedLessonPlayback | null;
   replayExternalUrl: string | null;
   replayCourseId: string | null;
@@ -235,6 +328,8 @@ export interface LiveClassAccess {
   tokenExpiresAt: string | null;
   watermarkText: string | null;
   statusMessage: string;
+  playbackGrantRemainingViews?: number | null;
+  recordingExpiresAt?: string | null;
 }
 
 export interface LiveBroadcastSignal {
@@ -272,6 +367,63 @@ export interface LiveBroadcastAdminState {
   }>;
 }
 
+export interface LiveKitParticipantTrackSummary {
+  sid: string;
+  name: string;
+  type: string;
+  muted: boolean;
+  source?: string | null;
+}
+
+export interface LiveKitParticipantSummary {
+  identity: string;
+  name: string;
+  metadata: string | null;
+  attributes: Record<string, string>;
+  permission: Record<string, unknown> | null;
+  tracks: LiveKitParticipantTrackSummary[];
+}
+
+export interface LiveKitParticipantListResponse {
+  liveClassId: string;
+  roomName: string;
+  participants: LiveKitParticipantSummary[];
+}
+
+export interface LiveRecordingAdminState {
+  liveClassId: string;
+  liveClassStatus: string;
+  recordingDetails?: {
+    recordingUrl: string | null;
+    recordingStorageProvider: string | null;
+    recordingStoragePath: string | null;
+    recordingPublishedAt: string | null;
+    recordingExpiresAt: string | null;
+    recordingDurationMinutes: number | null;
+    replayCourseId: string | null;
+    replayLessonId: string | null;
+  } | null;
+  recording: {
+    liveClassId: string;
+    status: 'recording' | 'finalizing' | 'published' | 'failed' | string;
+    sourceUrl: string | null;
+    startedAt: string | null;
+    stoppedAt: string | null;
+    published: boolean;
+    publishedResult: {
+      published: boolean;
+      reason?: string;
+      courseId?: string;
+      lessonId?: string;
+      storagePath?: string;
+      storageProvider?: string;
+    } | null;
+    exitCode: number | null;
+    error: string | null;
+    hasOutput: boolean;
+  } | null;
+}
+
 export interface LiveChatMessage {
   _id: string;
   liveClassId: string;
@@ -280,6 +432,46 @@ export interface LiveChatMessage {
   kind: 'chat' | 'doubt' | string;
   message: string;
   createdAt: string;
+}
+
+export interface LiveRoomParticipant {
+  participantId: string;
+  userId: string;
+  userName: string;
+  role: 'student' | 'admin' | string;
+  connected: boolean;
+  microphoneOn: boolean;
+  videoOn: boolean;
+  handRaised: boolean;
+  screenSharing: boolean;
+  isMutedByHost: boolean;
+  joinedAt: string;
+  lastSeenAt: string;
+  connectionCount: number;
+}
+
+export interface LiveRoomSnapshot {
+  liveClassId: string;
+  status: string;
+  version: number;
+  updatedAt: string;
+  participantCount: number;
+  handRaisedCount: number;
+  participants: LiveRoomParticipant[];
+  recentMessages: LiveChatMessage[];
+}
+
+export interface LiveRoomEvent {
+  type: 'room_snapshot' | 'class_started' | 'class_ended' | 'user_joined' | 'user_left' | 'participant_state' | 'chat_message' | string;
+  liveClassId: string;
+  version?: number;
+  createdAt?: string;
+  actorId?: string | null;
+  actorName?: string | null;
+  participant?: Partial<LiveRoomParticipant> | null;
+  participantId?: string | null;
+  message?: LiveChatMessage | null;
+  snapshot?: LiveRoomSnapshot | null;
 }
 
 export interface SubscriptionPlan {
@@ -363,10 +555,6 @@ export interface AdminOverview {
 
 export interface PlatformOverview {
   user: AuthUser | null;
-  sampleCredentials: {
-    adminEmail: string;
-    adminPassword: string;
-  } | null;
   highlights: {
     concurrencyTarget: string;
     deploymentProfile: string;

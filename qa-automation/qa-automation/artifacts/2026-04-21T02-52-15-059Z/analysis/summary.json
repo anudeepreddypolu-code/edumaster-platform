@@ -1,0 +1,14 @@
+{
+  "captures": [
+    {
+      "stepId": "courses-figma",
+      "label": "courses-figma",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-21T02-52-15-059Z/screenshots/courses-figma-courses-figma.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-21T02-52-15-059Z/sources/courses-figma-courses-figma.html",
+      "timestamp": "2026-04-21T02:52:21.018Z"
+    }
+  ],
+  "failures": []
+}

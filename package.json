@@ -4,12 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "db:local:start": "./scripts/ensure-local-postgres.sh",
+    "dev": "./scripts/ensure-local-postgres.sh && npm run dev:app",
+    "dev:app": "tsx server.ts",
+    "dev:local": "npm run dev",
     "start": "NODE_ENV=production tsx server.ts",
     "build": "vite build",
+    "build:firebase": "vite build",
+    "deploy:firebase": "./deploy-quick.sh",
+    "track:worker": "node backend/workers/watch-aggregator.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "validate:production": "node scripts/validate-production-config.cjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -24,7 +31,7 @@
     "firebase": "^12.11.0",
     "framer-motion": "^12.38.0",
     "hls.js": "^1.6.15",
-    "livekit-client": "^2.18.0",
+    "livekit-client": "^2.18.7",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "pg": "^8.20.0",

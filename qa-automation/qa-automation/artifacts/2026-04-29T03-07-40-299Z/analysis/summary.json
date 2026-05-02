@@ -1,0 +1,66 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-04-29T03:07:48.996Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    },
+    {
+      "stepId": "class-created",
+      "label": "class-created",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/screenshots/class-created-class-created.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/sources/class-created-class-created.html",
+      "timestamp": "2026-04-29T03:08:00.095Z",
+      "notes": [
+        "Live class created from admin flow."
+      ]
+    },
+    {
+      "stepId": "live-list-desktop",
+      "label": "live-list-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/screenshots/live-list-desktop-live-list-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/sources/live-list-desktop-live-list-desktop.html",
+      "timestamp": "2026-04-29T03:08:01.203Z",
+      "notes": [
+        "Responsive capture at 1536x1024."
+      ]
+    },
+    {
+      "stepId": "live-list-tablet",
+      "label": "live-list-tablet",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/screenshots/live-list-tablet-live-list-tablet.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/sources/live-list-tablet-live-list-tablet.html",
+      "timestamp": "2026-04-29T03:08:02.352Z",
+      "notes": [
+        "Responsive capture at 1024x1366."
+      ]
+    },
+    {
+      "stepId": "live-list-mobile",
+      "label": "live-list-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/screenshots/live-list-mobile-live-list-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T03-07-40-299Z/sources/live-list-mobile-live-list-mobile.html",
+      "timestamp": "2026-04-29T03:08:08.073Z",
+      "notes": [
+        "Responsive capture at 390x844."
+      ]
+    }
+  ],
+  "failures": [],
+  "error": "Waiting failed: 30000ms exceeded"
+}

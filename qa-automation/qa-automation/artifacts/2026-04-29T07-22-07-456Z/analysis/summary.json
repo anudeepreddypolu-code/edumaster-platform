@@ -1,0 +1,18 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T07-22-07-456Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T07-22-07-456Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-04-29T07:23:09.129Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    }
+  ],
+  "failures": [],
+  "error": "Live classes list page did not open. Visible text: "
+}

@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { EduService } from './EduService';
 import { AuthUser, RegisterPayload } from './types';
 
+const AUTH_EVENT_KEY = 'edumaster.auth.event';
+
 type WindowWithProgressFlush = Window & {
   __edumasterFlushProgress?: () => Promise<void>;
 };
@@ -10,7 +12,7 @@ interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   isAdmin: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, options?: { forceLogoutOtherSessions?: boolean }) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -48,14 +50,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
     };
 
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== AUTH_EVENT_KEY || !event.newValue) {
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(event.newValue) as { type?: 'login' | 'logout' };
+        if (payload.type === 'logout') {
+          setUser(null);
+          return;
+        }
+
+        if (payload.type === 'login') {
+          void refreshSession();
+        }
+      } catch {
+        // Ignore malformed cross-tab auth events.
+      }
+    };
+
     window.addEventListener('edumaster:auth-expired', handleAuthExpired);
+    window.addEventListener('storage', handleStorage);
     return () => {
       window.removeEventListener('edumaster:auth-expired', handleAuthExpired);
+      window.removeEventListener('storage', handleStorage);
     };
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const response = await EduService.login(email, password);
+  const login = async (email: string, password: string, options?: { forceLogoutOtherSessions?: boolean }) => {
+    const response = await EduService.login(email, password, options);
     setUser(response.user);
   };
 

@@ -203,7 +203,28 @@ CREATE TABLE live_classes (
   replay_url TEXT,
   chat_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   doubt_solving_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  recording_storage_provider VARCHAR(20),
+  recording_storage_path TEXT,
+  recording_published_at TIMESTAMPTZ,
+  recording_expires_at TIMESTAMPTZ,
+  recording_duration_minutes INT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE live_replay_access_grants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  live_class_id UUID NOT NULL REFERENCES live_classes(id) ON DELETE CASCADE,
+  access_type VARCHAR(40) NOT NULL DEFAULT 'live-replay',
+  expires_at TIMESTAMPTZ NOT NULL,
+  max_views INT NOT NULL DEFAULT 2,
+  used_views INT NOT NULL DEFAULT 0,
+  active_session_id TEXT,
+  last_started_at TIMESTAMPTZ,
+  last_completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, live_class_id)
 );
 
 CREATE TABLE live_chat_messages (

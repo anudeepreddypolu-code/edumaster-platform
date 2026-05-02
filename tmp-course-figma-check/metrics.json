@@ -1,0 +1,58 @@
+{
+  "desktopCatalogMetrics": {
+    "docVertical": false,
+    "docHorizontal": false,
+    "targetVertical": false,
+    "targetHorizontal": false,
+    "width": 1536,
+    "height": 1024
+  },
+  "desktopDetailMetrics": {
+    "docVertical": false,
+    "docHorizontal": false,
+    "targetVertical": true,
+    "targetHorizontal": false,
+    "width": 1536,
+    "height": 1024
+  },
+  "mobileCatalogMetrics": {
+    "docVertical": false,
+    "docHorizontal": false,
+    "targetVertical": false,
+    "targetHorizontal": false,
+    "width": 390,
+    "height": 844
+  },
+  "mobileDetailMetrics": {
+    "docVertical": false,
+    "docHorizontal": false,
+    "targetVertical": false,
+    "targetHorizontal": false,
+    "width": 390,
+    "height": 844
+  },
+  "mobilePlayerLessonMetrics": {
+    "docVertical": false,
+    "docHorizontal": false,
+    "targetVertical": false,
+    "targetHorizontal": false,
+    "width": 390,
+    "height": 844
+  },
+  "mobilePlayerCountdownMetrics": {
+    "docVertical": false,
+    "docHorizontal": false,
+    "targetVertical": false,
+    "targetHorizontal": false,
+    "width": 390,
+    "height": 844
+  },
+  "mobilePlayerNextMetrics": {
+    "docVertical": false,
+    "docHorizontal": false,
+    "targetVertical": false,
+    "targetHorizontal": false,
+    "width": 390,
+    "height": 844
+  }
+}

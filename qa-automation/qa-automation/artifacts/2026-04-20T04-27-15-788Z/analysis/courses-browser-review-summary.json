@@ -1,0 +1,20 @@
+{
+  "baseUrl": "http://127.0.0.1:3400",
+  "adminEmail": "admin@local.edumaster",
+  "studentEmail": "student+courses-browser@local.edumaster",
+  "seededCourseCount": 12,
+  "screenshots": {
+    "coursesPageOneScreenshot": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-20T04-27-15-788Z/screenshots/courses-browser-desktop-page-1.png",
+    "coursesPageTwoScreenshot": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-20T04-27-15-788Z/screenshots/courses-browser-desktop-page-2.png",
+    "coursesWorkspaceScreenshot": null,
+    "overviewScreenshot": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-20T04-27-15-788Z/screenshots/overview-browser-desktop.png",
+    "mobileCoursesScreenshot": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-20T04-27-15-788Z/screenshots/courses-browser-mobile-page-1.png",
+    "mobileOverviewScreenshot": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-20T04-27-15-788Z/screenshots/overview-browser-mobile.png"
+  },
+  "metrics": {
+    "navigatorItems": 12,
+    "visibleCards": 7,
+    "pageStatus": "Showing 1-6 of 12",
+    "nextDisabled": false
+  }
+}

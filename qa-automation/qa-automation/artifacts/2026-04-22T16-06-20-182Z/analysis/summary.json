@@ -1,0 +1,364 @@
+{
+  "captures": [
+    {
+      "stepId": "live-overview-desktop",
+      "label": "live-overview-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-overview-desktop-live-overview-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-overview-desktop-live-overview-desktop.html",
+      "timestamp": "2026-04-22T16:06:30.032Z"
+    },
+    {
+      "stepId": "live-schedule-desktop",
+      "label": "live-schedule-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-schedule-desktop-live-schedule-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-schedule-desktop-live-schedule-desktop.html",
+      "timestamp": "2026-04-22T16:06:30.828Z"
+    },
+    {
+      "stepId": "live-previous-desktop",
+      "label": "live-previous-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-previous-desktop-live-previous-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-previous-desktop-live-previous-desktop.html",
+      "timestamp": "2026-04-22T16:06:31.290Z"
+    },
+    {
+      "stepId": "live-schedule-return-desktop",
+      "label": "live-schedule-return-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-schedule-return-desktop-live-schedule-return-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-schedule-return-desktop-live-schedule-return-desktop.html",
+      "timestamp": "2026-04-22T16:06:31.635Z"
+    },
+    {
+      "stepId": "live-details-desktop",
+      "label": "live-details-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-details-desktop-live-details-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-details-desktop-live-details-desktop.html",
+      "timestamp": "2026-04-22T16:06:31.984Z"
+    },
+    {
+      "stepId": "live-waiting-desktop",
+      "label": "live-waiting-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-waiting-desktop-live-waiting-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-waiting-desktop-live-waiting-desktop.html",
+      "timestamp": "2026-04-22T16:06:32.354Z"
+    },
+    {
+      "stepId": "live-room-chat-desktop",
+      "label": "live-room-chat-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-room-chat-desktop-live-room-chat-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-room-chat-desktop-live-room-chat-desktop.html",
+      "timestamp": "2026-04-22T16:06:33.634Z"
+    },
+    {
+      "stepId": "live-room-participants-desktop",
+      "label": "live-room-participants-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-room-participants-desktop-live-room-participants-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-room-participants-desktop-live-room-participants-desktop.html",
+      "timestamp": "2026-04-22T16:06:33.986Z"
+    },
+    {
+      "stepId": "live-room-notes-desktop",
+      "label": "live-room-notes-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-room-notes-desktop-live-room-notes-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-room-notes-desktop-live-room-notes-desktop.html",
+      "timestamp": "2026-04-22T16:06:34.328Z"
+    },
+    {
+      "stepId": "live-room-chat-return-desktop",
+      "label": "live-room-chat-return-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-room-chat-return-desktop-live-room-chat-return-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-room-chat-return-desktop-live-room-chat-return-desktop.html",
+      "timestamp": "2026-04-22T16:06:34.692Z"
+    },
+    {
+      "stepId": "live-ended-desktop",
+      "label": "live-ended-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-ended-desktop-live-ended-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-ended-desktop-live-ended-desktop.html",
+      "timestamp": "2026-04-22T16:06:35.068Z"
+    },
+    {
+      "stepId": "live-ended-previous-desktop",
+      "label": "live-ended-previous-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-ended-previous-desktop-live-ended-previous-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-ended-previous-desktop-live-ended-previous-desktop.html",
+      "timestamp": "2026-04-22T16:06:35.459Z"
+    },
+    {
+      "stepId": "live-recording-desktop",
+      "label": "live-recording-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-recording-desktop-live-recording-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-recording-desktop-live-recording-desktop.html",
+      "timestamp": "2026-04-22T16:06:35.827Z"
+    },
+    {
+      "stepId": "live-recording-notes-desktop",
+      "label": "live-recording-notes-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-recording-notes-desktop-live-recording-notes-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-recording-notes-desktop-live-recording-notes-desktop.html",
+      "timestamp": "2026-04-22T16:06:36.187Z"
+    },
+    {
+      "stepId": "live-recording-qna-desktop",
+      "label": "live-recording-qna-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-recording-qna-desktop-live-recording-qna-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-recording-qna-desktop-live-recording-qna-desktop.html",
+      "timestamp": "2026-04-22T16:06:36.578Z"
+    },
+    {
+      "stepId": "live-recording-overview-desktop",
+      "label": "live-recording-overview-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-recording-overview-desktop-live-recording-overview-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-recording-overview-desktop-live-recording-overview-desktop.html",
+      "timestamp": "2026-04-22T16:06:36.935Z"
+    },
+    {
+      "stepId": "live-feedback-desktop",
+      "label": "live-feedback-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-feedback-desktop-live-feedback-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-feedback-desktop-live-feedback-desktop.html",
+      "timestamp": "2026-04-22T16:06:37.299Z"
+    },
+    {
+      "stepId": "live-feedback-selected-desktop",
+      "label": "live-feedback-selected-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-feedback-selected-desktop-live-feedback-selected-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-feedback-selected-desktop-live-feedback-selected-desktop.html",
+      "timestamp": "2026-04-22T16:06:37.586Z"
+    },
+    {
+      "stepId": "live-schedule-final-desktop",
+      "label": "live-schedule-final-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-schedule-final-desktop-live-schedule-final-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-schedule-final-desktop-live-schedule-final-desktop.html",
+      "timestamp": "2026-04-22T16:06:39.594Z"
+    },
+    {
+      "stepId": "live-overview-mobile",
+      "label": "live-overview-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-overview-mobile-live-overview-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-overview-mobile-live-overview-mobile.html",
+      "timestamp": "2026-04-22T16:06:46.933Z"
+    },
+    {
+      "stepId": "live-schedule-mobile",
+      "label": "live-schedule-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-schedule-mobile-live-schedule-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-schedule-mobile-live-schedule-mobile.html",
+      "timestamp": "2026-04-22T16:06:47.724Z"
+    },
+    {
+      "stepId": "live-previous-mobile",
+      "label": "live-previous-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-previous-mobile-live-previous-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-previous-mobile-live-previous-mobile.html",
+      "timestamp": "2026-04-22T16:06:48.155Z"
+    },
+    {
+      "stepId": "live-schedule-return-mobile",
+      "label": "live-schedule-return-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-schedule-return-mobile-live-schedule-return-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-schedule-return-mobile-live-schedule-return-mobile.html",
+      "timestamp": "2026-04-22T16:06:48.475Z"
+    },
+    {
+      "stepId": "live-details-mobile",
+      "label": "live-details-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-details-mobile-live-details-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-details-mobile-live-details-mobile.html",
+      "timestamp": "2026-04-22T16:06:48.840Z"
+    },
+    {
+      "stepId": "live-waiting-mobile",
+      "label": "live-waiting-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-waiting-mobile-live-waiting-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-waiting-mobile-live-waiting-mobile.html",
+      "timestamp": "2026-04-22T16:06:49.187Z"
+    },
+    {
+      "stepId": "live-room-chat-mobile",
+      "label": "live-room-chat-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-room-chat-mobile-live-room-chat-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-room-chat-mobile-live-room-chat-mobile.html",
+      "timestamp": "2026-04-22T16:06:50.475Z"
+    },
+    {
+      "stepId": "live-room-participants-mobile",
+      "label": "live-room-participants-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-room-participants-mobile-live-room-participants-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-room-participants-mobile-live-room-participants-mobile.html",
+      "timestamp": "2026-04-22T16:06:50.819Z"
+    },
+    {
+      "stepId": "live-room-notes-mobile",
+      "label": "live-room-notes-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-room-notes-mobile-live-room-notes-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-room-notes-mobile-live-room-notes-mobile.html",
+      "timestamp": "2026-04-22T16:06:51.188Z"
+    },
+    {
+      "stepId": "live-room-chat-return-mobile",
+      "label": "live-room-chat-return-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-room-chat-return-mobile-live-room-chat-return-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-room-chat-return-mobile-live-room-chat-return-mobile.html",
+      "timestamp": "2026-04-22T16:06:51.565Z"
+    },
+    {
+      "stepId": "live-ended-mobile",
+      "label": "live-ended-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-ended-mobile-live-ended-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-ended-mobile-live-ended-mobile.html",
+      "timestamp": "2026-04-22T16:06:51.963Z"
+    },
+    {
+      "stepId": "live-ended-previous-mobile",
+      "label": "live-ended-previous-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-ended-previous-mobile-live-ended-previous-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-ended-previous-mobile-live-ended-previous-mobile.html",
+      "timestamp": "2026-04-22T16:06:52.308Z"
+    },
+    {
+      "stepId": "live-recording-mobile",
+      "label": "live-recording-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-recording-mobile-live-recording-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-recording-mobile-live-recording-mobile.html",
+      "timestamp": "2026-04-22T16:06:52.676Z"
+    },
+    {
+      "stepId": "live-recording-notes-mobile",
+      "label": "live-recording-notes-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-recording-notes-mobile-live-recording-notes-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-recording-notes-mobile-live-recording-notes-mobile.html",
+      "timestamp": "2026-04-22T16:06:53.025Z"
+    },
+    {
+      "stepId": "live-recording-qna-mobile",
+      "label": "live-recording-qna-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-recording-qna-mobile-live-recording-qna-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-recording-qna-mobile-live-recording-qna-mobile.html",
+      "timestamp": "2026-04-22T16:06:53.399Z"
+    },
+    {
+      "stepId": "live-recording-overview-mobile",
+      "label": "live-recording-overview-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-recording-overview-mobile-live-recording-overview-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-recording-overview-mobile-live-recording-overview-mobile.html",
+      "timestamp": "2026-04-22T16:06:53.759Z"
+    },
+    {
+      "stepId": "live-feedback-mobile",
+      "label": "live-feedback-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-feedback-mobile-live-feedback-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-feedback-mobile-live-feedback-mobile.html",
+      "timestamp": "2026-04-22T16:06:54.107Z"
+    },
+    {
+      "stepId": "live-feedback-selected-mobile",
+      "label": "live-feedback-selected-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-feedback-selected-mobile-live-feedback-selected-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-feedback-selected-mobile-live-feedback-selected-mobile.html",
+      "timestamp": "2026-04-22T16:06:54.421Z"
+    },
+    {
+      "stepId": "live-schedule-final-mobile",
+      "label": "live-schedule-final-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-schedule-final-mobile-live-schedule-final-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/sources/live-schedule-final-mobile-live-schedule-final-mobile.html",
+      "timestamp": "2026-04-22T16:06:56.482Z"
+    }
+  ],
+  "failures": [
+    {
+      "stepId": "live-runtime-mobile",
+      "title": "Mobile live flow produced runtime errors",
+      "description": "[console] Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "severity": "high",
+      "timestamp": "2026-04-22T16:06:56.483Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-schedule-final-mobile-live-schedule-final-mobile.png"
+    },
+    {
+      "stepId": "live-unauthorized-mobile",
+      "title": "Mobile live flow hit unauthorized requests",
+      "description": "GET http://127.0.0.1:3300/backend/api/auth/session",
+      "severity": "high",
+      "timestamp": "2026-04-22T16:06:56.483Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-22T16-06-20-182Z/screenshots/live-schedule-final-mobile-live-schedule-final-mobile.png"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T14-15-34-591Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-28T14-15-34-591Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-04-28T14:15:48.591Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    }
+  ],
+  "failures": [],
+  "error": "Live class did not appear after create submit. Visible text: VARONENGLISH\n\nCompetitive exam platform\n\nCURRENT LEARNER\n\nAbuw Singh\n\nBeginner\n\nRecent\n\n9\n\nSnapshots\n\n265\n\nOverview\nAll Courses\nLive Classes\nMock Tests\nRevision\nAnalytics\nAdmin\n\nNEXT BEST MOVE\n\nResume Circuits & Network Reduction Essentials before opening something new.\n\nResume now\nSign out\ntitle is required\nEnd Class\nLIVE\nRealtime Smoke Classroom\n\nRealtime • Smoke\n\nQA Faculty\n\n0 students watching\n\nStarted at\n\n07:17 pm\n\nDuration\n\n45 min\n\nStudents\n\n0\n\nEnter Live Class\nTest Audio/Video\n\nClassroom is open\n\nJoin now to enter the real-time classroom with chat, media controls, and participant sync.\n\nThe class is live now\n\nJoin now and everything will stay synchronized in real time.\n\nView Class Info\nOverview\nLive Chat\nNotes\nPolls\nResources\nAbout this class\n\nIn this session, we will cover Realtime Smoke Classroom and keep the classroom fully live with audio, video, screen sharing, chat, participant moderation, and instant sync.\n\nTopics to be covered\n\n2 Topics\n\nClass Notes\n\nWill be shared after the class\n\nHomework\n\nPractice questions included\n\nRecording\n\nAvailable after the class ends\n\nClassroom details, notes, and playback stay attached to this session.\n\nMeet your teacher\n\nQA Faculty\n\nPhys"
+}

@@ -5,11 +5,11 @@ import {
   CourseCard,
   DailyQuizResult,
   GeneratedAssessmentDraft,
-  LiveChatMessage,
-  LiveBroadcastAdminState,
-  LiveBroadcastViewerState,
   LiveClass,
   LiveClassAccess,
+  LiveClassChatMessage,
+  LiveClassEventPayload,
+  LiveClassSessionState,
   MockTest,
   PlatformOverview,
   ProtectedLessonPlayback,
@@ -24,23 +24,63 @@ const AUTH_EVENT_KEY = 'edumaster.auth.event';
 
 let authToken: string | null = null;
 
+type RequestOptions = RequestInit & {
+  includeAuth?: boolean;
+  expireSessionOn401?: boolean;
+};
+
+type LoginOptions = {
+  forceLogoutOtherSessions?: boolean;
+};
+
+export class ApiRequestError extends Error {
+  status: number;
+  code: string;
+  details: any;
+
+  constructor(message: string, { status, code, details }: { status: number; code: string; details?: any }) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.code = code;
+    this.details = details ?? null;
+  }
+}
+
+const getClientDeviceLabel = () => {
+  if (typeof window === 'undefined') {
+    return 'web-dashboard';
+  }
+
+  const platform = window.navigator.platform || 'desktop';
+  const browser = window.navigator.userAgent.includes('Chrome')
+    ? 'Chrome'
+    : window.navigator.userAgent.includes('Safari')
+      ? 'Safari'
+      : window.navigator.userAgent.includes('Firefox')
+        ? 'Firefox'
+        : 'Browser';
+
+  return `${browser} on ${platform}`;
+};
+
 const readStoredToken = () => {
   if (typeof window === 'undefined') {
     return authToken;
   }
 
-  const sessionToken = window.sessionStorage.getItem(TOKEN_KEY);
-  if (sessionToken) {
-    authToken = sessionToken;
-    return sessionToken;
+  const persistedToken = window.localStorage.getItem(TOKEN_KEY);
+  if (persistedToken) {
+    authToken = persistedToken;
+    return persistedToken;
   }
 
-  const legacyToken = window.localStorage.getItem(TOKEN_KEY);
-  if (legacyToken) {
-    window.sessionStorage.setItem(TOKEN_KEY, legacyToken);
-    window.localStorage.removeItem(TOKEN_KEY);
-    authToken = legacyToken;
-    return legacyToken;
+  const legacySessionToken = window.sessionStorage.getItem(TOKEN_KEY);
+  if (legacySessionToken) {
+    window.localStorage.setItem(TOKEN_KEY, legacySessionToken);
+    window.sessionStorage.removeItem(TOKEN_KEY);
+    authToken = legacySessionToken;
+    return legacySessionToken;
   }
 
   return authToken;
@@ -54,11 +94,11 @@ const saveToken = (token: string | null) => {
   }
 
   if (token) {
-    window.sessionStorage.setItem(TOKEN_KEY, token);
-    window.localStorage.removeItem(TOKEN_KEY);
-  } else {
+    window.localStorage.setItem(TOKEN_KEY, token);
     window.sessionStorage.removeItem(TOKEN_KEY);
+  } else {
     window.localStorage.removeItem(TOKEN_KEY);
+    window.sessionStorage.removeItem(TOKEN_KEY);
   }
 };
 
@@ -78,8 +118,8 @@ const emitAuthEvent = (event: { type: 'login' | 'logout'; userId?: string | null
   }
 };
 
-const buildHeaders = (hasBody: boolean) => {
-  const token = readStoredToken();
+const buildHeaders = (hasBody: boolean, includeAuth = true) => {
+  const token = includeAuth ? readStoredToken() : null;
 
   return {
     ...(hasBody ? { 'content-type': 'application/json' } : {}),
@@ -124,11 +164,11 @@ const handleUnauthorized = (payload?: any) => {
   }
 };
 
-const request = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
+const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      ...buildHeaders(Boolean(options.body)),
+      ...buildHeaders(Boolean(options.body), options.includeAuth !== false),
       ...(options.headers || {}),
     },
   });
@@ -136,21 +176,25 @@ const request = async <T>(path: string, options: RequestInit = {}): Promise<T> =
   const payload = await parsePayload(response);
 
   if (!response.ok) {
-    if (response.status === 401) {
+    if (response.status === 401 && options.expireSessionOn401 !== false) {
       handleUnauthorized(payload);
       throw new Error('Session expired. Please sign in again.');
     }
-    throw new Error(extractErrorMessage(payload, path));
+    throw new ApiRequestError(extractErrorMessage(payload, path), {
+      status: response.status,
+      code: payload?.code || 'REQUEST_FAILED',
+      details: payload?.details,
+    });
   }
 
   return payload as T;
 };
 
-const rootRequest = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
+const rootRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const response = await fetch(path, {
     ...options,
     headers: {
-      ...buildHeaders(Boolean(options.body)),
+      ...buildHeaders(Boolean(options.body), options.includeAuth !== false),
       ...(options.headers || {}),
     },
   });
@@ -158,11 +202,15 @@ const rootRequest = async <T>(path: string, options: RequestInit = {}): Promise<
   const payload = await parsePayload(response);
 
   if (!response.ok) {
-    if (response.status === 401) {
+    if (response.status === 401 && options.expireSessionOn401 !== false) {
       handleUnauthorized(payload);
       throw new Error('Session expired. Please sign in again.');
     }
-    throw new Error(extractErrorMessage(payload, path));
+    throw new ApiRequestError(extractErrorMessage(payload, path), {
+      status: response.status,
+      code: payload?.code || 'REQUEST_FAILED',
+      details: payload?.details,
+    });
   }
 
   return payload as T;
@@ -185,13 +233,16 @@ export const EduService = {
     return EduService.login(payload.email, payload.password);
   },
 
-  login: async (email: string, password: string): Promise<AuthResponse> => {
+  login: async (email: string, password: string, options: LoginOptions = {}): Promise<AuthResponse> => {
     const response = await request<AuthResponse>('/auth/login', {
       method: 'POST',
+      includeAuth: false,
+      expireSessionOn401: false,
       body: JSON.stringify({
         email,
         password,
-        device: 'web-dashboard',
+        device: getClientDeviceLabel(),
+        forceLogoutOtherSessions: options.forceLogoutOtherSessions ?? false,
       }),
     });
 
@@ -229,12 +280,132 @@ export const EduService = {
     }
   },
 
-  seedPlatform: async () => {
-    return request<{ message: string }>('/platform/seed', { method: 'POST' });
-  },
-
   getPlatformOverview: async () => {
     return request<PlatformOverview>('/platform/overview');
+  },
+
+  getLiveClasses: async () => {
+    return request<{ liveClasses: LiveClass[] }>('/live-classes');
+  },
+
+  getAdminLiveClasses: async () => {
+    return request<{ liveClasses: LiveClass[] }>('/live-classes/admin');
+  },
+
+  createLiveClass: async (payload: Partial<LiveClass>) => {
+    return request<{ liveClass: LiveClass }>('/live-classes', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateLiveClass: async (liveClassId: string, payload: Partial<LiveClass>) => {
+    return request<{ liveClass: LiveClass }>(`/live-classes/${liveClassId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteLiveClass: async (liveClassId: string) => {
+    return request<{ liveClassId: string; message: string }>(`/live-classes/${liveClassId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  startLiveClass: async (liveClassId: string) => {
+    return request<{ liveClass: LiveClass; session: LiveClassSessionState }>(`/live-classes/${liveClassId}/start`, {
+      method: 'POST',
+    });
+  },
+
+  endLiveClass: async (liveClassId: string) => {
+    return request<{ liveClass: LiveClass; session: LiveClassSessionState }>(`/live-classes/${liveClassId}/end`, {
+      method: 'POST',
+    });
+  },
+
+  getLiveClassAccess: async (liveClassId: string) => {
+    return request<LiveClassAccess>(`/live-classes/${liveClassId}/access`);
+  },
+
+  getLiveClassChat: async (liveClassId: string) => {
+    return request<{ messages: LiveClassChatMessage[] }>(`/live-classes/${liveClassId}/chat`);
+  },
+
+  postLiveClassChat: async (liveClassId: string, message: string, kind: 'chat' | 'doubt' = 'chat') => {
+    return request<{ message: LiveClassChatMessage }>(`/live-classes/${liveClassId}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ message, kind }),
+    });
+  },
+
+  getLiveSessionState: async (liveClassId: string) => {
+    return request<{ session: LiveClassSessionState }>(`/live-classes/${liveClassId}/session`);
+  },
+
+  joinLiveSession: async (liveClassId: string) => {
+    return request<{ participant: LiveClassSessionState['participants'][number]; session: LiveClassSessionState }>(`/live-classes/${liveClassId}/session/join`, {
+      method: 'POST',
+    });
+  },
+
+  leaveLiveSession: async (liveClassId: string) => {
+    return request<{ session: LiveClassSessionState }>(`/live-classes/${liveClassId}/session/leave`, {
+      method: 'POST',
+    });
+  },
+
+  heartbeatLiveSession: async (liveClassId: string) => {
+    return request<{ participant: LiveClassSessionState['participants'][number] }>(`/live-classes/${liveClassId}/session/heartbeat`, {
+      method: 'POST',
+    });
+  },
+
+  updateLiveMediaState: async (liveClassId: string, payload: {
+    micMuted?: boolean;
+    videoEnabled?: boolean;
+    isScreenSharing?: boolean;
+  }) => {
+    return request<{ participant: LiveClassSessionState['participants'][number] }>(`/live-classes/${liveClassId}/session/media`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateLiveRaisedHand: async (liveClassId: string, raised: boolean) => {
+    return request<{ participant: LiveClassSessionState['participants'][number] }>(`/live-classes/${liveClassId}/session/raise-hand`, {
+      method: 'POST',
+      body: JSON.stringify({ raised }),
+    });
+  },
+
+  approveLiveParticipant: async (liveClassId: string, participantUserId: string, approved: boolean) => {
+    return request<{ participant: LiveClassSessionState['participants'][number] }>(`/live-classes/${liveClassId}/session/participants/${participantUserId}/approval`, {
+      method: 'POST',
+      body: JSON.stringify({ approved }),
+    });
+  },
+
+  muteLiveParticipant: async (liveClassId: string, participantUserId: string, muted: boolean) => {
+    return request<{ participant: LiveClassSessionState['participants'][number] }>(`/live-classes/${liveClassId}/session/participants/${participantUserId}/mute`, {
+      method: 'POST',
+      body: JSON.stringify({ muted }),
+    });
+  },
+
+  removeLiveParticipant: async (liveClassId: string, participantUserId: string) => {
+    return request<{ participant: LiveClassSessionState['participants'][number] }>(`/live-classes/${liveClassId}/session/participants/${participantUserId}/remove`, {
+      method: 'POST',
+    });
+  },
+
+  createLiveEventsStream: (liveClassId: string) => {
+    const token = readStoredToken();
+    if (!token) {
+      throw new Error('Authorization token required');
+    }
+
+    return new EventSource(`${API_BASE}/live-classes/${liveClassId}/events?token=${encodeURIComponent(token)}`);
   },
 
   submitDailyQuiz: async (quizId: string, answers: string[]) => {
@@ -322,6 +493,29 @@ export const EduService = {
     });
   },
 
+  trackPlaybackHeartbeat: async (payload: {
+    videoId: string;
+    courseId?: string | null;
+    lessonId?: string | null;
+    currentTimeSeconds: number;
+    durationSeconds: number;
+    isPlaying: boolean;
+    completed?: boolean;
+  }) => {
+    return request(`/track`, {
+      method: 'POST',
+      body: JSON.stringify({
+        videoId: payload.videoId,
+        courseId: payload.courseId || null,
+        lessonId: payload.lessonId || null,
+        currentTimeSeconds: payload.currentTimeSeconds,
+        durationSeconds: payload.durationSeconds,
+        isPlaying: payload.isPlaying,
+        completed: payload.completed ?? false,
+      }),
+    });
+  },
+
   askAi: async (message: string) => {
     return request<AiResponse>(`/platform/ai/ask`, {
       method: 'POST',
@@ -348,10 +542,6 @@ export const EduService = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-  },
-
-  seedSampleData: async () => {
-    return request(`/admin/seed-sample-data`, { method: 'POST' });
   },
 
   createCourse: async (course: Partial<CourseCard>) => {
@@ -470,126 +660,6 @@ export const EduService = {
   retryPayment: async (paymentId: string) => {
     return request<{ _id: string; paymentUrl: string; status: string; attemptCount: number }>(`/payment/${paymentId}/retry`, {
       method: 'POST',
-    });
-  },
-
-  getLiveClasses: async () => {
-    return request<LiveClass[]>(`/live-classes`);
-  },
-
-  getAdminLiveClasses: async () => {
-    return request<LiveClass[]>(`/live-classes/admin/list`);
-  },
-
-  createLiveClass: async (payload: Partial<LiveClass>) => {
-    return request<LiveClass>('/live-classes', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
-
-  updateLiveClass: async (liveClassId: string, payload: Partial<LiveClass>) => {
-    return request<LiveClass>(`/live-classes/${liveClassId}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
-  },
-
-  startLiveClass: async (liveClassId: string) => {
-    return request<LiveClass>(`/live-classes/${liveClassId}/start`, {
-      method: 'POST',
-    });
-  },
-
-  endLiveClass: async (liveClassId: string, payload: Partial<LiveClass> = {}) => {
-    return request<LiveClass>(`/live-classes/${liveClassId}/end`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
-
-  deleteLiveClass: async (liveClassId: string) => {
-    return request<{ deleted: boolean; liveClassId: string }>(`/live-classes/${liveClassId}`, {
-      method: 'DELETE',
-    });
-  },
-
-  getLiveClassAccess: async (liveClassId: string) => {
-    return request<LiveClassAccess>(`/live-classes/${liveClassId}/access`);
-  },
-
-  getLiveChat: async (liveClassId: string) => {
-    return request<LiveChatMessage[]>(`/live-classes/${liveClassId}/chat`);
-  },
-
-  getLiveKitJoinToken: async (liveClassId: string, role: 'host' | 'viewer') => {
-    return request<{ liveClassId: string; roomName: string; url: string; token: string; canPublish: boolean }>(
-      `/live-classes/${liveClassId}/livekit/token?role=${role}`,
-    );
-  },
-
-  postLiveChat: async (liveClassId: string, message: string, kind: 'chat' | 'doubt') => {
-    return request<LiveChatMessage>(`/live-classes/${liveClassId}/chat`, {
-      method: 'POST',
-      body: JSON.stringify({ message, kind }),
-    });
-  },
-
-  startLiveBroadcastSession: async (liveClassId: string) => {
-    return request<{ liveClassId: string; status: string; createdAt: string }>(`/live-classes/${liveClassId}/broadcast/session`, {
-      method: 'POST',
-    });
-  },
-
-  stopLiveBroadcastSession: async (liveClassId: string) => {
-    return request<{ liveClassId: string; stopped: boolean }>(`/live-classes/${liveClassId}/broadcast/session`, {
-      method: 'DELETE',
-    });
-  },
-
-  getLiveBroadcastAdminState: async (liveClassId: string) => {
-    return request<LiveBroadcastAdminState>(`/live-classes/${liveClassId}/broadcast/admin/state`);
-  },
-
-  joinLiveBroadcastAsViewer: async (liveClassId: string) => {
-    return request<{ viewerId: string; liveClassId: string }>(`/live-classes/${liveClassId}/broadcast/viewers`, {
-      method: 'POST',
-    });
-  },
-
-  getLiveBroadcastViewerState: async (liveClassId: string, viewerId: string) => {
-    return request<LiveBroadcastViewerState>(`/live-classes/${liveClassId}/broadcast/viewers/${viewerId}`);
-  },
-
-  postLiveBroadcastOffer: async (liveClassId: string, viewerId: string, offer: RTCSessionDescriptionInit) => {
-    return request<{ viewerId: string; offerId: string }>(`/live-classes/${liveClassId}/broadcast/viewers/${viewerId}/offer`, {
-      method: 'POST',
-      body: JSON.stringify(offer),
-    });
-  },
-
-  postLiveBroadcastAnswer: async (liveClassId: string, viewerId: string, answer: RTCSessionDescriptionInit) => {
-    return request<{ viewerId: string; answerId: string }>(`/live-classes/${liveClassId}/broadcast/viewers/${viewerId}/answer`, {
-      method: 'POST',
-      body: JSON.stringify(answer),
-    });
-  },
-
-  postLiveBroadcastCandidate: async (
-    liveClassId: string,
-    viewerId: string,
-    role: 'admin' | 'viewer',
-    candidate: RTCIceCandidateInit,
-  ) => {
-    return request<{ viewerId: string; candidateId: string }>(`/live-classes/${liveClassId}/broadcast/viewers/${viewerId}/candidates`, {
-      method: 'POST',
-      body: JSON.stringify({
-        role,
-        candidate: candidate.candidate,
-        sdpMid: candidate.sdpMid,
-        sdpMLineIndex: candidate.sdpMLineIndex,
-        usernameFragment: candidate.usernameFragment,
-      }),
     });
   },
 

@@ -28,8 +28,10 @@
     "node_modules",
     "dist",
     "build",
+    "qa-automation",
     "uploads",
     "private_uploads",
-    "backend/private_uploads"
+    "backend/private_uploads",
+    "functions/backend/private_uploads"
   ]
 }

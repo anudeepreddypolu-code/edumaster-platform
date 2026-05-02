@@ -1,63 +1,80 @@
 # EduMaster SSC JE / RRB JE Prep Platform
 
-This repository now contains an integrated prep-platform demo for **SSC JE / RRB JE** with:
+EduMaster is a full-stack exam-prep application for **SSC JE / RRB JE** with:
 
-- backend JWT auth with single-session style enforcement
-- structured courses with lessons, premium locks, and watch progress
-- timer-based mock tests with negative marking and scorecards
-- daily quiz, streaks, leaderboard, and engagement loops
-- live classes with replay links, chat, and doubt threads
-- analytics, payments, subscriptions, referrals, and AI coaching
-- admin seed, course creation, quiz/mock creation, and bulk question upload flows
-- production-oriented runtime scaffolding for health, Docker, Postgres/Redis config, and safer API defaults
+- learner auth with single-session protection
+- structured courses, lessons, premium access, and watch progress
+- mock tests, daily quizzes, rankings, streaks, and analytics
+- live classes, replay links, chat, and doubt threads
+- admin workflows for courses, tests, quizzes, uploads, and live sessions
+- payments, subscriptions, referrals, and AI-assisted study flows
 
-The React app runs through the root server and mounts the backend under **`/backend/api`** so the frontend and backend work together on the same origin during development.
+The frontend runs as a Vite React app. The backend is mounted under **`/backend/api`** in local development and can be deployed to **Firebase Hosting + Firebase Functions** for a single-origin production setup.
 
-## Run locally
+## Local development
 
-1. Install dependencies:
-   `npm install`
-2. Copy `.env.example` to your local env file and update secrets if needed.
-3. Start the app:
-   `npm run dev`
+```bash
+npm install
+npm run dev
+```
 
-If port `3000` is already in use, run on a different port:
+`npm run dev` starts the integrated app server and bootstraps a local Postgres instance that matches `POSTGRES_URL` in `.env` when PostgreSQL binaries are available on your machine.
 
-`PORT=3100 DISABLE_HMR=true npm run dev`
+Useful endpoints:
 
-## Production-style local run
+- `GET /healthz`
+- `GET /backend/api/health`
+- `GET /backend/api/ready`
+- `GET /backend/api/live`
 
-Containerized stack:
+## Production expectations
 
-`docker compose up --build`
+This repo is now configured so production mode does **not**:
 
-Health endpoints:
+- auto-seed demo data
+- expose sample credentials
+- enable dev seed routes
+- allow memory fallback when persistent storage is required
 
-- app server: `GET /healthz`
-- backend health snapshot: `GET /backend/api/health`
-- backend readiness: `GET /backend/api/ready`
-- backend liveness: `GET /backend/api/live`
+Before production deployment you must provide:
 
-## Demo credentials
+- `JWT_SECRET`
+- `PRIVATE_VIDEO_TOKEN_SECRET`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `CORS_ORIGIN`
+- one persistent database: `MONGODB_URI` or `POSTGRES_URL`
 
-- Student: `student@edumaster.local` / `Student@123`
-- Admin: `admin@edumaster.local` / `Admin@123`
+Validate production env locally with:
 
-If `MONGODB_URI` is missing or invalid, the backend automatically starts in **memory mode** with seeded demo data.
-If `POSTGRES_URL` or `REDIS_URL` are configured, their status is included in backend health checks.
+```bash
+npm run validate:production
+```
+
+Live-class release guide:
+
+- [LIVE_CLASSES_RELEASE_GUIDE.md](./LIVE_CLASSES_RELEASE_GUIDE.md)
+
+## Firebase deployment
+
+Use the guide in [FIREBASE_DEPLOY_GUIDE.md](./FIREBASE_DEPLOY_GUIDE.md).
+
+Quick deploy:
+
+```bash
+./deploy-quick.sh YOUR_FIREBASE_PROJECT_ID
+```
 
 ## Verification
 
-- Frontend/server typecheck: `npm run lint`
-- Backend API smoke test: `node backend/test-api.js`
+```bash
+npm run lint
+npm run build
+node backend/test-api.js
+```
 
-## Architecture artifacts
+## Notes
 
-- [HLD + LLD](./HLD_LLD.md)
-- [API Design](./API_DESIGN.md)
-- [DB Schema](./DB_SCHEMA.sql)
-- [Test Engine Logic](./TEST_ENGINE_LOGIC.md)
-- [Deployment Architecture](./DEPLOYMENT_ARCHITECTURE.md)
-- [User Flow](./USER_FLOW.md)
-- [Requirement Coverage](./REQUIREMENT_COVERAGE.md)
-- [Architecture Overview](./README_ARCHITECTURE.md)
+- Firebase Hosting is a good low-cost global delivery layer for testing.
+- Firebase Functions is suitable for moderate test traffic, not unlimited free production scale.
+- Durable uploads and video replay storage still require object storage such as S3/R2/B2.

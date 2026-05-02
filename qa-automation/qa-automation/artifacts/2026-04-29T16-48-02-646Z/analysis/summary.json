@@ -1,0 +1,18 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T16-48-02-646Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-04-29T16-48-02-646Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-04-29T16:48:20.796Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    }
+  ],
+  "failures": [],
+  "error": "Waiting failed: 50000ms exceeded"
+}
