@@ -1511,6 +1511,7 @@ const AuthScreen = ({
             <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
             <input
               data-testid="auth-login-email"
+              type="text"
               value={loginForm.email}
               onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
               className={authInputClassName}
@@ -1538,6 +1539,7 @@ const AuthScreen = ({
             />
             <button
               type="button"
+              aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowLoginPassword((current) => !current)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
             >
@@ -1549,6 +1551,8 @@ const AuthScreen = ({
         <label className="flex items-center gap-3 text-[12px] text-[#e2e8f0]">
           <button
             type="button"
+            aria-pressed={rememberMe}
+            aria-label="Remember me"
             onClick={() => setRememberMe((current) => !current)}
             className={cn(
               'flex h-5 w-5 items-center justify-center rounded-[6px] border transition',
@@ -1624,6 +1628,7 @@ const AuthScreen = ({
             <UserCircle2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
             <input
               data-testid="auth-register-name"
+              type="text"
               value={registerForm.name}
               onChange={(event) => setRegisterForm((current) => ({ ...current, name: event.target.value }))}
               className={authInputClassName}
@@ -1639,6 +1644,7 @@ const AuthScreen = ({
             <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
             <input
               data-testid="auth-register-email"
+              type="email"
               value={registerForm.email}
               onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
               className={authInputClassName}
@@ -1653,6 +1659,7 @@ const AuthScreen = ({
           <div className="relative mt-2">
             <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
             <input
+              type="tel"
               value={registerForm.mobileNumber}
               onChange={(event) => setRegisterForm((current) => ({ ...current, mobileNumber: event.target.value }))}
               className={authInputClassName}
@@ -1677,6 +1684,7 @@ const AuthScreen = ({
             />
             <button
               type="button"
+              aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowRegisterPassword((current) => !current)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
             >
@@ -1706,6 +1714,7 @@ const AuthScreen = ({
           <div className="relative mt-2">
             <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
             <input
+              data-testid="auth-register-confirm-password"
               type={showRegisterConfirmPassword ? 'text' : 'password'}
               value={registerForm.confirmPassword}
               onChange={(event) => setRegisterForm((current) => ({ ...current, confirmPassword: event.target.value }))}
@@ -1715,6 +1724,7 @@ const AuthScreen = ({
             />
             <button
               type="button"
+              aria-label={showRegisterConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
               onClick={() => setShowRegisterConfirmPassword((current) => !current)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
             >
@@ -1726,6 +1736,8 @@ const AuthScreen = ({
         <label className="flex items-start gap-3 text-[11px] leading-4 text-[#cbd5e1]">
           <button
             type="button"
+            aria-pressed={registerForm.agreeToTerms}
+            aria-label="Accept terms and privacy policy"
             onClick={() => setRegisterForm((current) => ({ ...current, agreeToTerms: !current.agreeToTerms }))}
             className={cn(
               'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border transition',
@@ -7436,7 +7448,10 @@ const AppContent = () => {
       setLoadingOverview(true);
     }
     try {
-      const nextPublicOverview = await EduService.getPlatformOverview();
+      const nextPublicOverview = await EduService.getPlatformOverview({
+        includeAuth: false,
+        expireSessionOn401: false,
+      });
       setPublicOverview(nextPublicOverview);
 
       if (user) {

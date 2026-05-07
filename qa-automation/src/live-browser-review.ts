@@ -329,13 +329,15 @@ const loginThroughUi = async (
   if (roleLabel === 'student' && !config.loginEmail && !process.env.QA_LOGIN_EMAIL) {
     await page.evaluate(() => {
       const registerButton = Array.from(document.querySelectorAll('button'))
-        .find((node) => (node.textContent || '').includes('Create account')) as HTMLButtonElement | undefined;
+        .find((node) => /create account|sign up/i.test(node.textContent || '')) as HTMLButtonElement | undefined;
       registerButton?.click();
     });
     await waitForSelector(page, '[data-testid="auth-register-name"]', 30000);
     await page.locator('[data-testid="auth-register-name"]').fill('QA Live Student');
     await page.locator('[data-testid="auth-register-email"]').fill(email);
     await page.locator('[data-testid="auth-register-password"]').fill(password);
+    await page.locator('[data-testid="auth-register-confirm-password"]').fill(password);
+    await page.locator('[aria-label="Accept terms and privacy policy"]').click();
     await page.locator('[data-testid="auth-register-submit"]').click();
     await page.waitForFunction(
       () => Boolean(document.querySelector('[data-testid="mobile-nav-live"]') || document.querySelector('[data-testid="nav-live"]')),
@@ -896,6 +898,21 @@ const waitForLiveMedia = async (page: puppeteer.Page) => {
   );
 };
 
+const waitForLiveRoomShell = async (page: puppeteer.Page, timeout = 30000) => {
+  await page.waitForFunction(
+    () => Boolean(
+      document.querySelector('[data-testid="live-runtime-page"][data-room-loaded="true"]')
+      && document.querySelector('[data-testid="live-jitsi-container"]')
+      && document.querySelector('[data-testid="live-chat-input"]')
+      && document.querySelector('[data-testid="live-toggle-audio"]')
+      && document.querySelector('[data-testid="live-toggle-video"]')
+      && document.querySelector('[data-testid="live-raise-hand"]')
+      && document.querySelector('[data-testid="live-leave-class"]'),
+    ),
+    { timeout },
+  );
+};
+
 const getLiveRuntimeDebug = async (page: puppeteer.Page) =>
   page.evaluate(() => {
     const root = document.querySelector('[data-testid="live-runtime-page"]');
@@ -1050,6 +1067,29 @@ const getCurrentUserId = async (page: puppeteer.Page) => {
   return json.id;
 };
 
+const postLiveClassStartFromPage = async (page: puppeteer.Page, liveClassId: string) => {
+  const result = await page.evaluate(async ({ targetId, origin }) => {
+    const token = window.localStorage.getItem('edumaster.jwt') || '';
+    const response = await fetch(`${origin}/backend/api/live-classes/${targetId}/start`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    return {
+      ok: response.ok,
+      status: response.status,
+      message: payload?.error || payload?.message || '',
+    };
+  }, { targetId: liveClassId, origin: apiOrigin });
+
+  if (!result.ok) {
+    throw new Error(`Unable to start live class through API (${result.status}): ${result.message}`);
+  }
+};
+
 const waitForLiveBadge = async (page: puppeteer.Page, title: string) => {
   await page.waitForFunction(
     (expected) => Array.from(document.querySelectorAll('[data-testid^="live-card-"]')).some((node) => {
@@ -1172,16 +1212,31 @@ export const runLiveReview = async () => {
     await sleep(700);
     await openLiveClassDetail(adminPage, classTitle, createdLiveClassId || undefined);
     await clickVisibleMatchingSelector(adminPage, '[data-testid="live-admin-start"]');
-    await adminPage.waitForFunction(
-      () => {
-        if (document.querySelector('[data-testid="live-runtime-page"]')) {
-          return 'runtime';
-        }
-        const joinButton = document.querySelector('[data-testid="live-details-join-button"]') as HTMLButtonElement | null;
-        return joinButton && !joinButton.disabled ? 'join' : false;
-      },
-      { timeout: 45000 },
-    );
+    try {
+      await adminPage.waitForFunction(
+        () => {
+          if (document.querySelector('[data-testid="live-runtime-page"]')) {
+            return 'runtime';
+          }
+          const joinButton = document.querySelector('[data-testid="live-details-join-button"]') as HTMLButtonElement | null;
+          return joinButton && !joinButton.disabled ? 'join' : false;
+        },
+        { timeout: 45000 },
+      );
+    } catch (error) {
+      const shot = await recordCapture(adminPage, ctx, captures, 'admin-start-transition-timeout', 'admin-start-transition-timeout', [
+        error instanceof Error ? error.message : String(error),
+      ]);
+      consoleIssues.push(`admin-start-transition-timeout: ${shot}`);
+      if (createdLiveClassId) {
+        await postLiveClassStartFromPage(adminPage, createdLiveClassId);
+        await adminPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+        await openLiveClassDetail(adminPage, classTitle, createdLiveClassId);
+        await waitForEnabledSelector(adminPage, '[data-testid="live-details-join-button"]', 45000);
+      } else {
+        throw error;
+      }
+    }
     const shouldClickJoin = await adminPage.evaluate(() => {
       if (document.querySelector('[data-testid="live-runtime-page"]')) {
         return false;

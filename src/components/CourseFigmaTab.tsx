@@ -4844,24 +4844,101 @@ export const CourseFigmaTab = ({
     );
   };
 
-  const renderEmptyCoursesView = () => (
-    <div
-      data-testid="course-figma-page"
-      data-course-view="catalog"
-      className="overflow-hidden rounded-[26px] border border-white/70 bg-white px-[24px] py-[28px] text-center shadow-[0_30px_90px_rgba(33,51,97,0.13)]"
-    >
-      <div className="mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-[18px] bg-[#eef4ff] text-[#2f6fe4]">
-        <BookOpen className="h-[24px] w-[24px]" />
+  const renderEmptyCoursesView = () => {
+    if (isMobileLayout) {
+      return (
+        <div
+          data-testid="course-figma-page"
+          data-course-view="catalog"
+          className="min-h-[100dvh] bg-[#f4f7ff] pb-[92px]"
+        >
+          <div className="px-[12px] pb-[10px] pt-[10px]" style={uiFontStyle}>
+            <div className="flex items-center justify-between text-[12px] font-semibold text-[#101828]">
+              <span>9:41</span>
+              <div className="flex items-center gap-[5px]">
+                <span className="h-[7px] w-[5px] rounded-[2px] bg-[#101828]" />
+                <span className="h-[9px] w-[5px] rounded-[2px] bg-[#101828]" />
+                <span className="h-[11px] w-[5px] rounded-[2px] bg-[#101828]" />
+                <span className="ml-[4px] h-[10px] w-[20px] rounded-full border border-[#101828]" />
+              </div>
+            </div>
+
+            <header className="mt-[12px]">
+              <div className="flex items-center justify-between gap-[12px]">
+                <h1 className="text-[20px] font-semibold leading-none text-[#1c2844]">All Courses</h1>
+                <div className="flex items-center gap-[12px] text-[#1d3158]">
+                  <Search className="h-[21px] w-[21px]" />
+                  <Bell className="h-[21px] w-[21px]" />
+                </div>
+              </div>
+
+              <label
+                data-testid="course-catalog-search"
+                className="mt-[12px] flex h-[42px] items-center gap-[10px] rounded-[14px] border border-[#d9e3f2] bg-white px-[13px] text-[13px] text-[#7f8fb0] shadow-[0_8px_18px_rgba(28,41,61,0.04)]"
+              >
+                <Search className="h-[17px] w-[17px]" />
+                <input
+                  disabled
+                  placeholder="Search courses..."
+                  className="w-full bg-transparent text-[#1f2d4e] outline-none placeholder:text-[#9aa7bc] disabled:opacity-100"
+                />
+              </label>
+            </header>
+
+            <section
+              data-testid="course-catalog-empty"
+              className="mt-[16px] overflow-hidden rounded-[20px] border border-[#dce6f5] bg-white shadow-[0_12px_30px_rgba(28,41,61,0.07)]"
+            >
+              <div className="bg-[#eaf1ff] px-[16px] py-[18px]">
+                <div className="flex h-[58px] w-[58px] items-center justify-center rounded-[18px] bg-white text-[#2f6fe4] shadow-[0_10px_22px_rgba(47,111,228,0.16)]">
+                  <BookOpen className="h-[26px] w-[26px]" />
+                </div>
+                <h2 className="mt-[14px] text-[22px] font-semibold leading-[1.15] text-[#172033]">No courses available</h2>
+                <p className="mt-[8px] text-[13px] leading-[1.65] text-[#52637f]">
+                  Published courses will appear here as soon as the catalog is ready.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 divide-x divide-[#edf2f9] border-t border-[#edf2f9] text-center">
+                {[
+                  ['0', 'Courses'],
+                  ['0', 'Lessons'],
+                  ['0', 'Tests'],
+                ].map(([value, label]) => (
+                  <div key={label} className="px-[8px] py-[12px]">
+                    <p className="text-[17px] font-semibold leading-none text-[#1f2d4e]">{value}</p>
+                    <p className="mt-[6px] text-[11px] font-medium text-[#71819c]">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        data-testid="course-figma-page"
+        data-course-view="catalog"
+        className="overflow-hidden rounded-[26px] border border-white/70 bg-white px-[24px] py-[28px] text-center shadow-[0_30px_90px_rgba(33,51,97,0.13)]"
+      >
+        <div
+          data-testid="course-catalog-empty"
+          className="mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-[18px] bg-[#eef4ff] text-[#2f6fe4]"
+        >
+          <BookOpen className="h-[24px] w-[24px]" />
+        </div>
+        <h2 className="mt-[16px] text-[24px] font-semibold text-[#172033]">No courses available</h2>
+        <p className="mx-auto mt-[8px] max-w-[520px] text-[14px] leading-6 text-[#607394]">
+          Published courses will appear here as soon as the catalog is ready.
+        </p>
       </div>
-      <h2 className="mt-[16px] text-[24px] font-semibold tracking-[-0.03em] text-[#172033]">No courses available</h2>
-      <p className="mx-auto mt-[8px] max-w-[520px] text-[14px] leading-6 text-[#607394]">
-        Courses will appear here after real production content is created from the admin workspace or imported into the database.
-      </p>
-    </div>
-  );
+    );
+  };
 
   return (
-    <div className="w-full bg-[#d7def1] p-[14px] lg:p-[18px]" style={uiFontStyle}>
+    <div className={cn('w-full bg-[#d7def1] p-[14px] lg:p-[18px]', isMobileLayout && overview.courses.length === 0 && 'bg-[#f4f7ff] p-0')} style={uiFontStyle}>
       <div className="mx-auto w-full max-w-[1440px]">
         {overview.courses.length === 0 ? renderEmptyCoursesView() : screen === 'catalog' && renderCatalogView()}
         {screen === 'course' && selectedCourse && renderCourseView()}

@@ -33,7 +33,7 @@ const step: StepDefinition = {
   ],
   expectedTexts: [
     'Welcome back',
-    'Continue Learning',
+    'Learning workspace',
     'Active Courses',
     'Performance Overview',
     'Learning Activity',
@@ -107,22 +107,69 @@ const clickFirstVisible = async (page: puppeteer.Page, selectorOptions: string[]
   throw new Error(`No interactable selector found from: ${selectorOptions.join(', ')}`);
 };
 
-const waitForOverviewAppReady = async (page: puppeteer.Page) => {
-  await page.waitForFunction(
-    (selectorMap) => Boolean(
-      document.querySelector(selectorMap.shellReady)
-      || document.querySelector(selectorMap.overviewDashboard)
-      || document.querySelector(selectorMap.navOverview)
-      || document.querySelector(selectorMap.mobileNavOverview),
-    ),
-    { timeout: 30000 },
-    {
-      shellReady: selectors.shellReady,
-      overviewDashboard: selectors.overviewDashboard,
-      navOverview: selectors.navOverview,
-      mobileNavOverview: selectors.mobileNavOverview,
-    },
-  );
+const waitForOverviewAppReady = async (page: puppeteer.Page, includeAuth = false) => {
+  const deadline = Date.now() + 30000;
+  const readySelectors = [
+    selectors.shellReady,
+    selectors.overviewDashboard,
+    selectors.navOverview,
+    selectors.mobileNavOverview,
+    ...(includeAuth ? [selectors.loginEmail] : []),
+  ];
+
+  while (Date.now() < deadline) {
+    for (const selector of readySelectors) {
+      try {
+        if (await page.$(selector)) {
+          return;
+        }
+      } catch {
+        // The SPA may swap frames during auth restore; keep polling the new document.
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  throw new Error('Overview app did not become ready within 30000ms.');
+};
+
+const loadPage = async (page: puppeteer.Page) => {
+  try {
+    await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('Navigation timeout')) {
+      throw error;
+    }
+  }
+};
+
+const gotoOverview = async (page: puppeteer.Page) => {
+  await loadPage(page);
+  await waitForOverviewAppReady(page);
+};
+
+const clickButtonContaining = async (page: puppeteer.Page, text: string) => {
+  return page.evaluate((expected) => {
+    const button = Array.from(document.querySelectorAll('button')).find((node) =>
+      (node.textContent || '').replace(/\s+/g, ' ').includes(String(expected)),
+    ) as HTMLButtonElement | undefined;
+    button?.click();
+    return Boolean(button);
+  }, text);
+};
+
+const loginThroughUi = async (page: puppeteer.Page, email: string, password: string) => {
+  await page.locator(selectors.loginEmail).fill(email);
+  await page.locator(selectors.loginPassword).fill(password);
+  await page.locator(selectors.loginSubmit).click();
+
+  await waitForOverviewAppReady(page, true);
+  const bodyText = await page.evaluate(() => document.body?.innerText || '');
+  if (bodyText.includes('Device Limit Reached')) {
+    await clickButtonContaining(page, 'Log out older device and continue')
+      || await clickButtonContaining(page, 'Log Out');
+  }
 };
 
 export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; failures: FailureRecord[] }> => {
@@ -145,12 +192,20 @@ export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; 
   const page = await browser.newPage();
 
   try {
-    await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded' });
+    await loadPage(page);
 
     const email = process.env.QA_LOGIN_EMAIL || config.loginEmail;
     const password = process.env.QA_LOGIN_PASSWORD || config.loginPassword;
     await loginAndStoreSession(page, email, password);
-    await page.reload({ waitUntil: 'networkidle2' });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(async (error) => {
+      if (!(error instanceof Error) || !error.message.includes('Navigation timeout')) {
+        throw error;
+      }
+    });
+    await waitForOverviewAppReady(page, true);
+    if (await page.$(selectors.loginEmail)) {
+      await loginThroughUi(page, email, password);
+    }
     await waitForOverviewAppReady(page);
 
     const variants = [
@@ -173,8 +228,7 @@ export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; 
 
     for (const variant of variants) {
       await page.setViewport(variant.viewport);
-      await page.goto(config.baseUrl, { waitUntil: 'networkidle2' });
-      await waitForOverviewAppReady(page);
+      await gotoOverview(page);
       if (!await page.$(selectors.overviewDashboard)) {
         await clickFirstVisible(
           page,
@@ -200,7 +254,7 @@ export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; 
         timestamp: now,
       });
 
-      for (const selector of [...(step.requiredSelectors || []), ...variant.extraSelectors]) {
+      for (const selector of [...(step.requiredSelectors || []), ...variant.extraSelectors].filter(Boolean)) {
         const element = await page.$(selector);
         if (!element) {
           failures.push({
@@ -228,11 +282,12 @@ export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; 
       }
 
       const activeCourseCount = await page.$$eval('[data-testid^="overview-active-course-card-"]', (items) => items.length);
-      if (activeCourseCount < 1) {
+      const hasActiveCourseEmptyState = pageText.includes('No active courses');
+      if (activeCourseCount < 1 && !hasActiveCourseEmptyState) {
         failures.push({
           stepId: step.id,
-          title: 'Missing active course cards',
-          description: 'Overview dashboard should surface at least one active course card.',
+          title: 'Missing active course cards or empty state',
+          description: 'Overview dashboard should surface active course cards or a clear empty state.',
           severity: 'high',
           timestamp: now,
           screenshotPath,

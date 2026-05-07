@@ -9,3 +9,7 @@ uploads/
 private_uploads/
 .env*
 !.env.example
+android/app/*.jks
+android/app/*.keystore
+android/app/keystore.properties
+android/app/*upload-key*.txt

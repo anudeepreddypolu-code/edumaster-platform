@@ -390,8 +390,8 @@ export const EduService = {
     }
   },
 
-  getPlatformOverview: async () => {
-    const overview = await request<PlatformOverview>('/platform/overview');
+  getPlatformOverview: async (options: RequestOptions = {}) => {
+    const overview = await request<PlatformOverview>('/platform/overview', options);
     return {
       ...overview,
       courses: (overview.courses || []).map(normalizeCourseCard),

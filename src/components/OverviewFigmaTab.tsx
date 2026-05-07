@@ -74,7 +74,7 @@ const Avatar = ({ name }: { name: string }) => {
 };
 
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
-  <p className="text-[15px] font-semibold text-[#1f2d4e]">{children}</p>
+  <p className="text-[15px] font-bold text-[#17233d]">{children}</p>
 );
 
 const EmptyState = ({
@@ -88,9 +88,9 @@ const EmptyState = ({
   action?: string;
   onClick?: () => void;
 }) => (
-  <div className="rounded-[16px] border border-dashed border-[#dbe5f3] bg-[#f8fbff] px-[14px] py-[14px]">
-    <p className="text-[14px] font-semibold text-[#1f2d4e]">{title}</p>
-    <p className="mt-[6px] text-[13px] leading-6 text-[#667895]">{body}</p>
+  <div className="rounded-[16px] border border-dashed border-[#c8d6ea] bg-white px-[14px] py-[14px]">
+    <p className="text-[14px] font-bold text-[#17233d]">{title}</p>
+    <p className="mt-[6px] text-[13px] leading-6 text-[#53647d]">{body}</p>
     {action && onClick && (
       <button
         type="button"
@@ -131,7 +131,7 @@ const ProgressRing = ({ value }: { value: number }) => {
   return (
     <div className="flex flex-col items-center">
       <div className="relative flex h-[90px] w-[90px] items-center justify-center rounded-full" style={{ background }}>
-        <div className="flex h-[64px] w-[64px] items-center justify-center rounded-full bg-white text-[18px] font-semibold text-[#1f2d4e]">
+        <div className="flex h-[64px] w-[64px] items-center justify-center rounded-full bg-white text-[18px] font-semibold text-[#17233d]">
           {percent}%
         </div>
       </div>
@@ -142,8 +142,8 @@ const ProgressRing = ({ value }: { value: number }) => {
 
 const ActiveMetric = ({ value, label }: { value: string; label: string }) => (
   <div className="min-w-0 border-r border-[#eef2f8] pr-[18px] last:border-r-0 last:pr-0">
-    <p className="text-[13px] font-semibold leading-none text-[#1f2d4e]">{value}</p>
-    <p className="mt-[8px] text-[12px] leading-none text-[#7b879d]">{label}</p>
+    <p className="text-[13px] font-bold leading-none text-[#17233d]">{value}</p>
+    <p className="mt-[8px] text-[12px] leading-none text-[#5f6f86]">{label}</p>
   </div>
 );
 
@@ -175,13 +175,13 @@ const ActiveCoursePanel = ({
       <div className="flex items-start gap-[14px]">
         <CourseIcon tone={iconTone}>{icon}</CourseIcon>
         <div className="min-w-0">
-          <p className="truncate text-[15px] font-semibold text-[#1f2d4e]">{course.title}</p>
-          <p className="mt-[4px] truncate text-[14px] text-[#6d7c93]">{getCourseSubtitle(course)}</p>
+          <p className="truncate text-[15px] font-semibold text-[#17233d]">{course.title}</p>
+          <p className="mt-[4px] truncate text-[14px] text-[#53647d]">{getCourseSubtitle(course)}</p>
         </div>
       </div>
 
       <div className="mt-[18px] flex items-center justify-between gap-3">
-        <p className="text-[12px] font-medium text-[#6d7c93]">{formatPercent(progressPercent)} complete</p>
+        <p className="text-[12px] font-medium text-[#53647d]">{formatPercent(progressPercent)} complete</p>
         <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#2f6fe4]">
           Continue
           <ChevronRight className="h-4 w-4" />
@@ -239,10 +239,10 @@ const ClassItem = ({ item, onOpenLiveTab }: { item: LiveClass; onOpenLiveTab?: (
         <div className="min-w-0">
           <div className="flex items-center gap-[8px]">
             {isLive && <span className="rounded-full bg-[#ff5b6d] px-[8px] py-[2px] text-[10px] font-semibold uppercase text-white">Live</span>}
-            <p className="truncate text-[13px] font-semibold text-[#1f2d4e]">{item.title}</p>
+            <p className="truncate text-[13px] font-semibold text-[#17233d]">{item.title}</p>
           </div>
           <p className="mt-[8px] text-[13px] text-[#5f7096]">{item.instructor || item.topicTags?.[0] || 'Live class'}</p>
-          <p className="mt-[8px] text-[12px] text-[#7b879d]">{formatClassTime(item.startTime)} | {item.durationMinutes} min</p>
+          <p className="mt-[8px] text-[12px] text-[#5f6f86]">{formatClassTime(item.startTime)} | {item.durationMinutes} min</p>
         </div>
         <button
           type="button"
@@ -335,7 +335,7 @@ export const OverviewFigmaTab = ({
     <div data-testid="overview-topbar" className="flex items-start justify-between gap-[16px]">
       <div className="min-w-0">
         <p className="text-[15px] font-semibold text-[#202a44]">Welcome back, {learnerName}</p>
-        <p className="mt-[8px] text-[14px] text-[#7b879d]">Your dashboard is based on live course, test, and class activity.</p>
+        <p className="mt-[8px] text-[14px] text-[#5f6f86]">Your dashboard is based on live course, test, and class activity.</p>
       </div>
 
       <div className="flex items-center gap-[12px] self-start">
@@ -369,7 +369,7 @@ export const OverviewFigmaTab = ({
   const renderHero = () => (
     <section
       data-testid="overview-hero"
-      className="relative overflow-hidden rounded-[18px] border border-[#e7edf6] bg-[#edf4ff] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
+      className="relative overflow-hidden rounded-[18px] border border-[#d7e2f0] bg-[#edf4ff] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
     >
       <HeroArtwork />
       <div className="relative z-10 flex min-h-[190px] items-start justify-between gap-6 px-[20px] py-[20px]">
@@ -383,7 +383,7 @@ export const OverviewFigmaTab = ({
             )}
           </div>
 
-          <p className="mt-[12px] text-[20px] font-bold leading-[1.35] tracking-[-0.02em] text-[#1f2d4e]">
+          <p className="mt-[12px] text-[20px] font-bold leading-[1.35] tracking-[-0.02em] text-[#17233d]">
             {heroCourse?.title || 'No active course yet'}
           </p>
 
@@ -423,7 +423,7 @@ export const OverviewFigmaTab = ({
       {activeCourseCards.length === 0 ? (
         <EmptyState title="No active courses" body="Paid and free course enrollments will appear here after the learner is enrolled." />
       ) : (
-        <div className="grid grid-cols-1 rounded-[18px] border border-[#edf1f7] bg-white shadow-[0_10px_28px_rgba(28,41,61,0.06)] lg:grid-cols-2">
+        <div className="grid grid-cols-1 rounded-[18px] border border-[#dbe5f2] bg-white shadow-[0_10px_28px_rgba(28,41,61,0.06)] lg:grid-cols-2">
           {activeCourseCards.map((course, index) => (
             <div key={course._id} className="px-[18px] py-[18px] lg:border-r lg:border-[#eef2f8] lg:last:border-r-0">
               <ActiveCoursePanel
@@ -444,20 +444,20 @@ export const OverviewFigmaTab = ({
   const renderPerformance = () => (
     <section data-testid="overview-signals" className="space-y-[10px]">
       <SectionTitle>Performance Overview</SectionTitle>
-      <div className="grid grid-cols-1 rounded-[18px] border border-[#edf1f7] bg-white shadow-[0_10px_28px_rgba(28,41,61,0.06)] lg:grid-cols-[minmax(0,1.08fr)_330px]">
+      <div className="grid grid-cols-1 rounded-[18px] border border-[#dbe5f2] bg-white shadow-[0_10px_28px_rgba(28,41,61,0.06)] lg:grid-cols-[minmax(0,1.08fr)_330px]">
         <div data-testid="overview-streak" className="px-[18px] py-[16px] lg:border-r lg:border-[#eef2f8]">
           <div className="flex items-start gap-[12px]">
             <CourseIcon tone="green">
               <Activity className="h-5 w-5" />
             </CourseIcon>
             <div>
-              <p className="text-[14px] font-semibold text-[#1f2d4e]">Learning Activity</p>
+              <p className="text-[14px] font-semibold text-[#17233d]">Learning Activity</p>
               <div className="mt-[12px] space-y-[10px]">
-                <div className="flex items-center gap-[10px] text-[13px] text-[#6d7c93]">
+                <div className="flex items-center gap-[10px] text-[13px] text-[#53647d]">
                   <ClipboardList className="h-4 w-4 text-[#9aa8bb]" />
                   <span>{availableCbtCount > 0 ? `${availableCbtCount} CBT${availableCbtCount > 1 ? 's' : ''} available` : 'No CBT published yet'}</span>
                 </div>
-                <div className="flex items-center gap-[10px] text-[13px] text-[#6d7c93]">
+                <div className="flex items-center gap-[10px] text-[13px] text-[#53647d]">
                   <CalendarClock className="h-4 w-4 text-[#f0b557]" />
                   <span>{todayClasses.length > 0 ? `${todayClasses.length} class${todayClasses.length > 1 ? 'es' : ''} today` : 'No live classes scheduled today'}</span>
                 </div>
@@ -466,7 +466,7 @@ export const OverviewFigmaTab = ({
           </div>
 
           <div className="mt-[18px] flex items-center justify-between gap-3">
-            <p className="text-[13px] text-[#6d7c93]">{formatNumber(overview.dashboard.streak)} day streak</p>
+            <p className="text-[13px] text-[#53647d]">{formatNumber(overview.dashboard.streak)} day streak</p>
             <button
               type="button"
               data-testid="overview-streak-continue-button"
@@ -482,12 +482,12 @@ export const OverviewFigmaTab = ({
         <div data-testid="overview-score-summary" className="px-[18px] py-[16px]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-[12px] text-[#6d7c93]">Accuracy</p>
-              <p className="mt-[6px] text-[16px] font-semibold text-[#1f2d4e]">{formatPercent(overview.analytics.accuracy)}</p>
+              <p className="text-[12px] text-[#53647d]">Accuracy</p>
+              <p className="mt-[6px] text-[16px] font-semibold text-[#17233d]">{formatPercent(overview.analytics.accuracy)}</p>
             </div>
             <div className="text-right">
-              <p className="text-[12px] text-[#6d7c93]">Attempts</p>
-              <p className="mt-[6px] text-[16px] font-semibold text-[#1f2d4e]">{formatNumber(overview.analytics.attempts)}</p>
+              <p className="text-[12px] text-[#53647d]">Attempts</p>
+              <p className="mt-[6px] text-[16px] font-semibold text-[#17233d]">{formatNumber(overview.analytics.attempts)}</p>
             </div>
           </div>
 
@@ -496,8 +496,8 @@ export const OverviewFigmaTab = ({
           </div>
 
           <div className="mt-[14px] flex items-center justify-between gap-3">
-            <p className="text-[12px] text-[#6d7c93]">Reward points</p>
-            <p className="text-[13px] font-medium text-[#1f2d4e]">{formatNumber(overview.dashboard.points)}</p>
+            <p className="text-[12px] text-[#53647d]">Reward points</p>
+            <p className="text-[13px] font-medium text-[#17233d]">{formatNumber(overview.dashboard.points)}</p>
           </div>
         </div>
       </div>
@@ -510,15 +510,15 @@ export const OverviewFigmaTab = ({
       {recommendation ? (
         <div
           data-testid="overview-recommendation"
-          className="flex items-center justify-between gap-[18px] rounded-[18px] border border-[#edf1f7] bg-white px-[18px] py-[14px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
+          className="flex items-center justify-between gap-[18px] rounded-[18px] border border-[#dbe5f2] bg-white px-[18px] py-[14px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
         >
           <div className="flex min-w-0 items-center gap-[14px]">
             <CourseIcon tone="purple">
               <Target className="h-5 w-5" />
             </CourseIcon>
             <div className="min-w-0">
-              <p className="text-[14px] font-semibold text-[#1f2d4e]">{overview.analytics.adaptivePlan.nextTestType} practice</p>
-              <p className="mt-[4px] text-[13px] leading-6 text-[#6d7c93]">{recommendation}</p>
+              <p className="text-[14px] font-semibold text-[#17233d]">{overview.analytics.adaptivePlan.nextTestType} practice</p>
+              <p className="mt-[4px] text-[13px] leading-6 text-[#53647d]">{recommendation}</p>
             </div>
           </div>
 
@@ -533,7 +533,9 @@ export const OverviewFigmaTab = ({
           </button>
         </div>
       ) : (
-        <EmptyState title="No recommendation yet" body="Recommendations are generated after CBT or mock-test activity is available." action="Open tests" onClick={onOpenTestsTab} />
+        <div data-testid="overview-recommendation">
+          <EmptyState title="No recommendation yet" body="Recommendations are generated after CBT or mock-test activity is available." action="Open tests" onClick={onOpenTestsTab} />
+        </div>
       )}
     </section>
   );
@@ -551,15 +553,15 @@ export const OverviewFigmaTab = ({
               type="button"
               data-testid={`overview-revision-shortcut-${index}`}
               onClick={onOpenRevisionTab}
-              className="flex h-[58px] items-center justify-between rounded-[14px] border border-[#edf1f7] bg-white px-[14px] shadow-[0_6px_18px_rgba(28,41,61,0.05)]"
+              className="flex h-[58px] items-center justify-between rounded-[14px] border border-[#dbe5f2] bg-white px-[14px] shadow-[0_6px_18px_rgba(28,41,61,0.05)]"
             >
               <div className="flex items-center gap-[12px]">
                 <CourseIcon tone={index === 0 ? 'blue' : 'green'}>
                   <BookOpen className="h-4 w-4" />
                 </CourseIcon>
                 <div className="text-left">
-                  <p className="text-[13px] font-semibold text-[#1f2d4e]">{topic}</p>
-                  <p className="mt-[3px] text-[12px] text-[#7b879d]">Needs attention</p>
+                  <p className="text-[13px] font-semibold text-[#17233d]">{topic}</p>
+                  <p className="mt-[3px] text-[12px] text-[#5f6f86]">Needs attention</p>
                 </div>
               </div>
               <ChevronRight className="h-4 w-4 text-[#8fa0b8]" />
@@ -573,9 +575,9 @@ export const OverviewFigmaTab = ({
   const renderLiveSchedule = () => (
     <section
       data-testid="overview-upcoming-classes"
-      className="rounded-[18px] border border-[#edf1f7] bg-white px-[20px] py-[18px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
+      className="rounded-[18px] border border-[#dbe5f2] bg-white px-[20px] py-[18px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
     >
-      <p className="text-[15px] font-semibold text-[#1f2d4e]">Today&apos;s Schedule</p>
+      <p className="text-[15px] font-semibold text-[#17233d]">Today&apos;s Schedule</p>
       {todayClasses.length === 0 ? (
         <div className="mt-[16px]">
           <EmptyState title="No classes today" body="Published live classes for today will appear here automatically." />
@@ -595,9 +597,9 @@ export const OverviewFigmaTab = ({
   const renderTests = () => (
     <section
       data-testid="overview-upcoming-tests"
-      className="rounded-[18px] border border-[#edf1f7] bg-white px-[20px] py-[18px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
+      className="rounded-[18px] border border-[#dbe5f2] bg-white px-[20px] py-[18px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
     >
-      <p className="text-[15px] font-semibold text-[#1f2d4e]">Tests</p>
+      <p className="text-[15px] font-semibold text-[#17233d]">Tests</p>
       {availableTest ? (
         <div className="mt-[18px]">
           <div className="flex items-start gap-[12px]">
@@ -605,13 +607,13 @@ export const OverviewFigmaTab = ({
               <ClipboardList className="h-5 w-5" />
             </CourseIcon>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px] font-semibold text-[#1f2d4e]">{availableTest.title}</p>
-              <p className="mt-[4px] text-[12px] text-[#7b879d]">{availableTest.questions.length} questions | {availableTest.durationMinutes} min</p>
+              <p className="truncate text-[14px] font-semibold text-[#17233d]">{availableTest.title}</p>
+              <p className="mt-[4px] text-[12px] text-[#5f6f86]">{availableTest.questions.length} questions | {availableTest.durationMinutes} min</p>
             </div>
           </div>
 
           <div className="mt-[14px] flex items-end justify-between gap-3">
-            <p className="text-[13px] text-[#7b879d]">{availableTest.type || availableTest.category}</p>
+            <p className="text-[13px] text-[#5f6f86]">{availableTest.type || availableTest.category}</p>
             <button
               type="button"
               data-testid="overview-attempt-now-button"
@@ -634,19 +636,19 @@ export const OverviewFigmaTab = ({
   const renderProgress = () => (
     <section
       data-testid="overview-score-card"
-      className="rounded-[18px] border border-[#edf1f7] bg-white px-[20px] py-[18px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
+      className="rounded-[18px] border border-[#dbe5f2] bg-white px-[20px] py-[18px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]"
     >
-      <p className="text-[15px] font-semibold text-[#1f2d4e]">Latest Result</p>
+      <p className="text-[15px] font-semibold text-[#17233d]">Latest Result</p>
       {latestMock ? (
         <>
           <div className="mt-[16px] flex items-start justify-between gap-4">
             <div>
-              <p className="text-[12px] text-[#6d7c93]">Score</p>
-              <p className="mt-[4px] text-[16px] font-semibold text-[#1f2d4e]">{formatNumber(latestMock.score)}/{formatNumber(latestMock.totalMarks)}</p>
+              <p className="text-[12px] text-[#53647d]">Score</p>
+              <p className="mt-[4px] text-[16px] font-semibold text-[#17233d]">{formatNumber(latestMock.score)}/{formatNumber(latestMock.totalMarks)}</p>
             </div>
             <div className="text-right">
-              <p className="text-[12px] text-[#6d7c93]">Rank</p>
-              <p className="mt-[4px] text-[16px] font-semibold text-[#1f2d4e]">#{formatNumber(latestMock.rank)}</p>
+              <p className="text-[12px] text-[#53647d]">Rank</p>
+              <p className="mt-[4px] text-[16px] font-semibold text-[#17233d]">#{formatNumber(latestMock.rank)}</p>
             </div>
           </div>
 
@@ -655,8 +657,8 @@ export const OverviewFigmaTab = ({
           </div>
 
           <div className="mt-[12px] flex items-center justify-between gap-3">
-            <p className="text-[12px] text-[#6d7c93]">Accuracy</p>
-            <p className="text-[13px] font-medium text-[#1f2d4e]">{formatPercent(scorePercent)}</p>
+            <p className="text-[12px] text-[#53647d]">Accuracy</p>
+            <p className="text-[13px] font-medium text-[#17233d]">{formatPercent(scorePercent)}</p>
           </div>
         </>
       ) : (
@@ -668,11 +670,11 @@ export const OverviewFigmaTab = ({
   );
 
   const renderSession = () => (
-    <section className="rounded-[18px] border border-[#edf1f7] bg-white px-[20px] py-[16px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]">
+    <section className="rounded-[18px] border border-[#dbe5f2] bg-white px-[20px] py-[16px] shadow-[0_10px_28px_rgba(28,41,61,0.06)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[15px] font-semibold text-[#1f2d4e]">Session Status</p>
-          <p className="mt-[8px] text-[12px] leading-[1.6] text-[#7b879d]">
+          <p className="text-[15px] font-semibold text-[#17233d]">Session Status</p>
+          <p className="mt-[8px] text-[12px] leading-[1.6] text-[#5f6f86]">
             {overview.sessionActivity
               ? `${overview.sessionActivity.activeSessions} active session${overview.sessionActivity.activeSessions === 1 ? '' : 's'}`
               : 'Sign in to track session activity.'}
@@ -689,7 +691,7 @@ export const OverviewFigmaTab = ({
     return (
       <div
         data-testid="overview-dashboard"
-        className="min-h-[100dvh] w-full overflow-x-hidden overflow-y-auto bg-[#f4f7ff] pb-[96px]"
+        className="min-h-[100dvh] w-full overflow-x-hidden overflow-y-auto bg-[#eef3fb] pb-[96px]"
         style={{ fontFamily: overviewFontStack }}
       >
         <div className="space-y-[18px] px-[14px] pb-[18px] pt-[14px]">
@@ -713,7 +715,7 @@ export const OverviewFigmaTab = ({
   return (
     <div
       data-testid="overview-dashboard"
-      className="flex h-dvh min-h-dvh w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#fcfdff] lg:overflow-hidden"
+      className="flex h-dvh min-h-dvh w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#f7faff] lg:overflow-hidden"
       style={{ fontFamily: overviewFontStack }}
     >
       <div className="flex w-full flex-1 flex-col px-[24px] pb-[18px] pt-[20px] lg:px-[32px] lg:pb-[18px] lg:pt-[18px]">

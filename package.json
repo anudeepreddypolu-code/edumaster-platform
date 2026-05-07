@@ -16,6 +16,7 @@
     "mobile:android": "npm run mobile:sync && ./node_modules/.bin/cap open android",
     "mobile:ios": "npm run mobile:sync && ./node_modules/.bin/cap open ios",
     "mobile:apk": "npm run mobile:sync && ./android/gradlew assembleDebug",
+    "mobile:aab": "npm run mobile:sync && ./android/gradlew -p android bundleRelease",
     "deploy:firebase": "./deploy-quick.sh",
     "track:worker": "node backend/workers/watch-aggregator.cjs",
     "preview": "vite preview",

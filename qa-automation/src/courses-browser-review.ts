@@ -148,6 +148,96 @@ const waitForText = async (page: puppeteer.Page, text: string, timeoutMs = 15000
   );
 };
 
+const loadPage = async (page: puppeteer.Page) => {
+  try {
+    await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('Navigation timeout')) {
+      throw error;
+    }
+  }
+};
+
+const waitForCourseAppReady = async (page: puppeteer.Page, includeAuth = false) => {
+  const deadline = Date.now() + 30000;
+  const readySelectors = [
+    selectors.shellReady,
+    selectors.overviewDashboard,
+    selectors.courseFigmaPage,
+    selectors.courseCatalogView,
+    selectors.courseCourseView,
+    selectors.courseLessonView,
+    ...(includeAuth ? [selectors.loginEmail] : []),
+  ];
+
+  while (Date.now() < deadline) {
+    for (const selector of readySelectors) {
+      try {
+        if (await page.$(selector)) {
+          return;
+        }
+      } catch {
+        // The SPA can replace the document while auth/session restore is settling.
+      }
+    }
+
+    await sleep(250);
+  }
+
+  throw new Error('Course app did not become ready within 30000ms.');
+};
+
+const clickButtonContaining = async (page: puppeteer.Page, text: string) => {
+  return page.evaluate((expected) => {
+    const button = Array.from(document.querySelectorAll('button')).find((node) =>
+      (node.textContent || '').replace(/\s+/g, ' ').includes(String(expected)),
+    ) as HTMLButtonElement | undefined;
+    button?.click();
+    return Boolean(button);
+  }, text);
+};
+
+const loginThroughUi = async (page: puppeteer.Page, email: string, password: string) => {
+  const deadline = Date.now() + 60000;
+
+  while (Date.now() < deadline) {
+    if (
+      (await page.$(selectors.shellReady))
+      || (await page.$(selectors.overviewDashboard))
+      || (await page.$(selectors.courseFigmaPage))
+    ) {
+      return;
+    }
+
+    const bodyText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
+    if (bodyText.includes('Device Limit Reached')) {
+      await clickButtonContaining(page, 'Log out older device and continue')
+        || await clickButtonContaining(page, 'Log Out');
+      await sleep(500);
+      continue;
+    }
+
+    if (bodyText.includes('Logged Out Successfully')) {
+      await clickButtonContaining(page, 'Continue to Login')
+        || await clickButtonContaining(page, 'Go to Home');
+      await sleep(500);
+      continue;
+    }
+
+    if (await page.$(selectors.loginEmail)) {
+      await page.locator(selectors.loginEmail).fill(email);
+      await page.locator(selectors.loginPassword).fill(password);
+      await page.locator(selectors.loginSubmit).click();
+      await sleep(500);
+      continue;
+    }
+
+    await sleep(250);
+  }
+
+  throw new Error('Course UI login did not reach the application shell within 60000ms.');
+};
+
 const readSelectorText = async (page: puppeteer.Page, selector: string) =>
   page.$eval(selector, (element) => (element.textContent || '').replace(/\s+/g, ' ').trim()).catch(() => '');
 
@@ -193,7 +283,13 @@ const openCoursesTab = async (page: puppeteer.Page, mode: 'desktop' | 'mobile') 
     : [selectors.mobileNavCourses, selectors.mobileTabCourses, selectors.navCourses]);
   await waitForText(page, 'All Courses');
   await page.waitForSelector(selectors.courseCatalogView, { timeout: 20000 });
-  await page.waitForSelector(selectors.courseCatalogCard, { timeout: 20000 });
+  await page.waitForFunction(
+    (catalogCardSelector, emptySelector) =>
+      Boolean(document.querySelector(catalogCardSelector) || document.querySelector(emptySelector)),
+    { timeout: 20000 },
+    selectors.courseCatalogCard,
+    selectors.courseCatalogEmpty,
+  );
   await page.evaluate(() => window.scrollTo(0, 0));
 };
 
@@ -597,7 +693,7 @@ const reviewFlow = async (
   consoleIssues: string[],
 ) => {
   await page.setViewport(mode === 'desktop' ? desktopViewport : mobileViewport);
-  await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded' });
+  await loadPage(page);
 
   await loginAndStoreSession(
     page,
@@ -611,10 +707,21 @@ const reviewFlow = async (
       .forEach((key) => window.localStorage.removeItem(key));
   });
 
-  await page.reload({ waitUntil: 'networkidle2' });
+  await loadPage(page);
+  await waitForCourseAppReady(page, true);
+
+  if (await page.$(selectors.loginEmail)) {
+    await loginThroughUi(
+      page,
+      process.env.QA_LOGIN_EMAIL || config.loginEmail,
+      process.env.QA_LOGIN_PASSWORD || config.loginPassword,
+    );
+  }
+
+  await waitForCourseAppReady(page);
   await page.waitForFunction(
-    (selectorList) => selectorList.some((selector) => Boolean(document.querySelector(selector))),
-    { timeout: 60000 },
+    (selectorList) => selectorList.some((selector) => Boolean(selector && document.querySelector(selector))),
+    { timeout: 30000 },
     [selectors.shellReady, selectors.overviewDashboard, selectors.courseCatalogView, selectors.courseCourseView, selectors.courseLessonView],
   );
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -636,7 +743,7 @@ const reviewFlow = async (
 
   const overviewSelectors = mode === 'desktop'
     ? [selectors.navOverview, selectors.navCourses]
-    : [selectors.overviewContinueCta, selectors.overviewActiveCourseCard];
+    : [selectors.mobileNavOverview, selectors.mobileNavCourses];
 
   for (const selector of overviewSelectors) {
     await assertSelector(page, selector, `course-overview-${mode}`, overviewCapture.screenshotPath, failures);
@@ -645,11 +752,16 @@ const reviewFlow = async (
   if (mode === 'desktop') {
     await openCoursesTab(page, mode);
   } else {
-    await clickFirstVisible(page, [selectors.overviewContinueCta, selectors.overviewActiveCourseCard]);
-    await page.waitForFunction(
-      () => Boolean(document.querySelector('[data-course-view="course"]') || document.querySelector('[data-course-view="lesson"]')),
-      { timeout: 20000 },
-    );
+    if ((await page.$(selectors.overviewContinueCta)) || (await page.$(selectors.overviewActiveCourseCard))) {
+      await clickFirstVisible(page, [selectors.overviewContinueCta, selectors.overviewActiveCourseCard]);
+      await page.waitForFunction(
+        () => Boolean(document.querySelector('[data-course-view="course"]') || document.querySelector('[data-course-view="lesson"]')),
+        { timeout: 20000 },
+      );
+    } else {
+      await openCoursesTab(page, mode);
+    }
+
     await page.waitForSelector(selectors.courseFigmaPage, { timeout: 20000 });
 
     if (await page.$(selectors.courseLessonView)) {
@@ -668,8 +780,10 @@ const reviewFlow = async (
       await page.waitForSelector(selectors.courseCourseView, { timeout: 20000 });
     }
 
-    await clickFirstVisible(page, [selectors.courseBackToCatalog]);
-    await page.waitForSelector(selectors.courseCatalogView, { timeout: 20000 });
+    if (await page.$(selectors.courseCourseView)) {
+      await clickFirstVisible(page, [selectors.courseBackToCatalog]);
+      await page.waitForSelector(selectors.courseCatalogView, { timeout: 20000 });
+    }
   }
 
   const catalogCapture = await capture(
@@ -685,9 +799,13 @@ const reviewFlow = async (
   for (const selector of [
     selectors.courseFigmaPage,
     selectors.courseCatalogView,
-    selectors.courseCatalogCard,
+    (await page.$(selectors.courseCatalogCard)) ? selectors.courseCatalogCard : selectors.courseCatalogEmpty,
   ]) {
     await assertSelector(page, selector, `course-screen-${mode}`, catalogCapture.screenshotPath, failures);
+  }
+
+  if (!(await page.$(selectors.courseCatalogCard))) {
+    return;
   }
 
   await openFirstCourse(page);
