@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "android:web": "tsx src/runner.ts",
+    "browser:auth-mobile": "node --import tsx src/auth-mobile-review.ts",
     "android:courses": "tsx src/courses-regression.ts",
     "browser:courses": "node --import tsx src/courses-browser-review.ts",
     "browser:live": "node --import tsx src/live-browser-review.ts",

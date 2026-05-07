@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Hls from 'hls.js';
 import {
   Bell,
   Bookmark,
@@ -14,6 +15,7 @@ import {
   LayoutGrid,
   List,
   Lock,
+  LoaderCircle,
   Maximize2,
   MoreVertical,
   Pause,
@@ -23,9 +25,17 @@ import {
   MessageSquare,
   Sparkles,
   Video,
+  Wallet,
 } from 'lucide-react';
-import { CourseCard, CourseLesson, PlatformOverview } from '../types';
+import { CourseCard, CourseLesson, MockTest, PlatformOverview, ProtectedLessonPlayback } from '../types';
 import { cn } from '../lib/utils';
+import { useAuth } from '../AuthContext';
+import { EduService, type CoursePaymentProvider } from '../EduService';
+
+const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
+const getCoursePurchaseLabel = (course: CourseCard) =>
+  course.price === 0 ? 'Start free course' : `Buy course for ${currency.format(course.price)}`;
 
 type CourseFigmaTabProps = {
   overview: PlatformOverview;
@@ -36,6 +46,7 @@ type CourseFigmaTabProps = {
   savedTopicIds: string[];
   onToggleSavedTopic: (courseId: string, lessonId: string) => void;
   onImmersiveModeChange?: (immersive: boolean) => void;
+  onOpenCbtExam?: (test: MockTest, onSubmitted?: () => void) => void;
 };
 
 
@@ -47,7 +58,6 @@ type MobileSupportTab = Exclude<LessonSupportPanel, null>;
 type LessonStage = 'video' | 'exam' | 'explanation';
 type MobileLessonStage = 'watch' | 'completed' | 'exam' | 'exam-complete' | 'explanation' | 'explanation-complete';
 type CatalogTone = 'blue' | 'teal' | 'orange' | 'purple';
-type ArtworkVariant = 'power' | 'diagram' | 'generation';
 
 type StoredProgress = {
   lessonId: string;
@@ -94,15 +104,16 @@ type LessonCopy = {
   takeaways: string[];
   notes: Array<{ title: string; body: string }>;
   quiz: {
+    title: string;
     prompt: string;
     options: string[];
     answerIndex: number;
     explanation: string;
+    totalQuestions: number;
+    durationMinutes: number;
   };
   discussionPrompt: string;
   quickTip: string;
-  artwork: ArtworkVariant;
-  featureLabels: string[];
 };
 
 type LessonDoubtMessage = {
@@ -187,7 +198,6 @@ const mobileCatalogPriority: Record<string, number> = {
 };
 
 const mobileDisplayTitleMap: Record<string, string> = {
-  'ssc je 2026 electrical power track': 'SSC JE 2026 Electrical Track',
   'ssc je general awareness revision vault': 'SSC JE General Awareness Vault',
 };
 
@@ -283,9 +293,9 @@ const findCourseIdForLesson = (courses: CourseCard[], lessonId?: string | null) 
   return null;
 };
 
-const getCatalogTone = (course: CourseCard, index: number): CatalogTone => {
-  const exam = normalize(course.exam);
-  const subject = normalize(course.subject);
+const getCatalogTone = (course: CourseCard | null | undefined, index: number): CatalogTone => {
+  const exam = normalize(course?.exam);
+  const subject = normalize(course?.subject);
 
   if (exam.includes('rrb')) {
     return 'teal';
@@ -415,18 +425,17 @@ const buildCourseSnapshot = (
   };
 };
 
-const buildUnlockMap = (course: CourseCard | null, progressMap: Map<string, StoredProgress>) => {
+const buildUnlockMap = (course: CourseCard | null, progressMap: Map<string, StoredProgress>, hasCourseAccessOverride = false) => {
   const sections = buildCourseSections(course);
   const lessons = sections.flatMap((section) => section.lessons);
   const accessMap = new Map<string, { unlocked: boolean; reason: string | null }>();
   const hasCourseAccess = Boolean(
-    course?.enrolled
-    || course?.price === 0
-    || (course?.progressPercent || 0) > 0
-    || course?.continueLesson,
+    hasCourseAccessOverride
+    || course?.enrolled
+    || course?.price === 0,
   );
 
-  lessons.forEach((entry, index) => {
+  lessons.forEach((entry) => {
     if (entry.lesson.locked) {
       accessMap.set(entry.lesson.id, {
         unlocked: false,
@@ -437,8 +446,8 @@ const buildUnlockMap = (course: CourseCard | null, progressMap: Map<string, Stor
 
     if (!hasCourseAccess) {
       accessMap.set(entry.lesson.id, {
-        unlocked: index === 0,
-        reason: index === 0 ? 'Preview lesson unlocked.' : 'Unlock the course to continue this playlist.',
+        unlocked: false,
+        reason: 'Unlock the course to watch lessons and sync progress.',
       });
       return;
     }
@@ -487,143 +496,70 @@ const getExplanationWatchCount = (progress?: StoredProgress | null) => {
   return progress.completed ? 1 : 0;
 };
 
-const getLessonVariant = (lessonTitle: string): ArtworkVariant => {
-  const title = normalize(lessonTitle);
-  if (title.includes('diagram')) {
-    return 'diagram';
-  }
-  if (title.includes('generation')) {
-    return 'generation';
-  }
-  return 'power';
-};
-
 const buildLessonCopy = (entry: CourseLessonEntry | null, course: CourseCard | null): LessonCopy => {
-  const lessonTitle = normalize(entry?.lesson.title);
-  const courseSubject = course?.subject || 'Power Systems';
-
-  if (lessonTitle.includes('diagram')) {
-    return {
-      heading: entry?.lesson.title || 'Single Line Diagram Essentials',
-      summary: 'A single line diagram represents the components of a power system using simplified symbols in one clean line.',
-      about: 'This lesson explains why single line diagrams matter, how equipment is abstracted into symbols, and how to read power flow quickly during revision.',
-      takeaways: [
-        'Single line diagrams simplify complex wiring networks.',
-        'Standard symbols help you identify buses, transformers, breakers, and feeders.',
-        'The diagram is the fastest way to trace source, protection, and end load.',
-      ],
-      notes: [
-        {
-          title: 'Why this topic matters',
-          body: 'Single line diagrams compress large systems into one visual map, which makes revision and troubleshooting significantly faster.',
-        },
-        {
-          title: 'What to observe',
-          body: 'Watch the path from source to load and mark where control, switching, and protection elements appear.',
-        },
-        {
-          title: 'Exam memory hook',
-          body: 'Read left to right: source, transformation, distribution, and load. It keeps the order easy to recall.',
-        },
-      ],
-      quiz: {
-        prompt: 'What is the main purpose of a single line diagram?',
-        options: [
-          'To show every wire in detail',
-          'To simplify a power system using standard symbols',
-          'To replace circuit protection devices',
-          'To describe only mechanical components',
-        ],
-        answerIndex: 1,
-        explanation: 'A single line diagram simplifies the network using standard symbols so the flow and equipment become easier to understand.',
-      },
-      discussionPrompt: 'Which symbol or connection in this diagram feels least intuitive right now?',
-      quickTip: 'Say the component names aloud while tracing the line. It helps convert symbols into memory faster.',
-      artwork: 'diagram',
-      featureLabels: ['Source', 'Bus', 'Switching', 'Protection'],
-    };
-  }
-
-  if (lessonTitle.includes('generation')) {
-    return {
-      heading: entry?.lesson.title || 'Components of Power Generation',
-      summary: 'Generation starts with a source, moves through control and protection, and enters the wider network through regulated output.',
-      about: 'This lesson breaks generation into simple system blocks so you can link plant equipment, control hardware, and transmission handoff points clearly.',
-      takeaways: [
-        'Generation begins with a controlled energy conversion process.',
-        'Protection and control keep the system stable during output changes.',
-        'The generation stage must connect cleanly into transmission or distribution.',
-      ],
-      notes: [
-        {
-          title: 'Layer the idea',
-          body: 'Think of generation as source, conversion, control, protection, and export to the grid.',
-        },
-        {
-          title: 'Operational focus',
-          body: 'Voltage regulation and safe switching are as important as the source itself when explaining generation.',
-        },
-        {
-          title: 'Revision shortcut',
-          body: 'Map each component to one function: produce, condition, protect, and deliver.',
-        },
-      ],
-      quiz: {
-        prompt: 'Which statement best describes the generation stage in a power system?',
-        options: [
-          'It only manages consumer loads',
-          'It creates and conditions electrical energy before delivery to the grid',
-          'It removes the need for substations',
-          'It replaces distribution feeders',
-        ],
-        answerIndex: 1,
-        explanation: 'Generation covers both production and conditioning so usable power can enter the wider network safely.',
-      },
-      discussionPrompt: 'Which generation component would you use to explain system control to a classmate?',
-      quickTip: 'Tie every plant component to a verb: generate, regulate, protect, transmit.',
-      artwork: 'generation',
-      featureLabels: ['Source', 'Control', 'Protection', 'Grid'],
-    };
-  }
+  const lesson = entry?.lesson;
+  const lessonTitle = String(lesson?.title || 'Untitled lesson').trim();
+  const courseTitle = String(course?.title || 'This course').trim();
+  const courseSubject = String(course?.subject || course?.exam || 'the course').trim();
+  const lessonSection = [entry?.moduleTitle, entry?.chapterTitle].filter(Boolean).join(' / ') || 'Course lesson';
+  const lessonTypeLabel = String(lesson?.type || 'lesson')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const attachedCbt = lesson?.cbt;
+  const attachedQuestion = attachedCbt?.questions?.[0];
+  const attachedQuiz = attachedQuestion ? {
+    title: attachedCbt?.title || `${lessonTitle} CBT`,
+    prompt: attachedQuestion.questionText,
+    options: attachedQuestion.options || [],
+    answerIndex: Number(attachedQuestion.correctOption || 0),
+    explanation: attachedQuestion.explanation || 'Explanation will appear after the CBT author adds it.',
+    totalQuestions: attachedCbt?.questions?.length || 1,
+    durationMinutes: attachedCbt?.durationMinutes || lesson?.durationMinutes || 30,
+  } : null;
 
   return {
-    heading: lessonTitle.includes('transformer') ? 'Transformers in Power Systems' : 'What is a Power System?',
-    summary: 'A power system is an interconnected network used to generate, transmit, distribute and consume electrical energy.',
-    about: `In this lesson, we will learn the basic definition, structure, and importance of ${courseSubject}. This gives you a stronger foundation for the upcoming lessons in the track.`,
+    heading: lessonTitle,
+    summary: course?.description?.trim() || `${lessonTitle} is part of ${courseTitle}. Study the lesson, complete the linked practice, and track progress here.`,
+    about: `${lessonTitle} belongs to ${lessonSection} in ${courseTitle}. This lesson view keeps the video, progress, notes, doubts, and lesson-linked assessment together so the learning flow stays consistent.`,
     takeaways: [
-      'Power systems form a connected network rather than isolated components.',
-      'Generation, transmission, distribution, and utilization work as one flow.',
-      'A strong systems view makes later protection and machine topics easier to understand.',
+      `Focus on the main concept of ${lessonTitle} before moving to the next topic in ${courseSubject}.`,
+      attachedCbt?.questions?.length
+        ? 'Complete the linked CBT after the lesson video so the explanation step and progress unlock correctly.'
+        : 'Use notes and doubts to capture the important parts of this lesson before continuing.',
+      'Keep progress accurate here so sequential unlocks, continue learning, and revision all stay aligned.',
     ],
     notes: [
       {
-        title: 'Core definition',
-        body: 'A power system connects generation, transmission, distribution, and consumption into a coordinated electrical network.',
+        title: 'Lesson Context',
+        body: `${lessonTitle} is part of ${lessonSection} in ${courseTitle}.`,
       },
       {
-        title: 'Why it matters',
-        body: 'Thinking in system blocks helps you move from theory to diagrams, operation, and protection problems.',
+        title: 'Lesson Format',
+        body: `${lessonTypeLabel} lesson • ${formatDurationLabel(lesson?.durationMinutes || 0)}${lesson?.requiresSecurePlayback ? ' • protected playback enabled' : ''}.`,
       },
       {
-        title: 'Revision cue',
-        body: 'Remember the order: source, transfer, delivery, and use.',
+        title: 'Next Step',
+        body: attachedCbt?.questions?.length
+          ? 'Finish the lesson-linked CBT, then review the explanation before moving to the next lesson.'
+          : 'Review this topic, save key notes, and continue to the next unlocked lesson.',
       },
     ],
     quiz: {
-      prompt: 'Which sequence best describes the flow inside a power system?',
-      options: [
-        'Consumption -> distribution -> generation -> transmission',
-        'Generation -> transmission -> distribution -> consumption',
-        'Transmission -> generation -> consumption -> protection',
-        'Generation -> consumption -> protection -> distribution',
+      title: attachedQuiz?.title || `${lessonTitle} CBT`,
+      prompt: attachedQuiz?.prompt || `Use the linked CBT for ${lessonTitle} to continue this lesson flow.`,
+      options: attachedQuiz?.options || [
+        'Start the lesson CBT from this screen',
+        'Skip the CBT and unlock the explanation immediately',
+        'Jump to the next lesson without finishing this one',
+        'Reset all course progress',
       ],
-      answerIndex: 1,
-      explanation: 'Electrical power is generated first, then transmitted, distributed, and finally consumed.',
+      answerIndex: attachedQuiz?.answerIndex ?? 0,
+      explanation: attachedQuiz?.explanation || 'Finish the linked CBT to unlock the explanation step and keep the lesson flow complete.',
+      totalQuestions: attachedQuiz?.totalQuestions || 1,
+      durationMinutes: attachedQuiz?.durationMinutes || lesson?.durationMinutes || 30,
     },
-    discussionPrompt: 'Which part of the power system chain feels easiest to explain, and which part still feels abstract?',
-    quickTip: 'Take short notes while watching the lesson. One line per stage is enough for fast recall.',
-    artwork: 'power',
-    featureLabels: ['Generation', 'Transmission', 'Distribution', 'Consumption'],
+    discussionPrompt: `Ask about ${lessonTitle}, the CBT result, or any part of the explanation that still feels unclear.`,
+    quickTip: `Capture one clean note from ${lessonTitle} before moving on so revision stays lightweight and useful.`,
   };
 };
 
@@ -649,94 +585,6 @@ const buildCourseHeroArt = () => {
       </g>
       <circle cx="790" cy="72" r="112" fill="#ffffff" opacity="0.32"/>
       <circle cx="266" cy="66" r="42" fill="#ffffff" opacity="0.26"/>
-    </svg>
-  `.trim();
-
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-};
-
-const buildLessonArtwork = (variant: ArtworkVariant) => {
-  if (variant === 'diagram') {
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
-        <rect width="960" height="540" rx="24" fill="#d7e8ff"/>
-        <path d="M110 396H860" stroke="#28416d" stroke-width="6"/>
-        <path d="M178 396v-58m176 58v-34m147 34v-88m124 88v-48m110 48v-64" stroke="#28416d" stroke-width="6" stroke-linecap="round"/>
-        <circle cx="178" cy="338" r="18" stroke="#28416d" stroke-width="6"/>
-        <circle cx="354" cy="362" r="8" fill="#28416d"/>
-        <circle cx="501" cy="308" r="14" stroke="#28416d" stroke-width="6"/>
-        <circle cx="625" cy="348" r="14" stroke="#28416d" stroke-width="6"/>
-        <circle cx="735" cy="332" r="14" stroke="#28416d" stroke-width="6"/>
-        <circle cx="860" cy="332" r="14" stroke="#28416d" stroke-width="6"/>
-        <path d="M472 162v234m0-188h48m-48 44h48m-48 44h48" stroke="#28416d" stroke-width="6" stroke-linecap="round"/>
-        <path d="M612 188v208m0-148h42m-42 42h42m-42 42h42" stroke="#28416d" stroke-width="6" stroke-linecap="round"/>
-        <path d="M772 208v188m0-126h36m-36 42h36m-36 42h36" stroke="#28416d" stroke-width="6" stroke-linecap="round"/>
-        <path d="M300 396h268" stroke="#28416d" stroke-width="6"/>
-        <path d="M300 396v-28" stroke="#28416d" stroke-width="6" stroke-linecap="round"/>
-      </svg>
-    `.trim();
-
-    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-  }
-
-  if (variant === 'generation') {
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
-        <defs>
-          <linearGradient id="g" x1="0" y1="0" x2="960" y2="540" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#d8ebff"/>
-            <stop offset="1" stop-color="#c5dcfb"/>
-          </linearGradient>
-        </defs>
-        <rect width="960" height="540" rx="24" fill="url(#g)"/>
-        <path d="M0 408C145 380 282 372 430 386C614 404 770 434 960 398V540H0V408Z" fill="#b8d16e"/>
-        <rect x="146" y="266" width="128" height="96" fill="#8fa6bf"/>
-        <rect x="174" y="224" width="26" height="42" fill="#f39b59"/>
-        <rect x="220" y="214" width="30" height="52" fill="#6b97bc"/>
-        <rect x="330" y="282" width="72" height="80" fill="#8fa6bf"/>
-        <rect x="352" y="236" width="24" height="46" fill="#f39b59"/>
-        <rect x="450" y="302" width="158" height="40" rx="12" fill="#6885b0"/>
-        <rect x="654" y="292" width="120" height="50" rx="14" fill="#556f9f"/>
-        <path d="M566 196l-18 146h36L566 196Z" fill="#6986b0"/>
-        <path d="M566 196l-50 34h100L566 196Zm-50 34-26 20h152l-26-20m-100 0-20 14m100-14 20 14" stroke="#6986b0" stroke-width="5" stroke-linejoin="round"/>
-        <path d="M698 214l-16 128h32L698 214Z" fill="#40526d"/>
-        <path d="M698 214l-42 30h84L698 214Zm-42 30-22 18h128l-22-18" stroke="#40526d" stroke-width="5" stroke-linejoin="round"/>
-        <path d="M274 308c76 0 118-22 196-70m36 104c78 0 118-20 192-64" stroke="#7ea2c6" stroke-width="4" stroke-linecap="round"/>
-        <circle cx="798" cy="112" r="42" fill="#ffffff" opacity="0.86"/>
-      </svg>
-    `.trim();
-
-    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-  }
-
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
-      <defs>
-        <linearGradient id="sky" x1="0" y1="0" x2="960" y2="540" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#dcecff"/>
-          <stop offset="1" stop-color="#c6ddfb"/>
-        </linearGradient>
-      </defs>
-      <rect width="960" height="540" rx="24" fill="url(#sky)"/>
-      <path d="M0 404C132 388 266 386 414 395C572 404 758 432 960 396V540H0V404Z" fill="#b9d16e"/>
-      <path d="M0 422H960" stroke="#9dbc5b" stroke-width="8"/>
-      <rect x="124" y="298" width="120" height="84" fill="#96a9b9"/>
-      <rect x="150" y="270" width="18" height="28" fill="#f39b59"/>
-      <rect x="200" y="262" width="22" height="36" fill="#5d92b7"/>
-      <rect x="712" y="336" width="120" height="88" fill="#f7f4ea"/>
-      <path d="M712 336h120l-62-48-58 48Z" fill="#5873aa"/>
-      <path d="M536 116l-42 308h84L536 116Z" fill="#6986b0"/>
-      <path d="M536 116l-116 80h232L536 116Zm-116 80-58 46h348l-58-46m-232 0-42 32m232-32 42 32" stroke="#6986b0" stroke-width="6" stroke-linejoin="round"/>
-      <path d="M772 220l-30 204h60L772 220Z" fill="#40526d"/>
-      <path d="M772 220l-88 64h176L772 220Zm-88 64-48 34h272l-48-34" stroke="#40526d" stroke-width="6" stroke-linejoin="round"/>
-      <path d="M308 308l-24 116h48l-24-116Z" fill="#5f7ea3"/>
-      <path d="M308 308l-64 46h128l-64-46Zm-64 46-34 24h196l-34-24" stroke="#5f7ea3" stroke-width="5" stroke-linejoin="round"/>
-      <path d="M220 370c84 0 130-48 202-104m-42 160c92 0 138-30 236-98m34 86c68 0 98-26 166-78" stroke="#7da2c8" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="840" cy="110" r="26" fill="#fff" opacity="0.92"/>
-      <circle cx="868" cy="118" r="18" fill="#fff" opacity="0.92"/>
-      <circle cx="710" cy="156" r="20" fill="#fff" opacity="0.9"/>
-      <circle cx="738" cy="164" r="14" fill="#fff" opacity="0.9"/>
-      <circle cx="140" cy="152" r="28" fill="#fff" opacity="0.3"/>
     </svg>
   `.trim();
 
@@ -990,14 +838,16 @@ const LessonRow = ({
 
 export const CourseFigmaTab = ({
   overview,
-  onRefresh: _onRefresh,
+  onRefresh,
   initialCourseId,
   initialLessonId,
   onResumeNavigationHandled,
   savedTopicIds,
   onToggleSavedTopic,
   onImmersiveModeChange,
+  onOpenCbtExam,
 }: CourseFigmaTabProps) => {
+  const { user } = useAuth();
   const defaultCourseId = overview.courses[0]?._id || null;
   const initialResolvedCourseId = initialCourseId || findCourseIdForLesson(overview.courses, initialLessonId) || defaultCourseId;
   const [screen, setScreen] = useState<Screen>(initialLessonId ? 'lesson' : initialCourseId ? 'course' : 'catalog');
@@ -1027,8 +877,13 @@ export const CourseFigmaTab = ({
   const [quizSubmitted, setQuizSubmitted] = useState<Record<string, boolean>>({});
   const [lessonDoubtDrafts, setLessonDoubtDrafts] = useState<Record<string, string>>({});
   const [lessonDoubtThreads, setLessonDoubtThreads] = useState<Record<string, LessonDoubtMessage[]>>({});
+  const [busyCourseId, setBusyCourseId] = useState<string | null>(null);
+  const [courseAccessMessage, setCourseAccessMessage] = useState<string | null>(null);
   const [expandedSupportPanel, setExpandedSupportPanel] = useState<LessonSupportPanel>(null);
   const [mobileSupportTab, setMobileSupportTab] = useState<MobileSupportTab>('notes');
+  const [protectedLessonPlayback, setProtectedLessonPlayback] = useState<ProtectedLessonPlayback | null>(null);
+  const [loadingProtectedLesson, setLoadingProtectedLesson] = useState(false);
+  const [protectedLessonError, setProtectedLessonError] = useState<string | null>(null);
   const [localProgressByCourse, setLocalProgressByCourse] = useState<Record<string, Record<string, StoredProgress>>>(() =>
     overview.courses.reduce<Record<string, Record<string, StoredProgress>>>((accumulator, course) => {
       accumulator[course._id] = readStoredProgress(course._id);
@@ -1038,6 +893,8 @@ export const CourseFigmaTab = ({
   const playerViewportRef = useRef<HTMLDivElement | null>(null);
   const autoplayHandledRef = useRef<string | null>(null);
   const handledResumeNavigationRef = useRef<string | null>(null);
+  const lessonVideoRef = useRef<HTMLVideoElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1227,10 +1084,21 @@ export const CourseFigmaTab = ({
     () => buildProgressMap(selectedCourse, localProgress, screen === 'lesson' ? transientProgress : null),
     [localProgress, screen, selectedCourse, transientProgress],
   );
+  const selectedCourseHasAccess = Boolean(
+    user?.role === 'admin'
+    || selectedCourse?.enrolled
+    || selectedCourse?.price === 0,
+  );
+  const selectedLesson = selectedLessonEntry?.lesson || null;
+  const selectedLessonHasSecurePlayback = Boolean(
+    selectedLesson
+    && (selectedLesson.requiresSecurePlayback || ['youtube', 'private-video'].includes(String(selectedLesson.type || ''))),
+  );
+  const selectedLessonDirectVideoUrl = selectedLesson?.type === 'video' ? selectedLesson.videoUrl || null : null;
 
   const unlockMap = useMemo(
-    () => buildUnlockMap(selectedCourse, selectedCourseProgressMap),
-    [selectedCourse, selectedCourseProgressMap],
+    () => buildUnlockMap(selectedCourse, selectedCourseProgressMap, selectedCourseHasAccess),
+    [selectedCourse, selectedCourseHasAccess, selectedCourseProgressMap],
   );
 
   const selectedCourseSnapshot = useMemo(
@@ -1272,6 +1140,13 @@ export const CourseFigmaTab = ({
     () => buildLessonCopy(selectedLessonEntry, selectedCourse),
     [selectedLessonEntry, selectedCourse],
   );
+  const selectedCourseVisual = selectedCourse?.thumbnailUrl?.trim() || buildCourseHeroArt();
+  const selectedLessonLabels = [
+    selectedCourse?.exam || null,
+    selectedCourse?.subject || null,
+    selectedLessonEntry?.sectionLabel || null,
+    selectedLesson ? String(selectedLesson.type).replace(/-/g, ' ') : null,
+  ].filter(Boolean).slice(0, 4);
 
   useEffect(() => {
     if (!selectedLessonEntry) {
@@ -1279,31 +1154,6 @@ export const CourseFigmaTab = ({
     }
 
     const lessonId = selectedLessonEntry.lesson.id;
-    const mentorName = selectedCourse?.instructor || 'Mentor';
-
-    setLessonDoubtThreads((current) => {
-      if (current[lessonId]) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [lessonId]: [
-          {
-            id: `${lessonId}-doubt-1`,
-            name: 'Aman',
-            time: '10:05 AM',
-            message: selectedLessonCopy.discussionPrompt,
-          },
-          {
-            id: `${lessonId}-doubt-2`,
-            name: mentorName,
-            time: '10:06 AM',
-            message: selectedLessonCopy.quickTip,
-          },
-        ],
-      };
-    });
 
     setLessonDoubtDrafts((current) => (
       Object.prototype.hasOwnProperty.call(current, lessonId)
@@ -1311,9 +1161,6 @@ export const CourseFigmaTab = ({
         : { ...current, [lessonId]: '' }
     ));
   }, [
-    selectedCourse?.instructor,
-    selectedLessonCopy.discussionPrompt,
-    selectedLessonCopy.quickTip,
     selectedLessonEntry,
   ]);
 
@@ -1321,6 +1168,41 @@ export const CourseFigmaTab = ({
     setMobileSupportTab('notes');
     setExpandedSupportPanel(null);
   }, [selectedLessonEntry?.lesson.id]);
+
+  useEffect(() => {
+    if (!selectedCourse?._id || !selectedLesson?.id || !selectedCourseHasAccess || !selectedLessonHasSecurePlayback) {
+      setProtectedLessonPlayback(null);
+      setProtectedLessonError(null);
+      setLoadingProtectedLesson(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingProtectedLesson(true);
+    setProtectedLessonError(null);
+    setProtectedLessonPlayback(null);
+
+    void EduService.getProtectedLessonPlayback(selectedCourse._id, selectedLesson.id)
+      .then((payload) => {
+        if (!cancelled) {
+          setProtectedLessonPlayback(payload);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setProtectedLessonError(error instanceof Error ? error.message : 'Unable to prepare lesson playback.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingProtectedLesson(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCourse?._id, selectedCourseHasAccess, selectedLesson?.id, selectedLessonHasSecurePlayback]);
 
   const selectedLessonIndex = selectedCourseEntries.findIndex((entry) => entry.lesson.id === selectedLessonEntry?.lesson.id);
   const nextLessonEntry = selectedLessonIndex >= 0 && selectedLessonIndex < selectedCourseEntries.length - 1
@@ -1571,8 +1453,8 @@ export const CourseFigmaTab = ({
     }
 
     setLocalProgressByCourse((current) => {
-      const seededProgress = (targetCourse.lessonProgress || []).find((entry) => entry.lessonId === lessonId) as StoredProgress | undefined;
-      const existingRecord: StoredProgress | undefined = current[courseId]?.[lessonId] || seededProgress;
+      const serverProgress = (targetCourse.lessonProgress || []).find((entry) => entry.lessonId === lessonId) as StoredProgress | undefined;
+      const existingRecord: StoredProgress | undefined = current[courseId]?.[lessonId] || serverProgress;
       const mergedRecord: StoredProgress = {
         lessonId,
         progressPercent: Number(existingRecord?.progressPercent || 0),
@@ -1730,6 +1612,53 @@ export const CourseFigmaTab = ({
   ]);
 
   useEffect(() => {
+    const currentVideo = lessonVideoRef.current;
+    if (!currentVideo) {
+      return;
+    }
+
+    currentVideo.playbackRate = playbackSpeed;
+  }, [playbackSpeed, protectedLessonPlayback?.streamUrl, selectedLessonDirectVideoUrl, selectedLesson?.id]);
+
+  useEffect(() => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    const currentVideo = lessonVideoRef.current;
+    const streamUrl = protectedLessonPlayback?.streamUrl || null;
+    if (!currentVideo || !streamUrl || protectedLessonPlayback?.streamFormat !== 'hls') {
+      return;
+    }
+
+    if (currentVideo.canPlayType('application/vnd.apple.mpegurl')) {
+      currentVideo.src = streamUrl;
+      return;
+    }
+
+    if (!Hls.isSupported()) {
+      return;
+    }
+
+    const hls = new Hls({
+      enableWorker: true,
+      maxBufferLength: 30,
+      backBufferLength: 30,
+    });
+    hlsRef.current = hls;
+    hls.loadSource(streamUrl);
+    hls.attachMedia(currentVideo);
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [protectedLessonPlayback?.streamFormat, protectedLessonPlayback?.streamUrl, selectedLesson?.id]);
+
+  useEffect(() => {
     if (autoplayCountdown === null) {
       return;
     }
@@ -1804,8 +1733,44 @@ export const CourseFigmaTab = ({
     setIsVideoReplayMode(false);
   };
 
+  const buildSelectedLessonCbtTest = () => {
+    if (!selectedLessonEntry?.lesson.cbt) {
+      return null;
+    }
+
+    const attachedCbt = selectedLessonEntry.lesson.cbt;
+    const questions = attachedCbt.questions || [];
+    const totalMarks = questions.reduce((sum, question) => sum + Number(question.marks || 1), 0);
+    const sectionMap = new Map<string, number>();
+
+    questions.forEach((question) => {
+      const topic = question.topic || selectedLessonEntry.lesson.title;
+      sectionMap.set(topic, (sectionMap.get(topic) || 0) + 1);
+    });
+
+    return {
+      _id: `lesson-cbt:${selectedCourse?._id || 'course'}:${selectedLessonEntry.lesson.id}`,
+      title: attachedCbt.title || `${selectedLessonEntry.lesson.title} CBT`,
+      description: `${selectedCourse?.title || 'Course'} • ${selectedLessonEntry.moduleTitle}${selectedLessonEntry.chapterTitle ? ` • ${selectedLessonEntry.chapterTitle}` : ''} • ${selectedLessonEntry.lesson.title}`,
+      category: 'CBT',
+      course: selectedCourse?.title || null,
+      type: 'cbt',
+      durationMinutes: attachedCbt.durationMinutes || 60,
+      totalMarks,
+      negativeMarking: attachedCbt.negativeMarking ?? 0,
+      sectionBreakup: Array.from(sectionMap.entries()).map(([name, questionCount]) => ({ name, questions: questionCount })),
+      questions,
+    } satisfies MockTest;
+  };
+
   const startLessonExam = () => {
     if (!isLessonReadyForExam) {
+      return;
+    }
+
+    const test = buildSelectedLessonCbtTest();
+    if (test && onOpenCbtExam) {
+      onOpenCbtExam(test, () => submitLessonExam(true));
       return;
     }
 
@@ -1876,6 +1841,7 @@ export const CourseFigmaTab = ({
     setActiveLessonTab('Video');
     setMobileLessonStageOverride(null);
     setSearchQuery('');
+    setCourseAccessMessage(null);
     setAutoplayCountdown(null);
     setIsVideoPlaying(false);
     setIsExplanationPlaying(false);
@@ -1883,6 +1849,168 @@ export const CourseFigmaTab = ({
       ...current,
       [courseId]: current[courseId]?.length ? current[courseId] : sections[0] ? [sections[0].id] : [],
     }));
+  };
+
+  const handleUnlockCourse = async (course: CourseCard, provider: CoursePaymentProvider = 'stripe') => {
+    if (!user) {
+      setCourseAccessMessage('Login is required before enrolling in this course.');
+      return;
+    }
+
+    setBusyCourseId(course._id);
+    setCourseAccessMessage(null);
+
+    try {
+      if (course.price === 0) {
+        await EduService.enrollInCourse(course._id, 'free-course');
+        await onRefresh();
+        setCourseAccessMessage('Course access is active. You can start watching lessons now.');
+        return;
+      }
+
+      const checkout = await EduService.unlockCourse(course, provider);
+      const popup = window.open(checkout.url, `varonenglish-${provider}-checkout`, 'popup=yes,width=520,height=760');
+
+      if (!popup) {
+        throw new Error('Payment popup was blocked. Please allow popups and try again.');
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const timeoutId = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('message', handleMessage);
+          window.clearInterval(closeWatcher);
+          reject(new Error('Payment confirmation timed out. If payment succeeded, refresh and try again.'));
+        }, 5 * 60 * 1000);
+
+        const closeWatcher = window.setInterval(() => {
+          if (popup.closed && !settled) {
+            settled = true;
+            window.clearTimeout(timeoutId);
+            window.clearInterval(closeWatcher);
+            window.removeEventListener('message', handleMessage);
+            reject(new Error('Payment window was closed before confirmation.'));
+          }
+        }, 500);
+
+        const handleMessage = async (event: MessageEvent) => {
+          if (event.origin !== window.location.origin) {
+            return;
+          }
+
+          const data = event.data || {};
+          const isStripeSuccess = provider === 'stripe'
+            && data.type === 'STRIPE_PAYMENT_SUCCESS'
+            && data.courseId === course._id
+            && data.sessionId;
+          const isPhonePeReturn = provider === 'phonepe'
+            && data.type === 'PHONEPE_PAYMENT_RETURN'
+            && data.courseId === course._id
+            && data.orderId;
+
+          if (!isStripeSuccess && !isPhonePeReturn) {
+            return;
+          }
+
+          try {
+            if (provider === 'phonepe') {
+              await EduService.confirmPhonePeCoursePayment(data.orderId, course._id, data.paymentId);
+            } else {
+              await EduService.confirmCoursePayment(data.sessionId, course._id);
+            }
+            if (!popup.closed) {
+              popup.close();
+            }
+            if (!settled) {
+              settled = true;
+              window.clearTimeout(timeoutId);
+              window.clearInterval(closeWatcher);
+              window.removeEventListener('message', handleMessage);
+              resolve();
+            }
+          } catch (error) {
+            if (!settled) {
+              settled = true;
+              window.clearTimeout(timeoutId);
+              window.clearInterval(closeWatcher);
+              window.removeEventListener('message', handleMessage);
+              reject(error instanceof Error ? error : new Error('Payment confirmation failed.'));
+            }
+          }
+        };
+
+        window.addEventListener('message', handleMessage);
+      });
+
+      await onRefresh();
+      setCourseAccessMessage('Payment confirmed. Course access is active.');
+    } catch (error) {
+      setCourseAccessMessage(error instanceof Error ? error.message : 'Unable to unlock this course right now.');
+    } finally {
+      setBusyCourseId(null);
+    }
+  };
+
+  const renderCourseAccessActions = (course: CourseCard, variant: 'mobile' | 'desktop') => {
+    if (user?.role === 'admin' || course.enrolled) {
+      return (
+        <span className={cn(
+          'inline-flex items-center justify-center font-semibold',
+          variant === 'mobile'
+            ? 'h-[30px] rounded-[10px] bg-[#e8f7ef] px-[8px] text-[9.5px] text-[#16824a]'
+            : 'h-[42px] rounded-[12px] bg-[#e8f7ef] px-[16px] text-[13px] text-[#16824a]',
+        )}>
+          Access active
+        </span>
+      );
+    }
+
+    if (course.price === 0) {
+      return (
+        <button
+          type="button"
+          onClick={() => handleUnlockCourse(course)}
+          disabled={busyCourseId === course._id}
+          className={cn(
+            'inline-flex items-center justify-center gap-[8px] bg-[#2f6fe4] font-semibold text-white shadow-[0_12px_24px_rgba(45,110,229,0.2)] disabled:opacity-60',
+            variant === 'mobile' ? 'h-[30px] rounded-[10px] px-[8px] text-[9.5px]' : 'h-[42px] rounded-[12px] px-[16px] text-[13px]',
+          )}
+        >
+          {busyCourseId === course._id ? <LoaderCircle className="h-[14px] w-[14px] animate-spin" /> : <Wallet className="h-[14px] w-[14px]" />}
+          {getCoursePurchaseLabel(course)}
+        </button>
+      );
+    }
+
+    return (
+      <div className={cn('flex flex-wrap gap-[8px]', variant === 'mobile' && 'justify-end')}>
+        <button
+          type="button"
+          onClick={() => handleUnlockCourse(course, 'phonepe')}
+          disabled={busyCourseId === course._id}
+          className={cn(
+            'inline-flex items-center justify-center gap-[8px] rounded-[12px] bg-[#5b3df5] font-semibold text-white shadow-[0_12px_24px_rgba(91,61,245,0.2)] disabled:opacity-60',
+            variant === 'mobile' ? 'h-[30px] px-[8px] text-[9.5px]' : 'h-[42px] px-[16px] text-[13px]',
+          )}
+        >
+          {busyCourseId === course._id ? <LoaderCircle className="h-[14px] w-[14px] animate-spin" /> : <Wallet className="h-[14px] w-[14px]" />}
+          PhonePe
+        </button>
+        <button
+          type="button"
+          onClick={() => handleUnlockCourse(course, 'stripe')}
+          disabled={busyCourseId === course._id}
+          className={cn(
+            'inline-flex items-center justify-center rounded-[12px] border border-[#cfd9ec] bg-white font-semibold text-[#172033] disabled:opacity-60',
+            variant === 'mobile' ? 'h-[30px] px-[8px] text-[9.5px]' : 'h-[42px] px-[16px] text-[13px]',
+          )}
+        >
+          Stripe
+        </button>
+      </div>
+    );
   };
 
   const openLesson = (lessonId: string, forceOpen = false) => {
@@ -2002,6 +2130,11 @@ export const CourseFigmaTab = ({
       return;
     }
 
+    if (tab === 'CBT Exam' && !selectedLessonExamSubmitted && isLessonReadyForExam && onOpenCbtExam) {
+      startLessonExam();
+      return;
+    }
+
     setActiveLessonTab(tab);
     if (tab !== 'Video') {
       setIsVideoReplayMode(false);
@@ -2044,7 +2177,7 @@ export const CourseFigmaTab = ({
     if (!selectedLessonExamSubmitted) {
       return {
         kind: 'cbt' as const,
-        title: 'Chapter CBT Exam',
+        title: selectedLessonEntry.lesson.cbt?.title || `${selectedLessonEntry.lesson.title} CBT`,
         subtitle: isLessonReadyForExam
           ? 'Take the one-time chapter based test before the explanation unlocks.'
           : 'Finish this lesson video first to unlock the chapter test.',
@@ -2058,7 +2191,7 @@ export const CourseFigmaTab = ({
     if (!isLessonFlowComplete) {
       return {
         kind: 'explanation' as const,
-        title: 'CBT Explanation Video',
+        title: 'Lesson Explanation',
         subtitle: 'Watch the explanation once before the next lesson unlocks.',
         badge: 'One-time watch',
         actionLabel: 'Watch Explanation',
@@ -2214,6 +2347,110 @@ export const CourseFigmaTab = ({
   const breadcrumbLabel = selectedLessonEntry
     ? ['Courses', selectedCourse?.title, selectedLessonEntry.sectionLabel, selectedLessonEntry.lesson.title].filter(Boolean).join(' / ')
     : ['Courses', selectedCourse?.title].filter(Boolean).join(' / ');
+
+  const renderActualLessonMedia = (variant: 'mobile' | 'desktop') => {
+    if (!selectedLesson) {
+      return null;
+    }
+
+    const playerUrl = selectedLessonDirectVideoUrl || protectedLessonPlayback?.streamUrl || null;
+    const isYouTube = selectedLesson.type === 'youtube';
+    const isPrivateVideo = selectedLesson.type === 'private-video';
+    const isHostedVideo = selectedLesson.type === 'video';
+
+    if (loadingProtectedLesson && selectedLessonHasSecurePlayback) {
+      return (
+        <div className="flex min-h-[260px] items-center justify-center gap-3 bg-[#0f1726] px-6 text-center text-white">
+          <LoaderCircle className="h-6 w-6 animate-spin text-white/80" />
+          <span className="text-sm text-white/80">Preparing lesson video...</span>
+        </div>
+      );
+    }
+
+    if (protectedLessonError) {
+      return (
+        <div className="flex min-h-[260px] items-center justify-center bg-[#0f1726] px-6 text-center">
+          <div>
+            <p className="text-base font-semibold text-white">Lesson video unavailable</p>
+            <p className="mt-2 text-sm leading-6 text-white/72">{protectedLessonError}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (isYouTube && protectedLessonPlayback?.embedUrl) {
+      return (
+        <div className="aspect-video w-full bg-black">
+          <iframe
+            title={selectedLesson.title}
+            src={protectedLessonPlayback.embedUrl}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="h-full w-full border-0"
+          />
+        </div>
+      );
+    }
+
+    if ((isPrivateVideo || isHostedVideo) && playerUrl) {
+      return (
+        <div className="relative bg-black">
+          <video
+            key={`${selectedLesson.id}:${playerUrl}`}
+            ref={lessonVideoRef}
+            src={protectedLessonPlayback?.streamFormat === 'source' || isHostedVideo ? playerUrl : undefined}
+            controls
+            controlsList="nodownload"
+            playsInline
+            className={cn('w-full bg-black object-contain', variant === 'mobile' ? 'aspect-video min-h-[220px]' : 'aspect-video min-h-[420px]')}
+            onPlay={() => setIsVideoPlaying(true)}
+            onPause={() => setIsVideoPlaying(false)}
+            onLoadedMetadata={(event) => {
+              const resumeSeconds = protectedLessonPlayback?.resumeSeconds || selectedLessonStoredProgress?.progressSeconds || 0;
+              if (resumeSeconds > 0) {
+                event.currentTarget.currentTime = resumeSeconds;
+              }
+              setVideoPlaybackSeconds(event.currentTarget.currentTime || 0);
+            }}
+            onCanPlay={(event) => {
+              const resumeSeconds = protectedLessonPlayback?.resumeSeconds || selectedLessonStoredProgress?.progressSeconds || 0;
+              if (resumeSeconds > 0 && event.currentTarget.currentTime < 1) {
+                event.currentTarget.currentTime = resumeSeconds;
+              }
+            }}
+            onTimeUpdate={(event) => {
+              setVideoPlaybackSeconds(event.currentTarget.currentTime || 0);
+            }}
+            onEnded={(event) => {
+              setIsVideoPlaying(false);
+              setVideoPlaybackSeconds(event.currentTarget.duration || selectedLessonVideoDurationSeconds);
+            }}
+          />
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const renderLessonMediaUnavailable = (variant: 'mobile' | 'desktop') => (
+    <div
+      className={cn(
+        'flex items-center justify-center bg-[#0f1726] px-6 text-center text-white',
+        variant === 'mobile' ? 'min-h-[260px]' : 'min-h-[420px]',
+      )}
+    >
+      <div className="max-w-[420px]">
+        <div className="mx-auto flex h-[56px] w-[56px] items-center justify-center rounded-full bg-white/10 text-white/88">
+          <Video className="h-[24px] w-[24px]" />
+        </div>
+        <p className="mt-[16px] text-[18px] font-semibold">Lesson video is not available yet</p>
+        <p className="mt-[8px] text-[14px] leading-[1.6] text-white/72">
+          This lesson does not have a published video source right now. Upload or publish the lesson video from Admin to make playback available here.
+        </p>
+      </div>
+    </div>
+  );
 
   const renderCatalogView = () => (
     isMobileLayout ? (
@@ -2619,11 +2856,22 @@ export const CourseFigmaTab = ({
               <button
                 type="button"
                 onClick={() => selectedLessonEntry && openLesson(selectedLessonEntry.lesson.id)}
+                disabled={!selectedCourseHasAccess}
                 className="inline-flex h-[30px] w-full items-center justify-center rounded-[10px] bg-[#2f6fe4] px-[7px] text-[9.5px] font-semibold whitespace-nowrap text-white shadow-[0_12px_24px_rgba(45,110,229,0.2)]"
               >
                 Continue Course
               </button>
             </div>
+            {selectedCourse && !selectedCourseHasAccess && (
+              <div className="mt-[8px] flex justify-end">
+                {renderCourseAccessActions(selectedCourse, 'mobile')}
+              </div>
+            )}
+            {courseAccessMessage && (
+              <p className="mt-[8px] rounded-[10px] bg-[#f7faff] px-[9px] py-[7px] text-[10px] leading-5 text-[#516786]">
+                {courseAccessMessage}
+              </p>
+            )}
           </section>
 
           <div className="mt-[7px] flex items-center gap-[5px] overflow-x-auto px-[2px] pb-[2px] text-[9px] whitespace-nowrap text-[#516786] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -2789,7 +3037,7 @@ export const CourseFigmaTab = ({
           <section className="mt-[6px] rounded-[14px] border border-[#dbe4f3] bg-[#eef4ff] px-[10px] py-[8px] text-[10px] text-[#4b658f]">
             <div className="flex items-center gap-[8px]">
               <div className="flex h-[16px] w-[16px] items-center justify-center rounded-full border border-[#2d6ee5] text-[10px] text-[#2d6ee5]">i</div>
-              <p>You can open any lesson directly from the course list.</p>
+              <p>{selectedCourseHasAccess ? 'You can open any lesson directly from the course list.' : 'Unlock this course to watch lessons and sync progress.'}</p>
             </div>
           </section>
         </div>
@@ -2826,7 +3074,7 @@ export const CourseFigmaTab = ({
         <div className="min-w-0">
           <section className="overflow-hidden rounded-[20px] border border-[#dbe4f3] bg-white shadow-[0_16px_34px_rgba(54,78,123,0.08)] xl:rounded-[24px]">
             <div data-testid="course-figma-hero" className="relative h-[160px] overflow-hidden xl:h-[220px]">
-              <img alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" src={buildCourseHeroArt()} />
+              <img alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" src={selectedCourseVisual} />
               <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.18)_0%,rgba(255,255,255,0.06)_55%,rgba(255,255,255,0)_100%)]" />
               <div className="relative h-full px-[18px] pt-[18px] text-[#16264a] xl:px-[30px] xl:pt-[32px]">
                 <h2 className="max-w-[280px] text-[24px] font-semibold leading-[1.08] tracking-[-0.03em] xl:max-w-[560px] xl:text-[32px] xl:leading-[1.12]">
@@ -2838,14 +3086,25 @@ export const CourseFigmaTab = ({
                     <div className={cn('h-full rounded-full', selectedToneStyles.progress)} style={{ width: `${selectedCourseSnapshot.progressPercent}%` }} />
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => selectedLessonEntry && openLesson(selectedLessonEntry.lesson.id)}
-                  className="mt-[16px] inline-flex h-[38px] items-center gap-[8px] rounded-[11px] bg-[linear-gradient(180deg,#4487f4_0%,#2d6ee5_100%)] px-[16px] text-[13px] font-semibold text-white shadow-[0_14px_28px_rgba(45,110,229,0.24)] xl:mt-[28px] xl:h-[46px] xl:gap-[10px] xl:rounded-[12px] xl:px-[22px] xl:text-[15px]"
-                >
-                  {selectedCourseSnapshot.progressPercent > 0 ? 'Continue Course' : 'Start Course'}
-                  <ChevronRight className="h-[16px] w-[16px]" />
-                </button>
+                <div className="mt-[16px] flex flex-wrap items-center gap-[10px] xl:mt-[28px]">
+                  {selectedCourseHasAccess ? (
+                    <button
+                      type="button"
+                      onClick={() => selectedLessonEntry && openLesson(selectedLessonEntry.lesson.id)}
+                      className="inline-flex h-[38px] items-center gap-[8px] rounded-[11px] bg-[linear-gradient(180deg,#4487f4_0%,#2d6ee5_100%)] px-[16px] text-[13px] font-semibold text-white shadow-[0_14px_28px_rgba(45,110,229,0.24)] xl:h-[46px] xl:gap-[10px] xl:rounded-[12px] xl:px-[22px] xl:text-[15px]"
+                    >
+                      {selectedCourseSnapshot.progressPercent > 0 ? 'Continue Course' : 'Start Course'}
+                      <ChevronRight className="h-[16px] w-[16px]" />
+                    </button>
+                  ) : selectedCourse ? (
+                    renderCourseAccessActions(selectedCourse, 'desktop')
+                  ) : null}
+                </div>
+                {courseAccessMessage && (
+                  <p className="mt-[10px] inline-flex max-w-[520px] rounded-[12px] bg-white/82 px-[12px] py-[8px] text-[12px] leading-5 text-[#41597d]">
+                    {courseAccessMessage}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -3139,6 +3398,8 @@ export const CourseFigmaTab = ({
   );
 
   const renderVideoPanel = () => {
+    const actualLessonMedia = renderActualLessonMedia('desktop');
+
     if (!isVideoReplayMode && selectedLessonStoredProgress?.completed) {
       return renderDesktopFlowCompletePanel();
     }
@@ -3157,115 +3418,12 @@ export const CourseFigmaTab = ({
           isFullscreen && 'rounded-none border-0',
         )}
       >
-        <div className="absolute inset-0">
-          <img alt="" aria-hidden="true" className={cn('h-full w-full object-cover', autoplayCountdown !== null && 'opacity-30 blur-[1px]')} src={buildLessonArtwork(selectedLessonCopy.artwork)} />
-        </div>
-
-        {autoplayCountdown !== null && nextLessonEntry ? (
-          <div data-testid="course-player-overlay" className="relative flex min-h-[450px] flex-col items-center justify-center bg-[linear-gradient(180deg,rgba(42,54,84,0.12)_0%,rgba(42,54,84,0.72)_100%)] px-[24px] py-[30px] text-center text-white">
-            <p className="text-[18px] font-semibold">Up Next</p>
-            <div className="mt-[18px] flex h-[110px] w-[110px] items-center justify-center rounded-full bg-white/94 text-[#2d6ee5]">
-              <BookOpen className="h-[48px] w-[48px]" />
-            </div>
-            <p className="mt-[18px] text-[20px] font-semibold">{nextLessonEntry.lesson.title}</p>
-            <p className="mt-[8px] text-[14px] text-white/84">{formatDurationLabel(nextLessonEntry.lesson.durationMinutes)}</p>
-            <p className="mt-[18px] text-[14px] text-white/88">Starting in {autoplayCountdown} second{autoplayCountdown === 1 ? '' : 's'}...</p>
-            <button
-              type="button"
-              onClick={() => setAutoplayCountdown(null)}
-              className="mt-[20px] inline-flex h-[44px] items-center gap-[8px] rounded-full border border-white/30 px-[18px] text-[14px] font-medium text-white"
-            >
-              <span className="text-[18px] leading-none">×</span>
-              Cancel
-            </button>
+        {actualLessonMedia ? (
+          <div className="bg-black">
+            {actualLessonMedia}
           </div>
         ) : (
-          <div className="relative flex min-h-[450px] flex-col">
-            <div className="grid gap-[18px] px-[26px] pt-[26px] lg:grid-cols-[360px_minmax(0,1fr)]">
-              <div className="max-w-[360px]">
-                <h2 className="text-[22px] font-semibold leading-[1.12] tracking-[-0.03em] text-[#16264a]">{selectedLessonCopy.heading}</h2>
-                <p className="mt-[10px] text-[15px] leading-[1.48] text-[#34486f]">{selectedLessonCopy.summary}</p>
-              </div>
-            </div>
-
-            {selectedLessonCopy.artwork === 'power' && (
-              <div className="mt-auto px-[24px] pb-[82px]">
-                <div className="flex flex-wrap gap-[16px]">
-                  {selectedLessonCopy.featureLabels.map((label) => (
-                    <div key={label} className="flex items-center gap-[10px] rounded-full bg-white/70 px-[14px] py-[12px] shadow-[0_8px_20px_rgba(76,106,157,0.08)] backdrop-blur">
-                      <span className="flex h-[44px] w-[44px] items-center justify-center rounded-full border border-[#c9daf8] bg-[#eef5ff] text-[#5f84c8]">
-                        <Sparkles className="h-[18px] w-[18px]" />
-                      </span>
-                      <span className="text-[14px] font-medium text-[#223356]">{label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {!hasReachedLessonVideoWatchLimit || isVideoReplayMode ? (
-              <button
-                type="button"
-                data-testid="course-player-video-play"
-                onClick={() => setIsVideoPlaying((current) => !current)}
-                className="absolute left-1/2 top-1/2 flex h-[68px] w-[68px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#4a5f8d] text-white shadow-[0_18px_32px_rgba(42,57,92,0.22)]"
-              >
-                {isVideoPlaying ? <Pause className="h-[26px] w-[26px] fill-current" /> : <Play className="ml-[3px] h-[28px] w-[28px] fill-current" />}
-              </button>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="rounded-full border border-white/30 bg-white/92 px-[16px] py-[10px] text-[12px] font-semibold text-[#17305c] shadow-[0_12px_28px_rgba(8,15,25,0.14)]">
-                  Video limit reached
-                </div>
-              </div>
-            )}
-
-            <div className="mt-auto bg-[linear-gradient(180deg,rgba(30,48,82,0)_0%,rgba(30,48,82,0.18)_20%,rgba(33,48,77,0.92)_100%)] px-[20px] pb-[14px] pt-[24px] text-white">
-              <div className="h-[5px] overflow-hidden rounded-full bg-white/26">
-                <div className="h-full rounded-full bg-[#2f72e8]" style={{ width: `${Math.min((videoPlaybackSeconds / selectedLessonVideoDurationSeconds) * 100, 100)}%` }} />
-              </div>
-              <div className="mt-[12px] flex flex-wrap items-center justify-between gap-[14px] text-[15px]">
-                <div className="flex items-center gap-[12px]">
-                  {!hasReachedLessonVideoWatchLimit || isVideoReplayMode ? (
-                    <button
-                      type="button"
-                      data-testid="course-player-toggle"
-                      onClick={() => setIsVideoPlaying((current) => !current)}
-                    >
-                      {isVideoPlaying ? <Pause className="h-[22px] w-[22px] fill-current" /> : <Play className="h-[22px] w-[22px] fill-current" />}
-                    </button>
-                  ) : (
-                    <span data-testid="course-player-rewatch-limit" className="inline-flex h-[30px] items-center rounded-full border border-white/20 bg-white/14 px-[12px] text-[11px] font-semibold text-white/92">
-                      Video limit reached
-                    </span>
-                  )}
-                  <span>{formatPlaybackTime(videoPlaybackSeconds)} / {formatPlaybackTime(selectedLessonVideoDurationSeconds)}</span>
-                </div>
-
-                <div className="flex items-center gap-[18px] text-[14px]">
-                  <button
-                    type="button"
-                    data-testid="course-player-speed"
-                    onClick={() => setPlaybackSpeed((current) => current >= 2 ? 0.75 : Number((current + 0.25).toFixed(2)))}
-                  >
-                    {playbackSpeed}x
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="course-player-next"
-                    onClick={() => openNextLesson()}
-                    disabled={!nextLessonEntry}
-                    className="disabled:opacity-40"
-                  >
-                    <ChevronRight className="h-[22px] w-[22px]" />
-                  </button>
-                  <button type="button" data-testid="course-player-fullscreen" onClick={() => void toggleFullscreen()}>
-                    <Maximize2 className="h-[18px] w-[18px]" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          renderLessonMediaUnavailable('desktop')
         )}
       </section>
 
@@ -3283,7 +3441,7 @@ export const CourseFigmaTab = ({
           </div>
           <div className="flex items-center gap-[10px] text-[15px] text-[#516786]">
             <Video className="h-[18px] w-[18px] text-[#7a90b7]" />
-            <span>Beginner Level</span>
+            <span>{selectedCourse?.level || selectedLessonLabels[0] || 'Course Lesson'}</span>
           </div>
         </div>
       </section>
@@ -3304,7 +3462,7 @@ export const CourseFigmaTab = ({
         <div className="rounded-[18px] border border-[#dbe4f3] bg-white px-[18px] py-[16px] shadow-[0_12px_24px_rgba(54,78,123,0.05)]">
           <p className="text-[16px] font-semibold text-[#1b2d50]">Need Help?</p>
           <p className="mt-[10px] text-[15px] leading-[1.55] text-[#516786]">
-            Move to the chapter CBT once the video finishes, then open the explanation video after you submit your answer.
+            Complete the lesson CBT after the video, then open the explanation to finish the lesson flow.
           </p>
           <div className="mt-[16px] flex flex-wrap gap-[10px]">
             <button
@@ -3349,158 +3507,72 @@ export const CourseFigmaTab = ({
   );
   };
 
-  const renderNotesPanel = () => (
-    <div className="space-y-[14px]">
-      {selectedLessonCopy.notes.map((note) => (
-        <section key={note.title} className="rounded-[18px] border border-[#dbe4f3] bg-white px-[18px] py-[18px] shadow-[0_12px_24px_rgba(54,78,123,0.05)]">
-          <div className="flex items-center gap-[10px] text-[#2d6ee5]">
-            <FileText className="h-[18px] w-[18px]" />
-            <p className="text-[16px] font-semibold text-[#1b2d50]">{note.title}</p>
-          </div>
-          <p className="mt-[10px] text-[15px] leading-[1.55] text-[#516786]">{note.body}</p>
-        </section>
-      ))}
-    </div>
-  );
-
   const renderQuizPanel = () => {
-    const selectedOption = selectedLessonExamSelectedOption;
-    const submitted = selectedLessonExamSubmitted;
-    const correct = selectedOption === selectedLessonCopy.quiz.answerIndex;
+    return (
+      <section className="rounded-[18px] border border-[#dbe4f3] bg-white px-[18px] py-[18px] shadow-[0_12px_24px_rgba(54,78,123,0.05)]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[16px] font-semibold text-[#1b2d50]">{selectedLessonCopy.quiz.title}</p>
+          <div className="flex gap-2 text-[12px] font-semibold text-[#607394]">
+            <span className="rounded-full bg-[#eef4ff] px-3 py-1">{selectedLessonCopy.quiz.totalQuestions} Questions</span>
+            <span className="rounded-full bg-[#eef4ff] px-3 py-1">{selectedLessonCopy.quiz.durationMinutes} Mins</span>
+          </div>
+        </div>
+        <p className="mt-[10px] text-[15px] leading-[1.52] text-[#516786]">
+          {selectedLessonExamSubmitted
+            ? 'This CBT is already completed. Continue with the explanation step to finish the lesson flow.'
+            : 'Start the CBT to open the full mock-test exam interface with instructions, declaration, timer, palette, and result flow.'}
+        </p>
 
-    if (submitted && !isMobileLayout) {
-      const score = correct ? '8 / 10' : '7 / 10';
-      const percent = correct ? 80 : 70;
-      const correctAnswers = correct ? 8 : 7;
-      const wrongAnswers = correct ? 2 : 3;
-
-      return (
-        <section className="space-y-[18px]">
-          <div className="rounded-[18px] border border-[#dbe4f3] bg-white px-[20px] py-[22px] shadow-[0_12px_24px_rgba(54,78,123,0.05)]">
-            <div className="flex flex-col items-center text-center">
-              <div className="flex h-[62px] w-[62px] items-center justify-center rounded-full bg-[#18ad73] text-white shadow-[0_10px_20px_rgba(24,173,115,0.22)]">
-                <CheckCircle2 className="h-[34px] w-[34px]" />
-              </div>
-              <p className="mt-[14px] text-[20px] font-semibold text-[#17233f]">CBT Completed!</p>
-              <p className="mt-[6px] text-[14px] text-[#6f84ab]">You have used your 1 attempt.</p>
+        <div className="mt-[18px] rounded-[16px] border border-[#e3ebf6] bg-[#fbfdff] px-[16px] py-[16px]">
+          <div className="flex items-start gap-[10px]">
+            <div className="mt-[2px] flex h-[30px] w-[30px] items-center justify-center rounded-[10px] bg-[#edf4ff] text-[#2d6ee5]">
+              <ClipboardCheck className="h-[14px] w-[14px]" />
             </div>
-
-            <div className="mt-[18px] rounded-[16px] border border-[#e3ebf6] bg-white px-[18px] py-[16px]">
-              <div className="flex items-end justify-between">
-                <div>
-                  <p className="text-[13px] text-[#6f84ab]">Your Score</p>
-                  <p className="mt-[2px] text-[18px] font-semibold text-[#17233f]">{score}</p>
-                </div>
-                <span className="text-[18px] font-semibold text-[#18ad73]">{percent}%</span>
-              </div>
-              <div className="mt-[12px] grid grid-cols-2 gap-[16px] border-t border-[#e8edf7] pt-[12px] text-[13px] text-[#5d7092]">
-                <div>
-                  <p>Correct Answers</p>
-                  <p className="mt-[4px] text-[17px] font-semibold text-[#17233f]">{correctAnswers}</p>
-                </div>
-                <div>
-                  <p>Wrong Answers</p>
-                  <p className="mt-[4px] text-[17px] font-semibold text-[#17233f]">{wrongAnswers}</p>
-                </div>
-              </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold text-[#17305c]">
+                {selectedLessonExamSubmitted ? 'CBT Submitted' : 'Open Full CBT Flow'}
+              </p>
+              <p className="mt-[4px] text-[14px] leading-[1.45] text-[#5d7092]">
+                {selectedLessonExamSubmitted
+                  ? 'Your attempt is recorded for this lesson path. Watch the explanation to complete the sequence.'
+                  : 'This launches the same exam UI used by the full-length mock tests.'}
+              </p>
             </div>
-
-            <div className="mt-[16px] rounded-[16px] border border-[#e3ebf6] bg-[#fbfdff] px-[16px] py-[16px]">
-              <div className="flex items-start gap-[10px]">
-                <div className="mt-[2px] flex h-[30px] w-[30px] items-center justify-center rounded-[10px] bg-[#edf4ff] text-[#2d6ee5]">
-                  <Sparkles className="h-[14px] w-[14px]" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[15px] font-semibold text-[#17305c]">What&apos;s Next?</p>
-                  <p className="mt-[4px] text-[14px] leading-[1.45] text-[#5d7092]">
-                    {hasReachedExplanationWatchLimit
-                      ? nextLessonEntry
-                        ? `Explanation is complete. Continue with ${nextLessonEntry.lesson.title}.`
-                        : 'Explanation is complete. Continue from the course page.'
-                      : 'Watch the explanation video once before this lesson flow is marked complete.'}
-                  </p>
-                </div>
-              </div>
+          </div>
+          <div className="mt-[16px] flex flex-wrap gap-[10px]">
+            {!selectedLessonExamSubmitted ? (
+              <button
+                type="button"
+                data-testid="course-player-start-cbt"
+                onClick={startLessonExam}
+                disabled={!isLessonReadyForExam}
+                className={cn(
+                  'inline-flex h-[42px] items-center justify-center rounded-[10px] px-[16px] text-[14px] font-semibold',
+                  isLessonReadyForExam
+                    ? 'bg-[linear-gradient(180deg,#2f6ef0_0%,#2660e3_100%)] text-white shadow-[0_12px_24px_rgba(45,110,229,0.2)]'
+                    : 'cursor-not-allowed border border-[#dbe4f3] bg-[#eef3fb] text-[#91a4c2]',
+                )}
+              >
+                Start CBT Exam
+              </button>
+            ) : (
               <button
                 type="button"
                 data-testid="course-player-watch-explanation"
-                onClick={hasReachedExplanationWatchLimit
-                  ? () => {
-                    if (nextLessonEntry) {
-                      openNextLesson();
-                      return;
-                    }
-                    setScreen('course');
-                  }
-                  : openLessonExplanation}
-                className="mt-[16px] inline-flex h-[42px] w-full items-center justify-center rounded-[10px] bg-[linear-gradient(180deg,#2f6ef0_0%,#2660e3_100%)] text-[14px] font-semibold text-white shadow-[0_12px_24px_rgba(45,110,229,0.2)]"
+                onClick={openLessonExplanation}
+                disabled={!canWatchExplanation}
+                className={cn(
+                  'inline-flex h-[42px] items-center justify-center rounded-[10px] px-[16px] text-[14px] font-semibold',
+                  canWatchExplanation
+                    ? 'bg-[linear-gradient(180deg,#2f6ef0_0%,#2660e3_100%)] text-white shadow-[0_12px_24px_rgba(45,110,229,0.2)]'
+                    : 'cursor-not-allowed border border-[#dbe4f3] bg-[#eef3fb] text-[#91a4c2]',
+                )}
               >
-                {hasReachedExplanationWatchLimit ? (nextLessonEntry ? 'Open Next Lesson' : 'Back to Lessons') : 'Watch Explanation'}
+                Watch Explanation
               </button>
-            </div>
-
-            <div className="mt-[14px] rounded-[16px] border border-[#e3ebf6] bg-[#eef4ff] px-[16px] py-[12px] text-[14px] text-[#4b658f]">
-              <div className="flex items-center gap-[8px]">
-                <div className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-[#2d6ee5] text-[11px] text-[#2d6ee5]">i</div>
-                <p>{hasReachedExplanationWatchLimit ? 'Explanation watch limit reached for this lesson.' : 'The explanation video is the next required step in this lesson flow.'}</p>
-              </div>
-            </div>
+            )}
           </div>
-        </section>
-      );
-    }
-
-    return (
-      <section className="rounded-[18px] border border-[#dbe4f3] bg-white px-[18px] py-[18px] shadow-[0_12px_24px_rgba(54,78,123,0.05)]">
-        <p className="text-[16px] font-semibold text-[#1b2d50]">Chapter CBT Exam</p>
-        <p className="mt-[10px] text-[16px] leading-[1.48] text-[#253a62]">{selectedLessonCopy.quiz.prompt}</p>
-        <div className="mt-[16px] space-y-[10px]">
-          {selectedLessonCopy.quiz.options.map((option, index) => (
-            <button
-              key={option}
-              type="button"
-              data-testid={`course-player-cbt-option-${index}`}
-              disabled={submitted}
-              onClick={() => {
-                if (submitted) {
-                  return;
-                }
-                setQuizSelections((current) => ({ ...current, [selectedLessonEntry?.lesson.id || '']: index }));
-              }}
-              className={cn(
-                'flex w-full items-center gap-[12px] rounded-[14px] border px-[16px] py-[14px] text-left transition disabled:cursor-not-allowed',
-                selectedOption === index
-                  ? 'border-[#8fbdf7] bg-[#eef5ff] text-[#1b49d6]'
-                  : 'border-[#dbe4f3] bg-[#f9fbff] text-[#516786]',
-                submitted && selectedOption !== index && 'opacity-70',
-              )}
-            >
-              <span className="flex h-[24px] w-[24px] items-center justify-center rounded-full border border-current text-[12px] font-semibold">
-                {String.fromCharCode(65 + index)}
-              </span>
-              <span className="text-[15px]">{option}</span>
-            </button>
-          ))}
         </div>
-
-        <div className="mt-[18px] flex flex-wrap gap-[10px]">
-            <button
-              type="button"
-              data-testid="course-player-cbt-submit"
-              disabled={submitted || selectedOption === null}
-              onClick={() => submitLessonExam(true)}
-              className="rounded-[10px] bg-[#2d6ee5] px-[16px] py-[10px] text-[14px] font-semibold text-white disabled:opacity-60"
-            >
-              {submitted ? 'Submitted' : 'Submit CBT'}
-              </button>
-            </div>
-
-        {submitted && selectedOption !== null && (
-          <div className={cn('mt-[16px] rounded-[14px] px-[16px] py-[14px] text-[15px] leading-[1.52]', correct ? 'bg-[#eefaf4] text-[#24734e]' : 'bg-[#fff5ef] text-[#9a5724]')}>
-            <p className="font-semibold">{correct ? 'Correct answer' : 'Review this once more'}</p>
-            <p className="mt-[6px]">{selectedLessonCopy.quiz.explanation}</p>
-          </div>
-        )}
       </section>
     );
   };
@@ -3509,7 +3581,7 @@ export const CourseFigmaTab = ({
     if (!selectedLessonExamSubmitted) {
       return (
         <section className="rounded-[18px] border border-[#dbe4f3] bg-white px-[18px] py-[20px] shadow-[0_12px_24px_rgba(54,78,123,0.05)]">
-          <p className="text-[16px] font-semibold text-[#1b2d50]">CBT Explanation Video</p>
+          <p className="text-[16px] font-semibold text-[#1b2d50]">Lesson Explanation</p>
           <p className="mt-[8px] text-[15px] leading-[1.55] text-[#516786]">
             Submit the chapter CBT to unlock the explanation video for this lesson.
           </p>
@@ -3527,7 +3599,7 @@ export const CourseFigmaTab = ({
     return (
       <div className="space-y-[14px]">
         <section className="rounded-[18px] border border-[#dbe4f3] bg-white px-[18px] py-[18px] shadow-[0_12px_24px_rgba(54,78,123,0.05)]">
-          <p className="text-[16px] font-semibold text-[#1b2d50]">CBT Explanation Video</p>
+          <p className="text-[16px] font-semibold text-[#1b2d50]">Lesson Explanation</p>
           <p className="mt-[6px] text-[14px] text-[#5d6f8e]">
             Review the answer and watch the explanation before moving to the next lesson.
           </p>
@@ -3539,7 +3611,7 @@ export const CourseFigmaTab = ({
               alt=""
               aria-hidden="true"
               className="absolute inset-0 h-full w-full object-cover"
-              src={buildLessonArtwork(selectedLessonCopy.artwork)}
+              src={selectedCourseVisual}
             />
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12)_0%,rgba(14,35,72,0.66)_100%)]" />
             <div className="relative flex min-h-[320px] flex-col justify-between px-[20px] py-[18px] text-white">
@@ -3829,15 +3901,6 @@ export const CourseFigmaTab = ({
     const lessonId = selectedLessonEntry.lesson.id;
     const thread = lessonDoubtThreads[lessonId] || [];
     const draft = lessonDoubtDrafts[lessonId] || '';
-    const seededThread = thread.length > 0 ? thread : [
-      {
-        id: `${lessonId}-starter`,
-        name: 'Mentor desk',
-        time: 'Now',
-        message: selectedLessonCopy.discussionPrompt,
-      },
-    ];
-
     return (
       <section className="overflow-hidden rounded-[20px] border border-[#dfe7f4] bg-white shadow-[0_14px_28px_rgba(54,78,123,0.06)]">
         <div className="grid grid-cols-2 border-b border-[#e7edf7]">
@@ -3887,19 +3950,12 @@ export const CourseFigmaTab = ({
                 <div className="min-w-0">
                   <p className="text-[14px] font-semibold leading-[1.35] text-[#17233f]">{note.title}</p>
                   <p className="mt-[4px] text-[12px] leading-[1.55] text-[#607394]">{note.body}</p>
-                  <p className="mt-[6px] text-[11px] font-medium text-[#7a8faf]">Updated 2 days ago</p>
+                  <p className="mt-[6px] text-[11px] font-medium text-[#7a8faf]">Available for this lesson</p>
                 </div>
               </div>
             ))}
           </div>
 
-          <button
-            type="button"
-            className="mt-[12px] flex h-[46px] w-full items-center justify-center gap-[8px] rounded-[14px] border border-[#e4ecfa] bg-[#fbfdff] text-[14px] font-semibold text-[#1f6fff]"
-          >
-            <span className="text-[22px] leading-none">+</span>
-            Add Note
-          </button>
         </div>
 
         <div
@@ -3909,7 +3965,12 @@ export const CourseFigmaTab = ({
           className={cn('px-[14px] py-[14px]', mobileSupportTab !== 'doubts' && 'hidden')}
         >
           <div className="max-h-[240px] space-y-[10px] overflow-y-auto pr-[4px]">
-            {seededThread.map((message) => (
+            {thread.length === 0 && (
+              <div className="rounded-[16px] border border-dashed border-[#dce7f6] bg-[#f8fbff] px-[12px] py-[12px] text-[13px] leading-6 text-[#607394]">
+                No doubts have been posted for this lesson yet.
+              </div>
+            )}
+            {thread.map((message) => (
               <div
                 key={message.id}
                 className={cn(
@@ -3969,8 +4030,7 @@ export const CourseFigmaTab = ({
         : activeLessonTab === 'Explanation'
           ? mobileLessonStageOverride || 'explanation'
           : 'watch';
-    const currentTimeLabel = formatPlaybackTime(videoPlaybackSeconds || selectedLessonStoredProgress?.progressSeconds || 0);
-    const totalTimeLabel = formatPlaybackTime(selectedLessonVideoDurationSeconds);
+    const actualLessonMedia = renderActualLessonMedia('mobile');
 
     const renderMobileVideoPill = () => (
       <div className="flex items-center justify-between gap-[10px]">
@@ -3995,109 +4055,13 @@ export const CourseFigmaTab = ({
 
     const renderWatchCard = () => (
       <section data-testid="course-figma-player" className="overflow-hidden rounded-[18px] border border-[#d8e2f1] bg-[#d8e8ff] shadow-[0_12px_28px_rgba(46,67,111,0.08)]">
-        <div className="relative min-h-[316px] bg-[#d8e8ff]">
-          <img
-            alt=""
-            aria-hidden="true"
-            className={cn('absolute inset-0 h-full w-full object-cover', autoplayCountdown !== null && 'opacity-30 blur-[1px]')}
-            src={buildLessonArtwork(selectedLessonCopy.artwork)}
-          />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.02)_34%,rgba(15,28,54,0.25)_68%,rgba(14,23,39,0.88)_100%)]" />
-          <div className="relative flex min-h-[316px] flex-col">
-            <div className="px-[18px] pt-[16px]">
-              <h2 className="max-w-[230px] text-[18px] font-semibold leading-[1.15] tracking-[-0.03em] text-[#14233f]">
-                {selectedLessonCopy.heading}
-              </h2>
-              <p className="mt-[8px] max-w-[200px] text-[13px] leading-[1.5] text-[#31486f]">
-                {selectedLessonCopy.summary}
-              </p>
-            </div>
-
-            {!hasReachedLessonVideoWatchLimit || isVideoReplayMode ? (
-              <button
-                type="button"
-                onClick={() => setIsVideoPlaying((current) => !current)}
-                className="absolute left-1/2 top-1/2 flex h-[54px] w-[54px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#5a6e93] text-white shadow-[0_12px_24px_rgba(21,33,57,0.22)]"
-              >
-                {isVideoPlaying ? <Pause className="h-[22px] w-[22px] fill-current" /> : <Play className="ml-[2px] h-[22px] w-[22px] fill-current" />}
-              </button>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="rounded-full border border-white/30 bg-white/92 px-[16px] py-[10px] text-[12px] font-semibold text-[#17305c] shadow-[0_12px_28px_rgba(8,15,25,0.14)]">
-                  Video limit reached
-                </div>
-              </div>
-            )}
-
-            <div className="mt-auto px-[12px] pb-[12px]">
-              <div className="flex items-center gap-[10px] rounded-[12px] bg-[linear-gradient(180deg,rgba(3,16,33,0.02)_0%,rgba(3,16,33,0.78)_100%)] px-[10px] py-[9px] text-white backdrop-blur">
-                {!hasReachedLessonVideoWatchLimit || isVideoReplayMode ? (
-                  <button
-                    type="button"
-                    data-testid="course-player-video-play"
-                    onClick={() => setIsVideoPlaying((current) => !current)}
-                    className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-transparent"
-                  >
-                    {isVideoPlaying ? <Pause className="h-[16px] w-[16px] fill-current" /> : <Play className="ml-[1px] h-[16px] w-[16px] fill-current" />}
-                  </button>
-                ) : (
-                  <span data-testid="course-player-rewatch-limit" className="inline-flex h-[22px] items-center rounded-full bg-white/14 px-[10px] text-[10px] font-semibold text-white/92">
-                    Video limit reached
-                  </span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="h-[4px] overflow-hidden rounded-full bg-white/28">
-                    <div
-                      className="h-full rounded-full bg-white"
-                      style={{ width: `${Math.min((videoPlaybackSeconds / selectedLessonVideoDurationSeconds) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <div className="mt-[6px] flex items-center justify-between text-[12px] text-white/92">
-                    <span>{currentTimeLabel} / {totalTimeLabel}</span>
-                    <div className="flex items-center gap-[12px]">
-                      <button
-                        type="button"
-                        data-testid="course-player-speed"
-                        onClick={() => setPlaybackSpeed((current) => (current >= 2 ? 1 : current + 0.5))}
-                        className="text-[12px] font-medium"
-                      >
-                        {playbackSpeed}x
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="course-player-fullscreen"
-                        onClick={() => void toggleFullscreen()}
-                        className="text-white"
-                      >
-                        <Maximize2 className="h-[14px] w-[14px]" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {autoplayCountdown !== null && nextLessonEntry ? (
-              <div data-testid="course-player-overlay" className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[linear-gradient(180deg,rgba(21,31,49,0.16)_0%,rgba(21,31,49,0.74)_100%)] px-[20px] text-center text-white">
-                <p className="text-[17px] font-semibold">Up Next</p>
-                <div className="mt-[16px] flex h-[92px] w-[92px] items-center justify-center rounded-full bg-white text-[#2d6ee5]">
-                  <BookOpen className="h-[40px] w-[40px]" />
-                </div>
-                <p className="mt-[18px] max-w-[240px] text-[17px] font-semibold leading-[1.22]">{nextLessonEntry.lesson.title}</p>
-                <p className="mt-[8px] text-[14px] text-white/82">{formatDurationLabel(nextLessonEntry.lesson.durationMinutes)}</p>
-                <p className="mt-[18px] text-[14px] text-white/88">Starting in {autoplayCountdown} second{autoplayCountdown === 1 ? '' : 's'}...</p>
-                <button
-                  type="button"
-                  onClick={() => setAutoplayCountdown(null)}
-                  className="mt-[18px] inline-flex h-[40px] items-center gap-[8px] rounded-full border border-white/36 px-[16px] text-[14px] font-medium text-white"
-                >
-                  <span className="text-[18px] leading-none">×</span>
-                  Cancel
-                </button>
-              </div>
-            ) : null}
+        {actualLessonMedia ? (
+          <div className="bg-black">
+            {actualLessonMedia}
           </div>
-        </div>
+        ) : (
+          renderLessonMediaUnavailable('mobile')
+        )}
       </section>
     );
 
@@ -4459,7 +4423,7 @@ export const CourseFigmaTab = ({
       <div className="space-y-[14px]">
         <section className="overflow-hidden rounded-[18px] border border-[#dbe4f3] bg-[#20314b] shadow-[0_12px_24px_rgba(54,78,123,0.08)]">
           <div className="relative min-h-[268px] bg-[#20314b]">
-            <img alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-30" src={buildLessonArtwork(selectedLessonCopy.artwork)} />
+            <img alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-30" src={selectedCourseVisual} />
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,25,40,0.14)_0%,rgba(15,25,40,0.78)_100%)]" />
             <div className="relative flex min-h-[268px] flex-col px-[18px] py-[18px] text-center text-white">
               <div className="flex flex-1 flex-col items-center justify-center">
@@ -4880,10 +4844,26 @@ export const CourseFigmaTab = ({
     );
   };
 
+  const renderEmptyCoursesView = () => (
+    <div
+      data-testid="course-figma-page"
+      data-course-view="catalog"
+      className="overflow-hidden rounded-[26px] border border-white/70 bg-white px-[24px] py-[28px] text-center shadow-[0_30px_90px_rgba(33,51,97,0.13)]"
+    >
+      <div className="mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-[18px] bg-[#eef4ff] text-[#2f6fe4]">
+        <BookOpen className="h-[24px] w-[24px]" />
+      </div>
+      <h2 className="mt-[16px] text-[24px] font-semibold tracking-[-0.03em] text-[#172033]">No courses available</h2>
+      <p className="mx-auto mt-[8px] max-w-[520px] text-[14px] leading-6 text-[#607394]">
+        Courses will appear here after real production content is created from the admin workspace or imported into the database.
+      </p>
+    </div>
+  );
+
   return (
     <div className="w-full bg-[#d7def1] p-[14px] lg:p-[18px]" style={uiFontStyle}>
       <div className="mx-auto w-full max-w-[1440px]">
-        {screen === 'catalog' && renderCatalogView()}
+        {overview.courses.length === 0 ? renderEmptyCoursesView() : screen === 'catalog' && renderCatalogView()}
         {screen === 'course' && selectedCourse && renderCourseView()}
         {screen === 'lesson' && selectedCourse && selectedLessonEntry && renderLessonView()}
       </div>

@@ -3,7 +3,7 @@ import Hls from 'hls.js';
 import { BookOpen, CalendarClock, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Lock, Maximize2, MessageSquare, Minimize2, PlayCircle, Radio, Search, Sparkles, Video, Wallet } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { ProtectedLivePlayback } from './ProtectedLivePlayback';
-import { EduService } from '../EduService';
+import { EduService, type CoursePaymentProvider } from '../EduService';
 import { cn } from '../lib/utils';
 import { CourseCard, CourseLesson, LiveClass, LiveClassAccess, PlatformOverview, ProtectedLessonPlayback } from '../types';
 
@@ -1109,7 +1109,7 @@ export const CoursesTab = ({
     setShowReplayPlayer(false);
   }, [selectedRecordingId, courseWorkspaceTab, selectedCourse?._id, selectedLessonId]);
 
-  const handleUnlock = async (course: CourseCard) => {
+  const handleUnlock = async (course: CourseCard, provider: CoursePaymentProvider = 'stripe') => {
     if (!user) {
       return;
     }
@@ -1143,11 +1143,11 @@ export const CoursesTab = ({
         return;
       }
 
-      const checkout = await EduService.unlockCourse(course);
-      const popup = window.open(checkout.url, 'varonenglish-stripe-checkout', 'popup=yes,width=520,height=760');
+      const checkout = await EduService.unlockCourse(course, provider);
+      const popup = window.open(checkout.url, `varonenglish-${provider}-checkout`, 'popup=yes,width=520,height=760');
 
       if (!popup) {
-        throw new Error('Stripe popup was blocked. Please allow popups and try again.');
+        throw new Error('Payment popup was blocked. Please allow popups and try again.');
       }
 
       await new Promise<void>((resolve, reject) => {
@@ -1175,12 +1175,25 @@ export const CoursesTab = ({
           }
 
           const data = event.data || {};
-          if (data.type !== 'STRIPE_PAYMENT_SUCCESS' || data.courseId !== course._id || !data.sessionId) {
+          const isStripeSuccess = provider === 'stripe'
+            && data.type === 'STRIPE_PAYMENT_SUCCESS'
+            && data.courseId === course._id
+            && data.sessionId;
+          const isPhonePeReturn = provider === 'phonepe'
+            && data.type === 'PHONEPE_PAYMENT_RETURN'
+            && data.courseId === course._id
+            && data.orderId;
+
+          if (!isStripeSuccess && !isPhonePeReturn) {
             return;
           }
 
           try {
-            await EduService.confirmCoursePayment(data.sessionId, course._id);
+            if (provider === 'phonepe') {
+              await EduService.confirmPhonePeCoursePayment(data.orderId, course._id, data.paymentId);
+            } else {
+              await EduService.confirmCoursePayment(data.sessionId, course._id);
+            }
             if (!popup.closed) {
               popup.close();
             }
@@ -2096,7 +2109,7 @@ export const CoursesTab = ({
               <div className="flex flex-wrap items-center gap-3">
                 {selectedCourse.enrolled ? (
                   <span className="rounded-full bg-white/12 px-4 py-3 text-sm font-semibold text-white">Access active</span>
-                ) : (
+                ) : selectedCourse.price === 0 ? (
                   <button
                     onClick={() => handleUnlock(selectedCourse)}
                     disabled={busyCourseId === selectedCourse._id}
@@ -2105,6 +2118,24 @@ export const CoursesTab = ({
                     {busyCourseId === selectedCourse._id ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
                     {getCoursePurchaseLabel(selectedCourse)}
                   </button>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => handleUnlock(selectedCourse, 'phonepe')}
+                      disabled={busyCourseId === selectedCourse._id}
+                      className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 font-semibold text-[#2638d8] transition hover:bg-white/90 disabled:opacity-60"
+                    >
+                      {busyCourseId === selectedCourse._id ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
+                      Pay with PhonePe
+                    </button>
+                    <button
+                      onClick={() => handleUnlock(selectedCourse, 'stripe')}
+                      disabled={busyCourseId === selectedCourse._id}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/25 px-5 py-3 font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
+                    >
+                      Pay with Stripe
+                    </button>
+                  </div>
                 )}
                 {selectedCourse.officialChannelUrl && (
                   <a
@@ -2980,7 +3011,7 @@ export const CoursesTab = ({
                           {selectedLessonAccess?.reason || 'Unlock the course to access protected playback, notes, and synced progress.'}
                         </p>
                         <div className="mt-4 flex flex-wrap gap-3">
-                          {!selectedCourse.enrolled && (
+                          {!selectedCourse.enrolled && selectedCourse.price === 0 && (
                             <button
                               onClick={() => handleUnlock(selectedCourse)}
                               disabled={busyCourseId === selectedCourse._id}
@@ -2989,6 +3020,25 @@ export const CoursesTab = ({
                               {busyCourseId === selectedCourse._id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
                               {getCoursePurchaseLabel(selectedCourse)}
                             </button>
+                          )}
+                          {!selectedCourse.enrolled && selectedCourse.price > 0 && (
+                            <>
+                              <button
+                                onClick={() => handleUnlock(selectedCourse, 'phonepe')}
+                                disabled={busyCourseId === selectedCourse._id}
+                                className="inline-flex items-center gap-2 rounded-full bg-[var(--accent-rust)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                              >
+                                {busyCourseId === selectedCourse._id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                                Pay with PhonePe
+                              </button>
+                              <button
+                                onClick={() => handleUnlock(selectedCourse, 'stripe')}
+                                disabled={busyCourseId === selectedCourse._id}
+                                className="inline-flex items-center gap-2 rounded-full border border-[#d7e5f1] bg-white px-4 py-2 text-sm font-semibold text-[#172033] disabled:opacity-60"
+                              >
+                                Pay with Stripe
+                              </button>
+                            </>
                           )}
                           {previousLessonEntry && (
                             <button

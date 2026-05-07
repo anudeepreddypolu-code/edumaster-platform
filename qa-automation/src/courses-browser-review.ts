@@ -17,7 +17,7 @@ const apiOrigin = (() => {
 const desktopViewport = { width: 1536, height: 1024 };
 const mobileViewport = { width: 390, height: 844 };
 
-const loginAndSeedStorage = async (page: puppeteer.Page, email: string, password: string) => {
+const loginAndStoreSession = async (page: puppeteer.Page, email: string, password: string) => {
   const response = await fetch(new URL('/backend/api/auth/login', apiOrigin), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -200,7 +200,6 @@ const openCoursesTab = async (page: puppeteer.Page, mode: 'desktop' | 'mobile') 
 const openFirstCourse = async (page: puppeteer.Page) => {
   await clickFirstVisible(page, [selectors.courseCatalogCard]);
   await page.waitForSelector(selectors.courseCourseView, { timeout: 20000 });
-  await page.waitForSelector(selectors.courseCatalogCard, { timeout: 20000 });
   await page.evaluate(() => window.scrollTo(0, 0));
 };
 
@@ -600,7 +599,7 @@ const reviewFlow = async (
   await page.setViewport(mode === 'desktop' ? desktopViewport : mobileViewport);
   await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded' });
 
-  await loginAndSeedStorage(
+  await loginAndStoreSession(
     page,
     process.env.QA_LOGIN_EMAIL || config.loginEmail,
     process.env.QA_LOGIN_PASSWORD || config.loginPassword,

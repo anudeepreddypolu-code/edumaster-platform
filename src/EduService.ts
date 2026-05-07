@@ -3,13 +3,16 @@ import {
   AuthResponse,
   AuthUser,
   CourseCard,
+  CourseLesson,
   DailyQuizResult,
   GeneratedAssessmentDraft,
   LiveClass,
   LiveClassAccess,
   LiveClassChatMessage,
   LiveClassEventPayload,
+  LiveClassResource,
   LiveClassSessionState,
+  LiveTeacherProfile,
   MockTest,
   PlatformOverview,
   ProtectedLessonPlayback,
@@ -18,7 +21,24 @@ import {
   TestAttemptResult,
 } from './types';
 
-const API_BASE = '/backend/api';
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+const trimLeadingSlash = (value: string) => value.replace(/^\/+/, '');
+const isAbsoluteUrl = (value: string) => /^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith('//');
+const env = import.meta.env as Record<string, string | undefined>;
+const configuredAppOrigin = trimTrailingSlash(
+  String(env.VITE_PUBLIC_APP_URL || env.VITE_APP_URL || '').trim(),
+);
+const configuredApiBase = trimTrailingSlash(String(env.VITE_API_BASE_URL || '').trim());
+const runtimeHttpOrigin = (() => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  const origin = String(window.location.origin || '').trim();
+  return /^https?:\/\//i.test(origin) ? trimTrailingSlash(origin) : '';
+})();
+const APP_ORIGIN = configuredAppOrigin || runtimeHttpOrigin;
+const API_BASE = configuredApiBase || (APP_ORIGIN ? `${APP_ORIGIN}/backend/api` : '/backend/api');
+const ROOT_BASE = APP_ORIGIN || '';
 const TOKEN_KEY = 'edumaster.jwt';
 const AUTH_EVENT_KEY = 'edumaster.auth.event';
 
@@ -33,6 +53,8 @@ type LoginOptions = {
   forceLogoutOtherSessions?: boolean;
 };
 
+export type CoursePaymentProvider = 'stripe' | 'phonepe';
+
 export class ApiRequestError extends Error {
   status: number;
   code: string;
@@ -46,6 +68,94 @@ export class ApiRequestError extends Error {
     this.details = details ?? null;
   }
 }
+
+const resolveAbsoluteUrl = (value?: string | null) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return normalized;
+  }
+  if (isAbsoluteUrl(normalized)) {
+    return normalized;
+  }
+  const baseOrigin = APP_ORIGIN || runtimeHttpOrigin;
+  if (!baseOrigin) {
+    return normalized;
+  }
+  return `${baseOrigin}/${trimLeadingSlash(normalized)}`;
+};
+
+const resolveRootPath = (path: string) => {
+  if (isAbsoluteUrl(path)) {
+    return path;
+  }
+  if (!path.startsWith('/')) {
+    return path;
+  }
+  return ROOT_BASE ? `${ROOT_BASE}${path}` : path;
+};
+
+const getCheckoutOrigin = () => ROOT_BASE || runtimeHttpOrigin || 'https://app.varoonenglish.com';
+
+const normalizeCourseLesson = (lesson: CourseLesson): CourseLesson => ({
+  ...lesson,
+  videoUrl: resolveAbsoluteUrl(lesson.videoUrl),
+  notesUrl: resolveAbsoluteUrl(lesson.notesUrl),
+});
+
+const normalizeCourseCard = (course: CourseCard): CourseCard => ({
+  ...course,
+  thumbnailUrl: resolveAbsoluteUrl(course.thumbnailUrl),
+  officialChannelUrl: resolveAbsoluteUrl(course.officialChannelUrl || null) || course.officialChannelUrl || null,
+  continueLesson: course.continueLesson ? normalizeCourseLesson(course.continueLesson) : course.continueLesson,
+  modules: (course.modules || []).map((module) => ({
+    ...module,
+    lessons: (module.lessons || []).map(normalizeCourseLesson),
+    chapters: (module.chapters || []).map((chapter) => ({
+      ...chapter,
+      lessons: (chapter.lessons || []).map(normalizeCourseLesson),
+    })),
+  })),
+});
+
+const normalizeLiveTeacherProfile = (profile?: LiveTeacherProfile | null): LiveTeacherProfile | null =>
+  profile
+    ? {
+      ...profile,
+      avatarUrl: resolveAbsoluteUrl(profile.avatarUrl || null) || profile.avatarUrl || null,
+    }
+    : profile || null;
+
+const normalizeLiveClassResource = (resource: LiveClassResource): LiveClassResource => ({
+  ...resource,
+  url: resolveAbsoluteUrl(resource.url || null) || resource.url || null,
+});
+
+const normalizeLiveClass = (liveClass: LiveClass): LiveClass => ({
+  ...liveClass,
+  livePlaybackUrl: resolveAbsoluteUrl(liveClass.livePlaybackUrl || null) || liveClass.livePlaybackUrl || null,
+  ingestServerUrl: resolveAbsoluteUrl(liveClass.ingestServerUrl || null) || liveClass.ingestServerUrl || null,
+  embedUrl: resolveAbsoluteUrl(liveClass.embedUrl || null) || liveClass.embedUrl || null,
+  roomUrl: resolveAbsoluteUrl(liveClass.roomUrl || null) || liveClass.roomUrl || null,
+  recordingUrl: resolveAbsoluteUrl(liveClass.recordingUrl || null) || liveClass.recordingUrl || null,
+  posterUrl: resolveAbsoluteUrl(liveClass.posterUrl || null) || liveClass.posterUrl || null,
+  teacherProfile: normalizeLiveTeacherProfile(liveClass.teacherProfile),
+  resources: (liveClass.resources || []).map(normalizeLiveClassResource),
+});
+
+const normalizeProtectedLessonPlayback = (playback: ProtectedLessonPlayback): ProtectedLessonPlayback => ({
+  ...playback,
+  embedUrl: resolveAbsoluteUrl(playback.embedUrl || null) || playback.embedUrl || null,
+  streamUrl: resolveAbsoluteUrl(playback.streamUrl || null) || playback.streamUrl || null,
+});
+
+const normalizeLiveClassAccess = (access: LiveClassAccess): LiveClassAccess => ({
+  ...access,
+  streamUrl: resolveAbsoluteUrl(access.streamUrl || null) || access.streamUrl || null,
+  embedUrl: resolveAbsoluteUrl(access.embedUrl || null) || access.embedUrl || null,
+  roomUrl: resolveAbsoluteUrl(access.roomUrl || null) || access.roomUrl || null,
+  replayExternalUrl: resolveAbsoluteUrl(access.replayExternalUrl || null) || access.replayExternalUrl || null,
+  replayPlayback: access.replayPlayback ? normalizeProtectedLessonPlayback(access.replayPlayback) : access.replayPlayback,
+});
 
 const getClientDeviceLabel = () => {
   if (typeof window === 'undefined') {
@@ -191,7 +301,7 @@ const request = async <T>(path: string, options: RequestOptions = {}): Promise<T
 };
 
 const rootRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
-  const response = await fetch(path, {
+  const response = await fetch(resolveRootPath(path), {
     ...options,
     headers: {
       ...buildHeaders(Boolean(options.body), options.includeAuth !== false),
@@ -281,15 +391,26 @@ export const EduService = {
   },
 
   getPlatformOverview: async () => {
-    return request<PlatformOverview>('/platform/overview');
+    const overview = await request<PlatformOverview>('/platform/overview');
+    return {
+      ...overview,
+      courses: (overview.courses || []).map(normalizeCourseCard),
+      liveClasses: (overview.liveClasses || []).map(normalizeLiveClass),
+      dashboard: {
+        ...overview.dashboard,
+        continueLearning: (overview.dashboard?.continueLearning || []).map(normalizeCourseCard),
+      },
+    };
   },
 
   getLiveClasses: async () => {
-    return request<{ liveClasses: LiveClass[] }>('/live-classes');
+    const response = await request<{ liveClasses: LiveClass[] }>('/live-classes');
+    return { ...response, liveClasses: (response.liveClasses || []).map(normalizeLiveClass) };
   },
 
   getAdminLiveClasses: async () => {
-    return request<{ liveClasses: LiveClass[] }>('/live-classes/admin');
+    const response = await request<{ liveClasses: LiveClass[] }>('/live-classes/admin');
+    return { ...response, liveClasses: (response.liveClasses || []).map(normalizeLiveClass) };
   },
 
   createLiveClass: async (payload: Partial<LiveClass>) => {
@@ -297,6 +418,29 @@ export const EduService = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  },
+
+  uploadLiveClassImage: async (file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const response = await fetch(resolveRootPath('/backend/api/live-classes/assets/poster'), {
+      method: 'POST',
+      headers: {
+        ...buildAuthHeaders(),
+      },
+      body: formData,
+    });
+
+    const payload = await parsePayload(response);
+    if (!response.ok) {
+      throw new Error(payload?.message || payload?.error || 'Live class image upload failed');
+    }
+
+    return {
+      ...payload,
+      asset: payload?.asset ? { ...payload.asset, url: resolveAbsoluteUrl(payload.asset.url) || payload.asset.url } : payload?.asset,
+    } as { asset: { url: string; name?: string | null; mimeType?: string | null; size?: number | null } };
   },
 
   updateLiveClass: async (liveClassId: string, payload: Partial<LiveClass>) => {
@@ -325,7 +469,8 @@ export const EduService = {
   },
 
   getLiveClassAccess: async (liveClassId: string) => {
-    return request<LiveClassAccess>(`/live-classes/${liveClassId}/access`);
+    const access = await request<LiveClassAccess>(`/live-classes/${liveClassId}/access`);
+    return normalizeLiveClassAccess(access);
   },
 
   getLiveClassChat: async (liveClassId: string) => {
@@ -422,14 +567,15 @@ export const EduService = {
     });
   },
 
-  unlockCourse: async (course: CourseCard) => {
-    return rootRequest<{ url: string; sessionId: string; paymentId: string }>(`/api/stripe/course-checkout`, {
+  unlockCourse: async (course: CourseCard, provider: CoursePaymentProvider = 'stripe') => {
+    const endpoint = provider === 'phonepe' ? '/api/phonepe/course-checkout' : '/api/stripe/course-checkout';
+    return rootRequest<{ url: string; sessionId?: string; orderId?: string; paymentId: string; provider: CoursePaymentProvider }>(endpoint, {
       method: 'POST',
       body: JSON.stringify({
         courseId: course._id,
         courseTitle: course.title,
         price: course.price,
-        origin: window.location.origin,
+        origin: getCheckoutOrigin(),
       }),
     });
   },
@@ -438,6 +584,13 @@ export const EduService = {
     return rootRequest(`/api/stripe/confirm-course-payment`, {
       method: 'POST',
       body: JSON.stringify({ sessionId, courseId }),
+    });
+  },
+
+  confirmPhonePeCoursePayment: async (orderId: string, courseId: string, paymentId?: string) => {
+    return rootRequest(`/api/phonepe/confirm-course-payment`, {
+      method: 'POST',
+      body: JSON.stringify({ orderId, courseId, paymentId }),
     });
   },
 
@@ -460,7 +613,7 @@ export const EduService = {
         planTitle: plan.title,
         price: plan.price,
         billingCycle: plan.billingCycle,
-        origin: window.location.origin,
+        origin: getCheckoutOrigin(),
       }),
     });
   },
@@ -627,6 +780,57 @@ export const EduService = {
     });
   },
 
+  updateMockTest: async (testId: string, test: Partial<MockTest>) => {
+    return request<MockTest>(`/tests/${testId}`, {
+      method: 'PUT',
+      body: JSON.stringify(test),
+    });
+  },
+
+  deleteMockTest: async (testId: string) => {
+    return request<{ message: string; testId: string }>(`/tests/${testId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  attachLessonCbt: async (
+    courseId: string,
+    moduleId: string,
+    lessonId: string,
+    payload: {
+      chapterId?: string | null;
+      title: string;
+      durationMinutes: number;
+      negativeMarking: number;
+      questions: unknown[];
+    },
+  ) => {
+    return request<{ message: string; lesson: CourseLesson; course: CourseCard }>(
+      `/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}/cbt`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+    );
+  },
+
+  deleteLessonCbt: async (
+    courseId: string,
+    moduleId: string,
+    lessonId: string,
+    payload?: {
+      chapterId?: string | null;
+    },
+  ) => {
+    return request<{ message: string; lesson: CourseLesson; course: CourseCard }>(
+      `/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}/cbt`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify(payload || {}),
+      },
+    );
+  },
+
   createQuiz: async (payload: {
     date: string;
     questions: {
@@ -684,7 +888,7 @@ export const EduService = {
       formData.append('chapterId', chapterId);
     }
 
-    const response = await fetch(`/backend/api/courses/${courseId}/modules/${moduleId}/videos`, {
+    const response = await fetch(resolveRootPath(`/backend/api/courses/${courseId}/modules/${moduleId}/videos`), {
       method: 'POST',
       headers: {
         ...buildAuthHeaders(),
@@ -701,9 +905,10 @@ export const EduService = {
   },
 
   getProtectedLessonPlayback: async (courseId: string, lessonId: string) => {
-    return request<ProtectedLessonPlayback>(`/courses/${courseId}/lessons/${lessonId}/player`, {
+    const playback = await request<ProtectedLessonPlayback>(`/courses/${courseId}/lessons/${lessonId}/player`, {
       method: 'GET',
     });
+    return normalizeProtectedLessonPlayback(playback);
   },
 
   listVideosInModule: async (courseId: string, moduleId: string) => {

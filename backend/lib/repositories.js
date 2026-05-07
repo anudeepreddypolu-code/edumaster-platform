@@ -13,8 +13,7 @@ const {
   getRedisJson,
   setRedisJson,
 } = require('./redis.js');
-const { state, clone, nextId, nowIso, resetState } = require('./store.js');
-const { buildPlatformSeed } = require('./platform-seed.js');
+const { state, clone, nextId, nowIso } = require('./store.js');
 const { decryptVideoId, normalizeYouTubeVideoId, buildSecureYouTubeEmbedUrl } = require('./video-security.js');
 const { issuePlaybackToken } = require('./private-video.js');
 const { appConfig } = require('./config.js');
@@ -136,8 +135,11 @@ const pushIfMissing = (collection, item, idField = '_id') => {
 
 const ensureDefaultAdminUser = async () => {
   const email = normalizeEmail(appConfig.adminEmail);
-  const name = String(appConfig.adminName || 'Demo Admin').trim() || 'Demo Admin';
-  const password = String(appConfig.adminPassword || 'AdminChangeMe_2026');
+  const name = String(appConfig.adminName || 'Platform Admin').trim() || 'Platform Admin';
+  const password = String(appConfig.adminPassword || '');
+  if (!email || !password) {
+    return null;
+  }
   const passwordHash = await bcrypt.hash(password, 10);
 
   if (isPostgresMode()) {
@@ -156,17 +158,17 @@ const ensureDefaultAdminUser = async () => {
     return upsertPgUser({
       name,
       email,
-      password: passwordHash,
-      role: 'admin',
-      device: null,
-      session: null,
-      badges: [{ code: 'mentor_mode', label: 'Mentor Mode' }],
-      streak: 0,
-      points: 0,
-      referral_code: 'ADMIN12',
-      created_at: nowIso(),
-      updated_at: nowIso(),
-    });
+        password: passwordHash,
+        role: 'admin',
+        device: null,
+        session: null,
+        badges: [],
+        streak: 0,
+        points: 0,
+        referral_code: null,
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      });
   }
 
   if (isMongoMode()) {
@@ -207,129 +209,13 @@ const ensureDefaultAdminUser = async () => {
     session: null,
     streak: 0,
     points: 0,
-    badges: [{ code: 'mentor_mode', label: 'Mentor Mode' }],
-    referral_code: 'ADMIN12',
+    badges: [],
+    referral_code: null,
     created_at: nowIso(),
     updated_at: nowIso(),
   };
 
   state.users.push(createdUser);
-  return clone(createdUser);
-};
-
-const ensureDefaultStudentUser = async () => {
-  const seed = buildPlatformSeed();
-  const seedStudent = seed.users.find((user) => String(user.email || '').toLowerCase() === 'student@edumaster.local') || null;
-  const email = normalizeEmail(seedStudent?.email || 'student@edumaster.local');
-  const name = String(seedStudent?.name || 'Demo Student').trim() || 'Demo Student';
-  const password = String(seedStudent?.passwordPlain || 'Student@123');
-  const passwordHash = await bcrypt.hash(password, 10);
-  const demoLiveCourseId = 'course_9aff87290a3944f5bfb6a70fe2efc87e';
-
-  if (isPostgresMode()) {
-    const existing = await pgOne('SELECT * FROM users WHERE email = $1', [email], mapUserRow);
-    const user = existing
-      ? await upsertPgUser({
-        ...existing,
-        name,
-        email,
-        password: passwordHash,
-        role: 'student',
-        updated_at: nowIso(),
-      })
-      : await upsertPgUser({
-        _id: seedStudent?._id || undefined,
-        name,
-        email,
-        password: passwordHash,
-        role: 'student',
-        device: null,
-        session: null,
-        badges: seedStudent?.badges || [],
-        streak: 0,
-        points: 0,
-        referral_code: seedStudent?.referral_code || null,
-        created_at: nowIso(),
-        updated_at: nowIso(),
-      });
-    // Choose a valid course id to enroll the demo student. Prefer the demoLiveCourseId,
-    // otherwise fall back to any available course in the DB to avoid FK violations.
-    let courseIdToEnroll = null;
-    const demoCourseExists = await pgOne('SELECT id FROM courses WHERE id = $1', [demoLiveCourseId]);
-    if (demoCourseExists && demoCourseExists.id) {
-      courseIdToEnroll = demoLiveCourseId;
-    } else {
-      const anyCourse = await pgOne('SELECT id FROM courses LIMIT 1');
-      if (anyCourse && anyCourse.id) {
-        courseIdToEnroll = anyCourse.id;
-      }
-    }
-    if (courseIdToEnroll) {
-      await insertPgEnrollment({
-        userId: user._id,
-        courseId: courseIdToEnroll,
-        accessType: 'course',
-        source: 'demo-bootstrap',
-      });
-    }
-    return user;
-  }
-
-  const existing = state.users.find((user) => normalizeEmail(user.email) === email) || null;
-  if (existing) {
-    existing.name = name;
-    existing.role = 'student';
-    existing.password = passwordHash;
-    existing.updated_at = nowIso();
-    const hasDemoEnrollment = state.enrollments.some(
-      (entry) => entry.userId === existing._id && entry.courseId === demoLiveCourseId,
-    );
-    if (!hasDemoEnrollment) {
-      state.enrollments.push({
-        _id: nextId('enrollment'),
-        userId: existing._id,
-        courseId: demoLiveCourseId,
-        accessType: 'course',
-        source: 'demo-bootstrap',
-        enrolledAt: nowIso(),
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 1000).toISOString(),
-      });
-    }
-    return clone(existing);
-  }
-
-  const createdUser = {
-    _id: seedStudent?._id || nextId('user'),
-    name,
-    email,
-    password: passwordHash,
-    role: 'student',
-    device: null,
-    session: null,
-    streak: 0,
-    points: 0,
-    badges: seedStudent?.badges || [],
-    referral_code: seedStudent?.referral_code || null,
-    created_at: nowIso(),
-    updated_at: nowIso(),
-  };
-
-  state.users.push(createdUser);
-  const hasDemoEnrollment = state.enrollments.some(
-    (entry) => entry.userId === createdUser._id && entry.courseId === demoLiveCourseId,
-  );
-  if (!hasDemoEnrollment) {
-    state.enrollments.push({
-      _id: nextId('enrollment'),
-      userId: createdUser._id,
-      courseId: demoLiveCourseId,
-      accessType: 'course',
-      source: 'demo-bootstrap',
-      enrolledAt: nowIso(),
-      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-    });
-  }
-
   return clone(createdUser);
 };
 
@@ -673,25 +559,24 @@ const buildAnalyticsTrend = (data, userId) => {
     )
     .slice(-4);
 
-  const combined = [...testPoints, ...quizPoints];
-  return combined.length > 0 ? combined : [
-    { label: 'Week 1', score: 52, accuracy: 58 },
-    { label: 'Week 2', score: 61, accuracy: 64 },
-    { label: 'Week 3', score: 70, accuracy: 71 },
-    { label: 'Week 4', score: 78, accuracy: 79 },
-  ];
+  return [...testPoints, ...quizPoints];
 };
 
 const buildAiRecommendation = (analytics) => {
-  if ((analytics.weakTopics || []).includes('Network Theory')) {
-    return 'Focus more on Network Theory. Solve two sectional tests and revise Thevenin/Norton this week.';
+  const weakTopic = (analytics.weakTopics || [])[0];
+  if (weakTopic) {
+    return `Focus more on ${weakTopic}. Use revision before attempting the next test.`;
   }
 
-  if (analytics.accuracy < 70) {
+  if (analytics.attempts > 0 && analytics.accuracy < 70) {
     return 'Your concept retention is improving. Spend the next revision block on weak topics before attempting another full test.';
   }
 
-  return 'You are on a strong trend. Keep alternating full mocks with topic-wise revision to protect your percentile.';
+  if (analytics.attempts > 0) {
+    return 'You are on a strong trend. Keep alternating full mocks with topic-wise revision to protect your percentile.';
+  }
+
+  return '';
 };
 
 const normalizeQuizLeaderboard = (entries) =>
@@ -1855,7 +1740,7 @@ const consumeReplayGrant = async ({
   enforceEnrollment = true,
   enforceSequentialUnlock = true,
 }) => {
-  await ensurePlatformSeeded();
+  await ensurePlatformReady();
 
   const user = await usersRepository.findSafeById(userId);
   if (!user) {
@@ -2589,7 +2474,7 @@ const getPgPayments = async (client = null) => pgMany('SELECT * FROM payments OR
 const getPgWebhooks = async (client = null) => pgMany('SELECT * FROM payment_webhooks ORDER BY received_at DESC', [], mapWebhookRow, client);
 
 const loadPlatformData = async () => {
-  await ensurePlatformSeeded();
+  await ensurePlatformReady();
 
   if (isPostgresMode()) {
     const [
@@ -2660,158 +2545,10 @@ const loadPlatformData = async () => {
   return state;
 };
 
-let platformSeedPromise = null;
-
-const seedMemoryPlatform = async () => {
-  const shouldSeedMemory = state.courses.length === 0
-    && state.tests.length === 0
-    && state.quizzes.length === 0;
-
-  if (!shouldSeedMemory) {
-    return 'existing';
-  }
-
-  const seed = buildPlatformSeed();
-
-  seed.users.forEach((seedUser) => {
-    if (state.users.some((user) => user._id === seedUser._id || user.email === normalizeEmail(seedUser.email))) {
-      return;
-    }
-
-    const { passwordPlain, ...userWithoutPassword } = seedUser;
-    pushIfMissing(state.users, {
-      ...userWithoutPassword,
-      email: normalizeEmail(seedUser.email),
-      password: bcrypt.hashSync(passwordPlain, 10),
-    });
-  });
-
-  seed.courses.forEach((course) => pushIfMissing(state.courses, course));
-  seed.tests.forEach((test) => pushIfMissing(state.tests, test));
-  pushIfMissing(state.quizzes, { ...seed.quiz, leaderboard: [] });
-  seed.liveClasses.forEach((liveClass) => pushIfMissing(state.liveClasses, liveClass));
-  (seed.liveChatMessages || []).forEach((message) => pushIfMissing(state.liveChatMessages, message));
-  seed.subscriptions.forEach((plan) => pushIfMissing(state.subscriptions, plan));
-  (seed.userSubscriptions || []).forEach((subscription) => pushIfMissing(state.userSubscriptions, subscription));
-  seed.notifications.forEach((notification) => pushIfMissing(state.notifications, notification));
-  seed.enrollments.forEach((enrollment) => pushIfMissing(state.enrollments, enrollment));
-  seed.watchHistory.forEach((history) => pushIfMissing(state.watchHistory, history));
-  seed.testAttempts.forEach((attempt) => pushIfMissing(state.testAttempts, attempt));
-
-  const quizSeedUser = state.users.find((user) => user._id === 'seed_student_1');
-  if (quizSeedUser && !state.quizzes[0].leaderboard.some((entry) => entry.userId === quizSeedUser._id)) {
-    state.quizzes[0].leaderboard.push({
-      userId: quizSeedUser._id,
-      score: 4,
-      total: 5,
-      submittedAt: nowIso(),
-    });
-  }
-
-  resetState(state);
-
-  return 'memory-seeded';
-};
-
-const seedPostgresPlatform = async () => runInTransaction(async (client) => {
-  const countRow = await pgOne('SELECT COUNT(*)::int AS count FROM users', [], (row) => row, client);
-  if (Number(countRow?.count || 0) > 0) {
-    return 'existing';
-  }
-
-  const seed = buildPlatformSeed();
-
-  for (const seedUser of seed.users) {
-    const { passwordPlain, ...userWithoutPassword } = seedUser;
-    await upsertPgUser({
-      ...userWithoutPassword,
-      email: normalizeEmail(seedUser.email),
-      password: bcrypt.hashSync(passwordPlain, 10),
-    }, client);
-  }
-
-  for (const course of seed.courses) {
-    await upsertPgCourse(course, client);
-  }
-
-  for (const test of seed.tests) {
-    await upsertPgTest(test, client);
-  }
-
-  await upsertPgQuiz(seed.quiz, client);
-
-  const seedQuizScore = {
-    userId: 'seed_student_1',
-    quizId: seed.quiz._id,
-    score: 4,
-    total: 5,
-    submittedAt: nowIso(),
-  };
-  await upsertPgQuizAttempt(seedQuizScore, client);
-
-  for (const liveClass of seed.liveClasses) {
-    await insertPgLiveClass(liveClass, client);
-  }
-
-  for (const message of (seed.liveChatMessages || [])) {
-    await insertPgLiveChatMessage(message, client);
-  }
-
-  for (const plan of seed.subscriptions) {
-    await upsertPgSubscriptionPlan(plan, client);
-  }
-
-  for (const subscription of (seed.userSubscriptions || [])) {
-    await insertPgSubscription(subscription, client);
-  }
-
-  for (const notification of seed.notifications) {
-    await insertPgNotification(notification, client);
-  }
-
-  for (const enrollment of seed.enrollments) {
-    await insertPgEnrollment(enrollment, client);
-  }
-
-  for (const history of seed.watchHistory) {
-    await upsertPgWatchHistory(history, client);
-  }
-
-  for (const attempt of seed.testAttempts) {
-    await insertPgTestAttempt(attempt, client);
-  }
-
-  return 'postgres-seeded';
-});
-
-const ensurePlatformSeeded = async () => {
+const ensurePlatformReady = async () => {
   await ensurePersistentDatabaseAvailability();
-
-  if (!appConfig.autoSeedDemoData) {
-    await ensureDefaultAdminUser();
-    await ensureDefaultStudentUser();
-    return 'skipped';
-  }
-
-  if (platformSeedPromise) {
-    return platformSeedPromise;
-  }
-
-  platformSeedPromise = (async () => {
-    if (isPostgresMode()) {
-      return seedPostgresPlatform();
-    }
-
-    return seedMemoryPlatform();
-  })();
-
-  try {
-    const status = await platformSeedPromise;
-    await ensureDefaultAdminUser();
-    return status;
-  } finally {
-    platformSeedPromise = null;
-  }
+  await ensureDefaultAdminUser();
+  return 'ready';
 };
 
 const getRecentSessions = (data, userId) =>
@@ -2958,7 +2695,7 @@ const sessionRepository = {
 
 const usersRepository = {
   async listSafe() {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return pgMany('SELECT * FROM users ORDER BY created_at ASC', [], (row) => sanitizeUser(mapUserRow(row)));
@@ -2972,7 +2709,7 @@ const usersRepository = {
   },
 
   async findByEmail(email) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return pgOne('SELECT * FROM users WHERE email = $1', [normalizeEmail(email)], mapUserRow);
@@ -2986,7 +2723,7 @@ const usersRepository = {
   },
 
   async findById(id) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return pgOne('SELECT * FROM users WHERE id = $1', [String(id)], mapUserRow);
@@ -3080,7 +2817,7 @@ const usersRepository = {
 
 const coursesRepository = {
   async list() {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return getPgCourses();
@@ -3118,7 +2855,7 @@ const coursesRepository = {
   },
 
   async findById(id) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return pgOne('SELECT * FROM courses WHERE id = $1', [String(id)], mapCourseRow);
@@ -3179,8 +2916,8 @@ const coursesRepository = {
       level: payload.level || 'Full Course',
       price: Number(payload.price || 0),
       validityDays: Number(payload.validityDays || courseDefaultValidityDays),
-      thumbnailUrl: payload.thumbnailUrl || `https://picsum.photos/seed/${Date.now()}/900/600`,
-    instructor: payload.instructor || 'VARONENGLISH Faculty',
+      thumbnailUrl: payload.thumbnailUrl || '',
+      instructor: payload.instructor || 'VARONENGLISH Faculty',
       officialChannelUrl: payload.officialChannelUrl || null,
       modules: Array.isArray(payload.modules) ? clone(payload.modules) : [],
       createdBy: payload.createdBy || null,
@@ -3422,7 +3159,7 @@ const coursesRepository = {
 
 const testsRepository = {
   async list() {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return getPgTests();
@@ -3441,7 +3178,7 @@ const testsRepository = {
   },
 
   async findById(id) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return pgOne('SELECT * FROM tests WHERE id = $1', [String(id)], mapTestRow);
@@ -3501,8 +3238,94 @@ const testsRepository = {
     return clone(createdTest);
   },
 
+  async update(testId, payload) {
+    await ensurePlatformReady();
+    const current = await testsRepository.findById(testId);
+    if (!current) {
+      return null;
+    }
+
+    const nextPayload = {
+      ...current,
+      ...clone(payload || {}),
+      _id: current._id,
+      created_at: current.created_at || nowIso(),
+    };
+
+    if (isPostgresMode()) {
+      return upsertPgTest(nextPayload);
+    }
+
+    if (isMongoMode()) {
+      const updatedTest = await Test.findByIdAndUpdate(
+        testId,
+        nextPayload,
+        { new: true, overwrite: true },
+      );
+      return updatedTest ? updatedTest.toObject() : null;
+    }
+
+    const index = state.tests.findIndex((test) => test._id === String(testId));
+    if (index === -1) {
+      return null;
+    }
+
+    const questions = Array.isArray(nextPayload.questions)
+      ? nextPayload.questions.map((question, questionIndex) => ({
+          id: question.id || nextId(`question_${questionIndex + 1}`),
+          answer: question.answer ?? question.correctOption,
+          correctOption: question.correctOption ?? question.answer,
+          explanation: question.explanation || '',
+          marks: Number(question.marks || 1),
+          topic: question.topic || 'General Practice',
+          ...clone(question),
+        }))
+      : [];
+
+    const updatedTest = {
+      _id: current._id,
+      title: nextPayload.title,
+      description: nextPayload.description || '',
+      category: nextPayload.category || 'SSC JE',
+      type: nextPayload.type || 'full-length',
+      durationMinutes: Number(nextPayload.durationMinutes || 60),
+      totalMarks: Number(nextPayload.totalMarks || questions.reduce((sum, question) => sum + Number(question.marks || 1), 0)),
+      negativeMarking: Number(nextPayload.negativeMarking || 0),
+      sectionBreakup: Array.isArray(nextPayload.sectionBreakup) ? clone(nextPayload.sectionBreakup) : [],
+      course: nextPayload.course || null,
+      questions,
+      created_at: current.created_at || nowIso(),
+    };
+
+    state.tests[index] = updatedTest;
+    return clone(updatedTest);
+  },
+
+  async delete(testId) {
+    await ensurePlatformReady();
+
+    if (isPostgresMode()) {
+      await pgExec('DELETE FROM tests WHERE id = $1', [String(testId)]);
+      return true;
+    }
+
+    if (isMongoMode()) {
+      await Test.findByIdAndDelete(testId);
+      return true;
+    }
+
+    const index = state.tests.findIndex((test) => test._id === String(testId));
+    if (index === -1) {
+      return false;
+    }
+
+    state.tests.splice(index, 1);
+    state.testAttempts = state.testAttempts.filter((attempt) => attempt.testId !== String(testId));
+    return true;
+  },
+
   async submit(testId, payload) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
     const test = await testsRepository.findById(testId);
     if (!test) {
       return null;
@@ -3655,7 +3478,7 @@ const testsRepository = {
   },
 
   async listAttempts(userId) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return pgMany(
@@ -3674,7 +3497,7 @@ const testsRepository = {
 
 const quizzesRepository = {
   async create(payload) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return upsertPgQuiz(payload);
@@ -3701,7 +3524,7 @@ const quizzesRepository = {
   },
 
   async findByDate(date) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       const quiz = await pgOne(
@@ -3724,7 +3547,7 @@ const quizzesRepository = {
   },
 
   async findById(id) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       const quiz = await pgOne('SELECT * FROM daily_quizzes WHERE id = $1', [String(id)], mapQuizRow);
@@ -3743,7 +3566,7 @@ const quizzesRepository = {
   },
 
   async submitAttempt({ quizId, userId, answers }) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
     const quiz = await quizzesRepository.findById(quizId);
     if (!quiz) {
       return null;
@@ -3861,7 +3684,7 @@ const quizzesRepository = {
   },
 
   async getLeaderboard(quizId) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       const cached = await getRedisJson(cacheKey('quiz-leaderboard', String(quizId)));
@@ -3903,7 +3726,7 @@ const quizzesRepository = {
   },
 
   async getWeeklyLeaderboard() {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       const cached = await getRedisJson(cacheKey('quiz-weekly', 'all'));
@@ -3984,7 +3807,7 @@ const quizzesRepository = {
   },
 
   async listLeaderboardEntries() {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return pgMany(
@@ -4018,7 +3841,7 @@ const quizzesRepository = {
 
 const notificationsRepository = {
   async list(userId) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       if (userId) {
@@ -4113,7 +3936,7 @@ const notificationsRepository = {
 
 const engagementRepository = {
   async addReferral(payload) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return runInTransaction(async (client) => {
@@ -4157,7 +3980,7 @@ const engagementRepository = {
   },
 
   async getGamification(userId) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       const user = await usersRepository.findById(userId);
@@ -4187,7 +4010,7 @@ const engagementRepository = {
 };
 
 const listStoredLiveClasses = async () => {
-  await ensurePlatformSeeded();
+  await ensurePlatformReady();
 
   if (isPostgresMode()) {
     return getPgLiveClasses();
@@ -4197,7 +4020,7 @@ const listStoredLiveClasses = async () => {
 };
 
 const findStoredLiveClassById = async (liveClassId) => {
-  await ensurePlatformSeeded();
+  await ensurePlatformReady();
 
   if (isPostgresMode()) {
     return pgOne('SELECT * FROM live_classes WHERE id = $1', [String(liveClassId)], mapLiveClassRow);
@@ -4298,7 +4121,7 @@ const liveClassesRepository = {
   },
 
   async create(payload) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return insertPgLiveClass(payload);
@@ -4354,7 +4177,7 @@ const liveClassesRepository = {
   },
 
   async update(liveClassId, payload) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
     const current = await findStoredLiveClassById(liveClassId);
     if (!current) {
       return null;
@@ -4376,7 +4199,7 @@ const liveClassesRepository = {
   },
 
   async delete(liveClassId) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       const deleted = await pgOne(
@@ -4671,7 +4494,7 @@ const liveClassesRepository = {
   },
 
   async getChat(liveClassId) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return pgMany(
@@ -4688,7 +4511,7 @@ const liveClassesRepository = {
   },
 
   async postChat({ liveClassId, userId, message, kind = 'chat' }) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
     const liveClass = await findStoredLiveClassById(liveClassId);
     if (!liveClass) {
       return null;
@@ -4817,25 +4640,11 @@ const adminRepository = {
       revenue: data.payments
         .filter((payment) => payment.status === 'paid')
         .reduce((total, payment) => total + Number(payment.amount || 0), 0),
-      concurrentCapacityTarget: '10K-100K users',
+      concurrentCapacityTarget: '',
       recentDeviceActivity: getRecentDeviceActivity(data),
     };
   },
 
-  async seedSampleData() {
-    const status = await ensurePlatformSeeded();
-    const data = await loadPlatformData();
-    return {
-      message: 'Platform sample data is ready',
-      status,
-      counts: {
-        users: data.users.length,
-        courses: data.courses.length,
-        tests: data.tests.length,
-        liveClasses: data.liveClasses.length,
-      },
-    };
-  },
 };
 
 const analyticsRepository = {
@@ -4861,9 +4670,9 @@ const analyticsRepository = {
       accuracy,
       speed,
       attempts,
-      weakTopics: Array.from(weakTopics.size ? weakTopics : new Set(['Network Theory'])),
+      weakTopics: Array.from(weakTopics),
       strongTopics: Array.from(strongTopics),
-      suggestions: [buildAiRecommendation({ accuracy, weakTopics: Array.from(weakTopics) })],
+      suggestions: [buildAiRecommendation({ accuracy, weakTopics: Array.from(weakTopics), attempts })].filter(Boolean),
       trend: buildAnalyticsTrend(data, userId),
       adaptivePlan: computeAdaptivePlan({ accuracy, attempts }),
     };
@@ -4924,7 +4733,7 @@ const analyticsRepository = {
 
 const paymentRepository = {
   async createCheckout(payload) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return runInTransaction(async (client) => {
@@ -4993,7 +4802,7 @@ const paymentRepository = {
   },
 
   async handleWebhook(payload) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return runInTransaction(async (client) => {
@@ -5075,7 +4884,7 @@ const paymentRepository = {
   },
 
   async retryPayment(paymentId, userId) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return runInTransaction(async (client) => {
@@ -5163,8 +4972,8 @@ const paymentRepository = {
 };
 
 const platformRepository = {
-  async ensureSeeded() {
-    return ensurePlatformSeeded();
+  async ensureReady() {
+    return ensurePlatformReady();
   },
 
   async getOverview(userId) {
@@ -5230,9 +5039,9 @@ const platformRepository = {
     return {
       user: safeUser,
       highlights: {
-        concurrencyTarget: '10K+ concurrent learners',
-        deploymentProfile: 'React + Node.js API + PostgreSQL/Firestore + Redis + S3 + WebSockets',
-        modules: ['Courses', 'Mock Tests', 'Daily Quiz', 'Live Classes', 'Analytics', 'Payments', 'Admin', 'AI'],
+        concurrencyTarget: adminOverview?.concurrentCapacityTarget || '',
+        deploymentProfile: '',
+        modules: [],
       },
       dashboard: {
         streak: gamification.streak,
@@ -5262,12 +5071,8 @@ const platformRepository = {
       notifications,
       analytics,
       ai: {
-        headline: buildAiRecommendation({ accuracy: analytics.accuracy, weakTopics: analytics.weakTopics }),
-        prompts: [
-          'How do I improve Network Theory accuracy?',
-          'Create a 7-day plan for SSC JE revision',
-          'Recommend the next best mock test for me',
-        ],
+        headline: buildAiRecommendation({ accuracy: analytics.accuracy, weakTopics: analytics.weakTopics, attempts: analytics.attempts }),
+        prompts: (analytics.weakTopics || []).slice(0, 3).map((topic) => `How should I revise ${topic}?`),
         generation: getAiGenerationProviders(),
       },
       sessionActivity: userId ? {
@@ -5280,7 +5085,7 @@ const platformRepository = {
   },
 
   async enroll({ userId, courseId, source = 'payment', accessType = 'course' }) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     const course = await coursesRepository.findById(courseId);
     if (!course) {
@@ -5362,7 +5167,7 @@ const platformRepository = {
   },
 
   async subscribe({ userId, planId, source = 'payment' }) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return runInTransaction(async (client) => {
@@ -5467,7 +5272,7 @@ const platformRepository = {
   },
 
   async updateWatchProgress({ userId, courseId, lessonId, progressPercent, progressSeconds, completed }) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     const course = await coursesRepository.findById(courseId);
     if (!course) {
@@ -5575,7 +5380,7 @@ const platformRepository = {
   },
 
   async incrementEnrollmentViewCount({ userId, courseId }) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     if (isPostgresMode()) {
       return runInTransaction(async (client) => {
@@ -5612,13 +5417,13 @@ const platformRepository = {
   },
 
   async askAi({ userId, message }) {
-    await ensurePlatformSeeded();
+    await ensurePlatformReady();
 
     const normalizedMessage = String(message || '').toLowerCase();
     let answer = 'Focus on high-yield revision blocks, solve one mock test, and review every incorrect answer with the explanation.';
 
     if (normalizedMessage.includes('network')) {
-      answer = 'Start with source transformation, KCL/KVL, Thevenin and Norton, then solve 20 mixed problems. Your weak area is Network Theory, so revise it before the next full mock.';
+      answer = 'Start with the fundamentals for the topic, solve a focused problem set, and revise incorrect answers before the next mock.';
     } else if (normalizedMessage.includes('7-day') || normalizedMessage.includes('plan')) {
       answer = 'Use a 7-day cycle: 3 days concept revision, 2 days sectional tests, 1 full-length mock, and 1 day for analytics review plus live class replay.';
     } else if (normalizedMessage.includes('mock')) {

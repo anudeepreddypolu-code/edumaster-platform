@@ -26,7 +26,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import { LiveClass, PlatformOverview } from '../types';
+import { LiveClass, MockQuestion, MockTest, PlatformOverview } from '../types';
 import { cn } from '../lib/utils';
 import { BrandLogo } from './BrandLogo';
 
@@ -220,77 +220,33 @@ const findLinkedLiveClassForTest = (liveClasses: LiveClass[], testTitle: string,
     })[0] || null;
 };
 
-const examMeta = {
-  examTitle: 'SSC JE CE CBT 2 Full Test 9',
-  totalQuestions: '100',
-  duration: '120 Mins',
-  marks: '300',
-};
+const buildExamMeta = (test: MockTest | null) => ({
+  examTitle: test?.title || 'Mock Test',
+  totalQuestions: String(test?.questions?.length || 0),
+  duration: `${test?.durationMinutes || 0} Mins`,
+  marks: String(test?.totalMarks || 0),
+});
 
-const recentSeries: SeriesCard[] = [
-  {
-    id: 'ssc-je-civil-2026',
-    title: 'SSC JE Civil 2026 Mock Test (Paper 1 & Paper 2)',
-    testsLabel: '2/1081',
+const buildSeriesCards = (tests: MockTest[]): SeriesCard[] =>
+  tests.slice(0, 8).map((test, index) => ({
+    id: test._id,
+    title: test.title,
+    testsLabel: `${test.questions?.length || 0} Questions`,
     progressText: '0%',
-    statsLabel: '26.1k Students',
-    chipTone: 'orange',
-  },
-  {
-    id: 'ssc-je-electrical-2025',
-    title: 'SSC JE Electrical 2025 Mock Test Series',
-    testsLabel: '1/1273',
-    progressText: '0%',
-    statsLabel: '22.6k Students',
-    chipTone: 'blue',
-  },
-  {
-    id: 'ssc-je-civil-2025',
-    title: 'SSC JE Civil 2025 Mock Test (Paper 1 & Paper 2)',
-    testsLabel: '7/1301',
-    progressText: '1%',
-    statsLabel: '14.6k Students',
-    chipTone: 'pink',
-  },
-  {
-    id: 'ssc-je-mechanical-2025',
-    title: 'SSC JE Mechanical 2025 Mock Test Series',
-    testsLabel: '1/1211',
-    progressText: '0%',
-    statsLabel: '11.7k Students',
-    chipTone: 'purple',
-  },
-];
+    statsLabel: test.category || test.type || 'Mock Test',
+    chipTone: (['orange', 'blue', 'pink', 'purple'] as const)[index % 4],
+  }));
 
-const recommendedTests: RecommendedTestItem[] = [
-  {
-    id: 'recommended-full-length-01',
-    title: 'SSC JE 2025 Full Length Test 01',
-    typeLabel: 'Full Test',
-    secondaryLabel: '200 Questions',
-    attemptedLabel: '18.2k Students',
-    iconTone: 'emerald',
-    seriesId: 'ssc-je-civil-2026',
-  },
-  {
-    id: 'recommended-electrical-subject',
-    title: 'SSC JE Electrical Subject Test',
-    typeLabel: 'Subject Test',
-    secondaryLabel: '100 Questions',
-    attemptedLabel: '9.4k Students',
-    iconTone: 'violet',
-    seriesId: 'ssc-je-electrical-2025',
-  },
-  {
-    id: 'recommended-pyq',
-    title: 'SSC JE Previous Year Papers',
-    typeLabel: 'PYQ',
-    secondaryLabel: '10 Papers',
-    attemptedLabel: '12.7k Students',
-    iconTone: 'orange',
-    seriesId: 'ssc-je-mechanical-2025',
-  },
-];
+const buildRecommendedTests = (tests: MockTest[]): RecommendedTestItem[] =>
+  tests.slice(0, 3).map((test, index) => ({
+    id: `recommended-${test._id}`,
+    title: test.title,
+    typeLabel: test.type || test.category || 'Mock Test',
+    secondaryLabel: `${test.questions?.length || 0} Questions`,
+    attemptedLabel: `${test.durationMinutes || 0} min`,
+    iconTone: (['emerald', 'violet', 'orange'] as const)[index % 3],
+    seriesId: test._id,
+  }));
 
 const quickActionItems: QuickActionItem[] = [
   { id: 'create-custom', label: 'Create Custom Test', iconTone: 'blue', onPress: 'detail' },
@@ -299,93 +255,20 @@ const quickActionItems: QuickActionItem[] = [
   { id: 'performance', label: 'Performance', iconTone: 'orange', onPress: 'detail' },
 ];
 
-const seriesDetails: Record<string, SeriesDetailMeta> = {
-  'ssc-je-civil-2026': {
-    title: 'SSC JE Civil 2026 Mock Test (Paper 1 & Paper 2)',
-    breadcrumb: 'SSC JE Civil 2026 Mock Test (Paper 1 & Paper 2)',
-    totalTests: '1017 Total Tests',
-    freeTests: '2 FREE TESTS',
-    users: '281.2k Users',
-    languages: 'English, Hindi',
-    updatedOn: 'Apr 20, 2026',
-    progressLabel: '2/1017 Tests',
-    progressPercent: '0%',
-    paperLabel: 'Paper - 1',
-  },
-  'ssc-je-civil-2025': {
-    title: 'SSC JE Civil 2025 Mock Test (Paper 1 & Paper 2)',
-    breadcrumb: 'SSC JE Civil 2025 Mock Test (Paper 1 & Paper 2)',
-    totalTests: '1301 Total Tests',
-    freeTests: '18 FREE TESTS',
-    users: '148.8k Users',
-    languages: 'English, Hindi',
-    updatedOn: 'Apr 22, 2026',
-    progressLabel: '7/1301 Tests',
-    progressPercent: '1%',
-    paperLabel: 'Paper - 2',
-  },
-  'ssc-je-electrical-2025': {
-    title: 'SSC JE Electrical 2025 Mock Test Series',
-    breadcrumb: 'SSC JE Electrical 2025 Mock Test Series',
-    totalTests: '1273 Total Tests',
-    freeTests: '3 FREE TESTS',
-    users: '222.6k Users',
-    languages: 'English, Hindi',
-    updatedOn: 'Apr 18, 2026',
-    progressLabel: '1/1273 Tests',
-    progressPercent: '0%',
-    paperLabel: 'Paper - 1',
-  },
-  'ssc-je-mechanical-2025': {
-    title: 'SSC JE Mechanical 2025 Mock Test Series',
-    breadcrumb: 'SSC JE Mechanical 2025 Mock Test Series',
-    totalTests: '1211 Total Tests',
-    freeTests: '3 FREE TESTS',
-    users: '115.7k Users',
-    languages: 'English, Hindi',
-    updatedOn: 'Apr 19, 2026',
-    progressLabel: '1/1211 Tests',
-    progressPercent: '0%',
-    paperLabel: 'Paper - 1',
-  },
-};
+const buildSeriesDetailMeta = (test: MockTest | null): SeriesDetailMeta => ({
+  title: test?.title || 'Mock Test',
+  breadcrumb: test?.title || 'Mock Test',
+  totalTests: `${test?.questions?.length || 0} Questions`,
+  freeTests: test?.type || 'TEST',
+  users: test?.category || 'Mock Test',
+  languages: 'Configured in test content',
+  updatedOn: 'Live content',
+  progressLabel: `${test?.questions?.length || 0} Questions`,
+  progressPercent: '0%',
+  paperLabel: test?.course || test?.category || 'Test',
+});
 
-const detailTests: DetailTestCard[] = [
-  {
-    id: 'full-test-9',
-    title: 'SSC JE CE CBT 2 Full Test 9',
-    usersLabel: '5.5k Users',
-    button: 'Resume Now',
-    companionAction: 'Join Live Class',
-    companionMeta: 'Sun, 7:00 PM explanation session',
-    companionTone: 'emerald',
-  },
-  {
-    id: 'full-test-10',
-    title: 'SSC JE CE CBT 2 Full Test 10',
-    usersLabel: '4.8k Users',
-    button: 'Resume Now',
-    companionAction: 'Watch Explanation',
-    companionMeta: 'Live class completed, replay ready',
-    companionTone: 'blue',
-  },
-  {
-    id: 'full-test-11',
-    title: 'SSC JE CE CBT 2 Full Test 11',
-    usersLabel: '3.9k Users',
-    button: 'Start Now',
-    companionAction: 'Watch Video',
-    companionMeta: 'Pre-test strategy walkthrough',
-    companionTone: 'amber',
-  },
-];
-
-const sideSeries = [
-  { title: 'SSC JE Civil 2025 Mock Test Series...', stats: '101 Total Tests | 0 Free Tests' },
-  { title: 'Uttar Pradesh (UP) General Knowledge...', stats: '101 Total Tests | 0 Free Tests' },
-  { title: 'AE & JE Civil Engg. Exams Previous Year...', stats: '101 Total Tests | 0 Free Tests' },
-  { title: 'AE & JE Electrical Engg. Exams Previous...', stats: '101 Total Tests | 0 Free Tests' },
-];
+const sideSeries: Array<{ title: string; stats: string; id: string }> = [];
 
 const whyTakeItems = [
   {
@@ -402,37 +285,15 @@ const whyTakeItems = [
   },
 ];
 
-const enrolledSeries = [
-  { title: 'SSC JE Civil 2026', subtitle: '2/1007 Tests', iconTone: 'blue' as const },
-  { title: 'SSC JE Electrical 2026', subtitle: '2/1007 Tests', iconTone: 'orange' as const },
-  { title: 'AE & JE Civil Engg. Exams', subtitle: '1/490 Tests', iconTone: 'ink' as const },
-  { title: 'SSC JE Mechanical 2025', subtitle: '1/1211 Tests', iconTone: 'blue' as const },
-  { title: 'Previous Year Papers', subtitle: 'All solved papers', iconTone: 'ink' as const },
-];
+const buildEnrolledSeries = (tests: MockTest[]) =>
+  tests.slice(0, 5).map((test, index) => ({
+    title: test.title,
+    subtitle: `${test.questions?.length || 0} Questions`,
+    iconTone: (['blue', 'orange', 'ink'] as const)[index % 3],
+    id: test._id,
+  }));
 
-const liveQuizCards = [
-  {
-    title: 'SSC OO Constable 2026 free Mega Live Test',
-    meta: '9 questions    60 Mins    100 Marks',
-    schedule: '19 Apr, 10:30 PM',
-    action: 'Start Now',
-    actionTone: 'blue' as const,
-  },
-  {
-    title: 'Current Affairs of Engineering Exams Live Test',
-    meta: '30 questions    60 Mins    100 Marks',
-    schedule: '18 Apr, 06:15 PM',
-    action: 'Start Now',
-    actionTone: 'blue' as const,
-  },
-  {
-    title: 'General Awareness for All Engineering Exams',
-    meta: '20 questions    60 Mins    100 Marks',
-    schedule: '21 Apr, 10:25 PM',
-    action: 'Register',
-    actionTone: 'green' as const,
-  },
-];
+const liveQuizCards: Array<{ title: string; meta: string; schedule: string; action: string; actionTone: 'blue' | 'green' }> = [];
 
 const questionStateLegend = [
   { id: 'unvisited', description: 'You have not visited the question yet.' },
@@ -442,55 +303,17 @@ const questionStateLegend = [
   { id: 'answered-review', description: 'You have answered the question, but marked it for review.' },
 ] as const;
 
-const buildExamQuestions = (): ExamQuestion[] => {
-  const promptTemplates = [
-    'Which of the following are NOT the main requirements for the success of well irrigation?',
-    '__________ is used mainly for cast iron pipes of all sizes and concrete pipes below 60 cm diameter.',
-    'Which letter-cluster will replace the question mark (?) to complete the given series?\n\nIZDK, OHVO, UPNS, AXFW, ?',
-    'Which of the following articles of the Constitution abolishes untouchability?',
-    'The current in a pure inductive circuit lags behind the voltage by:',
-  ];
-
-  const optionSets = [
-    [
-      'Well distributed demand for irrigation throughout the year',
-      'Suitable configuration of command area with the highest ground around the centre of the command area',
-      'Availability of energy, preferably electric power, for pumps',
-      'Absence of a suitable aquifer which can yield good quality water in sufficient quantity',
-    ],
-    [
-      'Victaulic Joint',
-      'Spigot and Socket Joint',
-      'Flush Joint',
-      'Screwed Joint',
-    ],
-    ['EEYZ', 'GFXA', 'EEXZ', 'EEYA'],
-    ['Article 14', 'Article 17', 'Article 19', 'Article 32'],
-    ['0°', '45°', '90°', '180°'],
-  ];
-
-  const explanations = [
-    'Absence of a suitable aquifer is not a requirement for successful well irrigation. The remaining options support dependable well irrigation.',
-    'Spigot and socket joints are commonly used for cast iron pipes of all sizes and concrete pipes below 60 cm diameter.',
-    'The alternating forward and backward letter shifts produce the next cluster GFXA.',
-    'Article 17 explicitly abolishes untouchability in India.',
-    'In an ideal inductive circuit, current lags voltage by 90 degrees.',
-  ];
-
-  const correctIndexes = [3, 1, 1, 1, 2];
-
-  return Array.from({ length: Number(examMeta.totalQuestions) }, (_, index) => {
-    const templateIndex = index % promptTemplates.length;
-    return {
-      id: `figma-question-${index + 1}`,
+const buildExamQuestions = (questions: MockQuestion[] = []): ExamQuestion[] =>
+  questions
+    .filter((question) => question && question.questionText && Array.isArray(question.options) && question.options.length > 0)
+    .map((question, index) => ({
+      id: question.id || `question-${index + 1}`,
       section: 'PART-A',
-      prompt: promptTemplates[templateIndex],
-      options: optionSets[templateIndex],
-      correctIndex: correctIndexes[templateIndex],
-      explanation: explanations[templateIndex],
-    };
-  });
-};
+      prompt: question.questionText,
+      options: question.options,
+      correctIndex: Number.isFinite(Number(question.correctOption)) ? Number(question.correctOption) : 0,
+      explanation: question.explanation || 'Explanation will appear after the test author adds it.',
+    }));
 
 const formatClock = (seconds: number) => {
   const safe = Math.max(seconds, 0);
@@ -946,10 +769,14 @@ const DesktopTopBar = () => (
 
 const DesktopInstructionFrame = ({
   testId,
+  examTitle,
+  userName,
   body,
   footer,
 }: {
   testId: string;
+  examTitle: string;
+  userName: string;
   body: React.ReactNode;
   footer: React.ReactNode;
 }) => (
@@ -958,7 +785,7 @@ const DesktopInstructionFrame = ({
       <div className="flex items-center gap-3">
         <LogoMark large />
       </div>
-      <p className="text-[13px] font-medium text-[#3a3a3a]">{examMeta.examTitle}</p>
+      <p className="text-[13px] font-medium text-[#3a3a3a]">{examTitle}</p>
     </div>
 
     <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_351px]">
@@ -966,7 +793,7 @@ const DesktopInstructionFrame = ({
       <aside className="border-l border-[#e5e7eb] bg-[#f8f9fb] px-6 py-8">
         <div className="flex h-full flex-col items-center text-center">
           <UserAvatar large />
-          <p className="mt-9 max-w-[190px] text-[24px] font-normal leading-tight text-[#343434]">Anudeep</p>
+          <p className="mt-9 max-w-[190px] text-[24px] font-normal leading-tight text-[#343434]">{userName}</p>
         </div>
       </aside>
     </div>
@@ -987,13 +814,13 @@ export const TestSeriesFigmaTab = ({
   void onRefresh;
 
   const [screen, setScreen] = useState<Screen>('home');
-  const [selectedSeriesId, setSelectedSeriesId] = useState(recentSeries[0].id);
-  const [savedSeriesIds, setSavedSeriesIds] = useState<string[]>([recentSeries[1].id]);
+  const [selectedSeriesId, setSelectedSeriesId] = useState('');
+  const [savedSeriesIds, setSavedSeriesIds] = useState<string[]>([]);
   const [visitedQuestions, setVisitedQuestions] = useState<Record<number, boolean>>({});
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [review, setReview] = useState<Record<number, boolean>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(119 * 60 + 58);
+  const [timeLeft, setTimeLeft] = useState(0);
   const [defaultLanguage, setDefaultLanguage] = useState('English');
   const [selectedLanguage, setSelectedLanguage] = useState('English');
   const [confirmationAccepted, setConfirmationAccepted] = useState(false);
@@ -1003,13 +830,37 @@ export const TestSeriesFigmaTab = ({
   const [draftAnswer, setDraftAnswer] = useState<number | null>(null);
   const [draftReview, setDraftReview] = useState(false);
 
-  const questions = useMemo(() => buildExamQuestions(), []);
-  const currentQuestion = questions[currentIndex];
-  const selectedSeriesMeta = seriesDetails[selectedSeriesId] || seriesDetails[recentSeries[0].id];
+  const fullMockTests = useMemo(
+    () => (overview.testSeries || []).filter((test) => {
+      const type = String(test.type || '').toLowerCase();
+      return !type || type.includes('full') || type.includes('mock');
+    }),
+    [overview.testSeries],
+  );
+  const recentSeries = useMemo(() => buildSeriesCards(fullMockTests), [fullMockTests]);
+  const recommendedTests = useMemo(() => buildRecommendedTests(fullMockTests), [fullMockTests]);
+  const enrolledSeries = useMemo(() => buildEnrolledSeries(fullMockTests), [fullMockTests]);
+  const selectedTest = useMemo(
+    () => fullMockTests.find((test) => test._id === selectedSeriesId) || fullMockTests[0] || null,
+    [fullMockTests, selectedSeriesId],
+  );
+  const examMeta = useMemo(() => buildExamMeta(selectedTest), [selectedTest]);
+  const learnerName = overview.user?.name || 'Learner';
+  const questions = useMemo(() => buildExamQuestions(selectedTest?.questions || []), [selectedTest]);
+  const currentQuestion = questions[currentIndex] || {
+    id: 'empty-question',
+    section: 'PART-A' as const,
+    prompt: 'No question is available for this test yet.',
+    options: [],
+    correctIndex: 0,
+    explanation: 'Add questions from the admin workspace to enable this test.',
+  };
+  const firstQuestion = questions[0] || currentQuestion;
+  const selectedSeriesMeta = useMemo(() => buildSeriesDetailMeta(selectedTest), [selectedTest]);
   const detailTestCards = useMemo<ResolvedDetailTestCard[]>(
     () => {
-      const sourceTests = overview.testSeries.length > 0
-        ? overview.testSeries.slice(0, 12).map((test, index): DetailTestCard => ({
+      const sourceTests = fullMockTests.length > 0
+        ? fullMockTests.slice(0, 12).map((test, index): DetailTestCard => ({
           id: test._id || `mock-${index}`,
           mockTestId: test._id,
           title: test.title,
@@ -1019,7 +870,7 @@ export const TestSeriesFigmaTab = ({
           companionMeta: 'Create or join an explanation class',
           companionTone: 'amber',
         }))
-        : detailTests;
+        : [];
 
       return sourceTests.map((card) => {
       const linkedLiveClass = findLinkedLiveClassForTest(overview.liveClasses || [], card.title, card.mockTestId);
@@ -1071,9 +922,9 @@ export const TestSeriesFigmaTab = ({
       };
     });
     },
-    [overview.liveClasses, overview.testSeries],
+    [fullMockTests, overview.liveClasses],
   );
-  const featuredDetailCard = detailTestCards[0];
+  const featuredDetailCard = detailTestCards[0] || null;
 
   const committedStates = useMemo(
     () => questions.map((_, index) => getCommittedState(index, visitedQuestions, answers, review)),
@@ -1098,6 +949,17 @@ export const TestSeriesFigmaTab = ({
   const notAnsweredCount = committedStates.filter((state) => state === 'unvisited' || state === 'unanswered').length;
   const questionTextClass = ['text-[14px] leading-[1.58]', 'text-[16px] leading-[1.68]', 'text-[18px] leading-[1.78]'][questionZoom];
   const isCurrentQuestionMarkedForReview = draftReview;
+
+  useEffect(() => {
+    if (!selectedSeriesId && fullMockTests[0]?._id) {
+      setSelectedSeriesId(fullMockTests[0]._id);
+    }
+  }, [fullMockTests, selectedSeriesId]);
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setTimeLeft(Math.max(Number(selectedTest?.durationMinutes || 0), 0) * 60);
+  }, [selectedTest?._id, selectedTest?.durationMinutes]);
 
   useEffect(() => {
     setDraftAnswer(answers[currentIndex] ?? null);
@@ -1133,7 +995,7 @@ export const TestSeriesFigmaTab = ({
     setAnswers({});
     setReview({});
     setCurrentIndex(0);
-    setTimeLeft(119 * 60 + 58);
+    setTimeLeft(Math.max(Number(selectedTest?.durationMinutes || 0), 0) * 60);
     setDefaultLanguage('English');
     setSelectedLanguage('English');
     setConfirmationAccepted(false);
@@ -1145,6 +1007,9 @@ export const TestSeriesFigmaTab = ({
   };
 
   const openSeries = (seriesId: string) => {
+    if (!seriesId) {
+      return;
+    }
     setSelectedSeriesId(seriesId);
     resetAttemptState();
     setScreen('detail');
@@ -1333,7 +1198,7 @@ export const TestSeriesFigmaTab = ({
         <div className="mx-auto max-w-[1380px] px-[22px] py-[14px]">
           <div className="rounded-[12px] border border-[#e4eaf2] bg-white shadow-[0_8px_24px_rgba(18,39,74,0.05)]">
             <div className="border-b border-[#edf2f7] px-[18px] py-[12px] text-[12px] text-[#98a2b3]">
-              Home &gt; SSC JE CE &gt; <span className="font-semibold text-[#5a90ec]">{selectedSeriesMeta.breadcrumb}</span>
+              Home &gt; Tests &gt; <span className="font-semibold text-[#5a90ec]">{selectedSeriesMeta.breadcrumb}</span>
             </div>
             <div className="px-[18px] py-[16px]">
               <div className="flex items-start justify-between gap-8">
@@ -1383,7 +1248,7 @@ export const TestSeriesFigmaTab = ({
                       <div className="mt-[8px] flex flex-wrap items-center gap-[12px] text-[11px] text-[#98a2b3]">
                         <span>{examMeta.totalQuestions} Qs</span>
                         <span>{examMeta.marks} Marks</span>
-                        <span>120 Mins</span>
+                        <span>{examMeta.duration}</span>
                       </div>
                     </div>
                     <button
@@ -1399,6 +1264,7 @@ export const TestSeriesFigmaTab = ({
                     <span>Syllabus</span>
                     <span>English, Hindi</span>
                   </div>
+                  {featuredDetailCard && (
                   <div className="mt-[12px] flex items-center justify-between gap-4 rounded-[10px] border border-[#edf2f7] bg-[#fbfdff] px-[12px] py-[10px]">
                     <div>
                       <p className="text-[11px] font-semibold text-[#273248]">{featuredDetailCard.companionTone === 'emerald' ? 'Live Class' : featuredDetailCard.companionAction}</p>
@@ -1419,14 +1285,11 @@ export const TestSeriesFigmaTab = ({
                       {featuredDetailCard.companionButtonLabel}
                     </button>
                   </div>
+                  )}
                 </div>
 
                 <div className="mt-[10px] flex items-center gap-[18px] border-b border-[#edf2f7] text-[12px] text-[#75849a]">
-                  <button className="border-b-2 border-[#2f8df4] pb-[8px] font-semibold text-[#2f8df4]">Full Test (15)</button>
-                  <button className="pb-[8px]">Subject Test (49)</button>
-                  <button className="pb-[8px]">Chapter Test (197)</button>
-                  <button className="pb-[8px]">Current Affairs (33)</button>
-                  <button className="pb-[8px]">Sectional</button>
+                  <button className="border-b-2 border-[#2f8df4] pb-[8px] font-semibold text-[#2f8df4]">Full Mock Tests ({detailTestCards.length})</button>
                 </div>
 
                 <div className="mt-[8px] space-y-[8px]">
@@ -1439,7 +1302,7 @@ export const TestSeriesFigmaTab = ({
                             <div className="mt-[8px] flex flex-wrap items-center gap-[12px] text-[11px] text-[#98a2b3]">
                               <span>{examMeta.totalQuestions} Questions</span>
                               <span>{examMeta.marks} Marks</span>
-                              <span>120 Mins</span>
+                              <span>{examMeta.duration}</span>
                             </div>
                             <div className="mt-[8px] flex gap-[10px] text-[11px] text-[#4d93ef]">
                               <span>Syllabus</span>
@@ -1476,7 +1339,7 @@ export const TestSeriesFigmaTab = ({
                 <div className="rounded-[10px] border border-[#e4eaf2] bg-white px-[12px] py-[12px] shadow-[0_8px_24px_rgba(18,39,74,0.05)]">
                   <p className="text-[13px] font-semibold text-[#273248]">More Test Series for you</p>
                   {sideSeries.map((item) => (
-                    <button key={item.title} type="button" onClick={() => openSeries(recentSeries[0].id)} className="flex w-full items-start justify-between gap-3 border-b border-[#edf2f7] py-[12px] text-left last:border-b-0">
+                    <button key={item.title} type="button" onClick={() => openSeries(item.id)} className="flex w-full items-start justify-between gap-3 border-b border-[#edf2f7] py-[12px] text-left last:border-b-0">
                       <div>
                         <p className="text-[12px] font-semibold leading-[1.35] text-[#273248]">{item.title}</p>
                         <p className="mt-[6px] text-[10px] text-[#98a2b3]">{item.stats}</p>
@@ -1519,6 +1382,8 @@ export const TestSeriesFigmaTab = ({
   const desktopInstructions = (
     <DesktopInstructionFrame
       testId="tests-instructions-desktop"
+      examTitle={examMeta.examTitle}
+      userName={learnerName}
       body={renderInstructionBody()}
       footer={(
         <div className="flex items-center justify-between px-5 py-3">
@@ -1541,12 +1406,14 @@ export const TestSeriesFigmaTab = ({
   const desktopConfirmation = (
     <DesktopInstructionFrame
       testId="tests-confirmation-desktop"
+      examTitle={examMeta.examTitle}
+      userName={learnerName}
       body={(
         <div>
           <p className="text-center text-[21px] font-semibold text-slate-900">{examMeta.examTitle}</p>
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-4 text-[14px] font-semibold text-slate-800">
-            <p>Duration: 120 Mins</p>
+            <p>Duration: {examMeta.duration}</p>
             <p>Maximum Marks: {examMeta.marks}</p>
           </div>
 
@@ -1994,7 +1861,7 @@ export const TestSeriesFigmaTab = ({
       <MobileStatusBar />
       <div className="mt-[14px] flex items-start justify-between gap-4">
         <div>
-          <p className="text-[24px] font-semibold tracking-[-0.03em] text-[#1e2f5a]">Hi Anudeep 👋</p>
+          <p className="text-[24px] font-semibold tracking-[-0.03em] text-[#1e2f5a]">Hi {learnerName}</p>
           <p className="mt-[6px] text-[13px] text-[#7284a7]">Pick up your next mock without the extra clutter.</p>
         </div>
         <button className="relative mt-[2px] flex h-[40px] w-[40px] items-center justify-center rounded-full border border-[#e7edf7] bg-white text-[#223357] shadow-[0_10px_18px_rgba(16,24,40,0.04)]">
@@ -2015,7 +1882,7 @@ export const TestSeriesFigmaTab = ({
 
       <button
         type="button"
-        onClick={() => openSeries('ssc-je-electrical-2025')}
+        onClick={() => openSeries(selectedTest?._id || fullMockTests[0]?._id || '')}
         className="mt-[14px] overflow-hidden rounded-[22px] border border-[#dfe8fb] bg-[linear-gradient(135deg,#f5f9ff_0%,#ffffff_52%,#eef4ff_100%)] p-[14px] text-left shadow-[0_16px_34px_rgba(45,110,229,0.08)]"
       >
         <div className="grid grid-cols-[minmax(0,1fr)_132px] items-center gap-[8px]">
@@ -2024,12 +1891,12 @@ export const TestSeriesFigmaTab = ({
               Resume where you left
             </span>
             <p className="mt-[10px] text-[18px] font-semibold leading-[1.18] tracking-[-0.03em] text-[#1e2f5a]">
-              SSC JE Electrical 2025 Mock Test
+              {selectedTest?.title || 'No mock test available'}
             </p>
-            <p className="mt-[4px] text-[13px] text-[#526987]">Paper 1 • Full Test</p>
-            <p className="mt-[12px] text-[12px] font-medium text-[#526987]">35% Completed</p>
+            <p className="mt-[4px] text-[13px] text-[#526987]">{selectedTest?.category || selectedTest?.type || 'Mock Test'}</p>
+            <p className="mt-[12px] text-[12px] font-medium text-[#526987]">Ready</p>
             <div className="mt-[8px] h-[4px] w-[118px] rounded-full bg-[#dfe8fb]">
-              <div className="h-full w-[35%] rounded-full bg-[linear-gradient(90deg,#3d94f4_0%,#2b83e6_100%)]" />
+              <div className="h-full w-[0%] rounded-full bg-[linear-gradient(90deg,#3d94f4_0%,#2b83e6_100%)]" />
             </div>
             <span className="mt-[14px] inline-flex h-[40px] items-center gap-[10px] rounded-[12px] bg-[linear-gradient(90deg,#2d8cf1,#315df9)] px-[18px] text-[13px] font-semibold text-white shadow-[0_12px_24px_rgba(49,99,255,0.24)]">
               Continue Test
@@ -2148,7 +2015,7 @@ export const TestSeriesFigmaTab = ({
               type="button"
               onClick={() => {
                 if (item.onPress === 'detail') {
-                  openSeries(recentSeries[index % recentSeries.length].id);
+                  openSeries(selectedTest?._id || fullMockTests[0]?._id || '');
                 } else {
                   setScreen('home');
                 }
@@ -2182,8 +2049,7 @@ export const TestSeriesFigmaTab = ({
         className="mx-auto mt-[14px] max-w-[326px] text-center text-[19px] font-bold leading-[1.18] tracking-[-0.03em] text-[#1f2c54]"
         style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
       >
-        <span className="block">SSC JE Civil 2026 Mock Test</span>
-        <span className="mt-[2px] block">(Paper 1 &amp; Paper 2)</span>
+        <span className="block">{selectedSeriesMeta.title}</span>
       </h1>
       <div className="mt-[12px] grid grid-cols-3 items-center rounded-[26px] border border-[#e6edf7] bg-white px-[18px] py-[13px] text-[11px] text-[#65748c] shadow-[0_10px_22px_rgba(18,39,74,0.05)]">
         <div className="text-center">
@@ -2215,7 +2081,7 @@ export const TestSeriesFigmaTab = ({
             <div className="mt-[8px] flex flex-wrap gap-[7px] text-[10px] text-[#526987]">
               <span className="inline-flex items-center gap-[5px] rounded-[10px] bg-white/92 px-[8px] py-[4px] shadow-[0_6px_12px_rgba(61,128,246,0.05)]"><FileText className="h-[11px] w-[11px] text-[#8095ba]" />{examMeta.totalQuestions} Qs</span>
               <span className="inline-flex items-center gap-[5px] rounded-[10px] bg-white/92 px-[8px] py-[4px] shadow-[0_6px_12px_rgba(61,128,246,0.05)]"><Star className="h-[11px] w-[11px] text-[#8095ba]" />{examMeta.marks} Marks</span>
-              <span className="inline-flex items-center gap-[5px] rounded-[10px] bg-white/92 px-[8px] py-[4px] shadow-[0_6px_12px_rgba(61,128,246,0.05)]"><Clock3 className="h-[11px] w-[11px] text-[#8095ba]" />120 Mins</span>
+              <span className="inline-flex items-center gap-[5px] rounded-[10px] bg-white/92 px-[8px] py-[4px] shadow-[0_6px_12px_rgba(61,128,246,0.05)]"><Clock3 className="h-[11px] w-[11px] text-[#8095ba]" />{examMeta.duration}</span>
             </div>
             <div className="mt-[8px] flex gap-[16px] text-[10px] font-medium text-[#2f78eb]">
               <span>Syllabus</span>
@@ -2230,6 +2096,7 @@ export const TestSeriesFigmaTab = ({
             <HeroIllustration compact />
           </div>
         </div>
+        {featuredDetailCard && (
         <div className="mt-[10px] grid grid-cols-[minmax(0,1fr)_140px] items-center gap-0 rounded-[16px] border border-[#e7edf8] bg-white/92 px-[12px] py-[9px]">
           <div className="flex min-w-0 items-center gap-[10px] border-r border-[#e8eef7] pr-[12px]">
             <div className="flex h-[36px] w-[36px] items-center justify-center rounded-[11px] bg-[#eefbf2] text-[#1f9c5a]">
@@ -2251,12 +2118,11 @@ export const TestSeriesFigmaTab = ({
             {featuredDetailCard.companionAction}
           </button>
         </div>
+        )}
       </div>
       <div className="mt-[14px] flex items-center gap-[12px] border-b border-[#edf2f7] text-[11px] text-[#6d7c93]">
         <div className="flex min-w-0 flex-1 gap-[16px] overflow-x-auto">
-          <button className="border-b-[3px] border-[#2f8df4] pb-[12px] font-semibold text-[#2f8df4]">Full Test (15)</button>
-          <button className="whitespace-nowrap pb-[12px]">Subject Test (49)</button>
-          <button className="whitespace-nowrap pb-[12px]">Chapter Test (197)</button>
+          <button className="border-b-[3px] border-[#2f8df4] pb-[12px] font-semibold text-[#2f8df4]">Full Mock Tests ({detailTestCards.length})</button>
         </div>
         <button className="mb-[8px] flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#e7edf7] bg-white text-[#223357] shadow-[0_8px_14px_rgba(16,24,40,0.04)]">
           <ListFilter className="h-[16px] w-[16px]" />
@@ -2283,7 +2149,7 @@ export const TestSeriesFigmaTab = ({
                 <div className="mt-[6px] flex flex-wrap gap-[14px] text-[10px] text-[#607394]">
                   <span>{examMeta.totalQuestions} Qs</span>
                   <span>{examMeta.marks} Marks</span>
-                  <span>120 Mins</span>
+                  <span>{examMeta.duration}</span>
                 </div>
                 <div className="mt-[6px] flex gap-[16px] text-[10px] font-medium text-[#2f78eb]">
                   <span>Syllabus</span>
@@ -2584,7 +2450,7 @@ export const TestSeriesFigmaTab = ({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[14px] font-semibold text-[#1f2737]">Question 1</p>
-            <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.8] text-[#1f2737]">{questions[0].prompt}</p>
+            <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.8] text-[#1f2737]">{firstQuestion.prompt}</p>
           </div>
           <span className="rounded-full bg-[#ebfff1] px-[10px] py-[4px] text-[10px] font-semibold text-[#2ebf6c]">Correct</span>
         </div>
@@ -2594,9 +2460,9 @@ export const TestSeriesFigmaTab = ({
         </div>
         <div className="mt-[12px] rounded-[12px] border border-[#c7efd3] bg-[#f4fff7] p-[12px]">
           <p className="text-[11px] font-semibold text-[#2ebf6c]">Correct Answer</p>
-          <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">{questions[0].options[questions[0].correctIndex]}</p>
+          <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">{firstQuestion.options[firstQuestion.correctIndex]}</p>
         </div>
-        <p className="mt-[14px] text-[12px] leading-[1.8] text-[#47556d]">{questions[0].explanation}</p>
+        <p className="mt-[14px] text-[12px] leading-[1.8] text-[#47556d]">{firstQuestion.explanation}</p>
       </div>
     </>
   ));
@@ -2633,12 +2499,12 @@ export const TestSeriesFigmaTab = ({
         </div>
         <div className="mt-[18px] rounded-[14px] border border-[#ebeef6] p-[18px]">
           <p className="text-[15px] font-semibold text-[#1f2737]">Question 1</p>
-          <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.8] text-[#1f2737]">{questions[0].prompt}</p>
+          <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.8] text-[#1f2737]">{firstQuestion.prompt}</p>
           <div className="mt-[12px] rounded-[12px] border border-[#c7efd3] bg-[#f4fff7] p-[12px]">
             <p className="text-[11px] font-semibold text-[#2ebf6c]">Correct Answer</p>
-            <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">B. {questions[0].options[questions[0].correctIndex]}</p>
+            <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">B. {firstQuestion.options[firstQuestion.correctIndex]}</p>
           </div>
-          <p className="mt-[14px] text-[12px] leading-[1.8] text-[#47556d]">{questions[0].explanation}</p>
+          <p className="mt-[14px] text-[12px] leading-[1.8] text-[#47556d]">{firstQuestion.explanation}</p>
         </div>
       </div>
     </div>

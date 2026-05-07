@@ -116,7 +116,7 @@ const ensureQaCredentials = async (
     return {
       email,
       password,
-      name: existingLogin.payload?.user?.name || 'Seed Student',
+      name: existingLogin.payload?.user?.name || 'QA User',
     };
   }
 

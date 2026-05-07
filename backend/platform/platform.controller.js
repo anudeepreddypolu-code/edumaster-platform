@@ -20,11 +20,6 @@ const getOverview = asyncHandler(async (req, res) => {
   return ok(res, overview);
 });
 
-const seedPlatform = asyncHandler(async (_req, res) => {
-  const seedStatus = await platformRepository.ensureSeeded();
-  return ok(res, { message: 'Platform data initialized', status: seedStatus || 'ok' });
-});
-
 const enroll = asyncHandler(async (req, res) => {
   const userId = req.user?.id || null;
   const courseId = requireString(req.body?.courseId, 'courseId');
@@ -100,7 +95,6 @@ const generateAssessment = asyncHandler(async (req, res) => {
 
 module.exports = {
   getOverview,
-  seedPlatform,
   enroll,
   subscribe,
   updateWatchProgress,

@@ -36,20 +36,17 @@ const step: StepDefinition = {
     'Continue Learning',
     'Active Courses',
     'Performance Overview',
-    'Keep the Streak On',
+    'Learning Activity',
     "Today's Schedule",
-    'Upcoming Tests',
-    'Your Progress',
-    'Stay Consistent',
+    'Tests',
+    'Latest Result',
+    'Session Status',
     'Quick Revision',
     'Recommended Track',
-    'Circuits & Network Reduction',
-    'Network Theory',
-    'General Awareness',
   ],
 };
 
-const loginAndSeedStorage = async (page: puppeteer.Page, email: string, password: string) => {
+const loginAndStoreSession = async (page: puppeteer.Page, email: string, password: string) => {
   const response = await fetch(new URL('/backend/api/auth/login', apiOrigin), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -152,7 +149,7 @@ export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; 
 
     const email = process.env.QA_LOGIN_EMAIL || config.loginEmail;
     const password = process.env.QA_LOGIN_PASSWORD || config.loginPassword;
-    await loginAndSeedStorage(page, email, password);
+    await loginAndStoreSession(page, email, password);
     await page.reload({ waitUntil: 'networkidle2' });
     await waitForOverviewAppReady(page);
 

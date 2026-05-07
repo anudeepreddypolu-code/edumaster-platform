@@ -83,6 +83,118 @@ const loadModuleOrThrow = (course, moduleId) => {
   return module;
 };
 
+const findLessonContainerOrThrow = (module, lessonId, chapterId = '') => {
+  if (chapterId) {
+    const chapter = module.chapters.find((entry) => entry.id === chapterId);
+    if (!chapter) {
+      throw new ApiError(404, 'Chapter not found', { code: 'CHAPTER_NOT_FOUND' });
+    }
+    if (!Array.isArray(chapter.lessons)) {
+      chapter.lessons = [];
+    }
+    return chapter.lessons;
+  }
+
+  const directLessonIndex = module.lessons.findIndex((lesson) => lesson.id === lessonId);
+  if (directLessonIndex >= 0) {
+    return module.lessons;
+  }
+
+  for (const chapter of module.chapters) {
+    const chapterLessonIndex = (chapter.lessons || []).findIndex((lesson) => lesson.id === lessonId);
+    if (chapterLessonIndex >= 0) {
+      return chapter.lessons;
+    }
+  }
+
+  throw new ApiError(404, 'Lesson not found', { code: 'LESSON_NOT_FOUND' });
+};
+
+const attachLessonCbt = asyncHandler(async (req, res) => {
+  const courseId = requireString(req.params.courseId, 'course id');
+  const moduleId = requireString(req.params.moduleId, 'module id');
+  const lessonId = requireString(req.params.lessonId, 'lesson id');
+  const title = requireString(req.body?.title, 'CBT title', { maxLength: 160 });
+  const durationMinutes = optionalNumber(req.body?.durationMinutes, 30, { min: 1, max: 5000, integer: true });
+  const negativeMarking = optionalNumber(req.body?.negativeMarking, 0, { min: 0, max: 10 });
+  const chapterId = optionalString(req.body?.chapterId, '', { maxLength: 120 });
+  const questions = Array.isArray(req.body?.questions) ? req.body.questions : [];
+
+  if (questions.length === 0) {
+    throw new ApiError(400, 'CBT questions are required', { code: 'CBT_QUESTIONS_REQUIRED' });
+  }
+
+  const normalizedQuestions = questions.map((question, index) => {
+    const questionText = requireString(question?.questionText, `question ${index + 1}`, { maxLength: 3000 });
+    const options = Array.isArray(question?.options)
+      ? question.options.map((option) => String(option || '').trim()).filter(Boolean)
+      : [];
+    if (options.length < 2) {
+      throw new ApiError(400, `Question ${index + 1} needs at least two options`, { code: 'CBT_OPTIONS_REQUIRED' });
+    }
+
+    return {
+      id: String(question?.id || `cbt_${Date.now()}_${index + 1}`),
+      questionText,
+      options,
+      correctOption: Number.isFinite(Number(question?.correctOption)) ? Number(question.correctOption) : 0,
+      explanation: optionalString(question?.explanation, '', { maxLength: 3000 }),
+      marks: Number(question?.marks || 1),
+      topic: optionalString(question?.topic, title, { maxLength: 160 }),
+    };
+  });
+
+  const course = await loadCourseOrThrow(courseId);
+  const module = loadModuleOrThrow(course, moduleId);
+  const lessons = findLessonContainerOrThrow(module, lessonId, chapterId);
+  const lesson = lessons.find((entry) => entry.id === lessonId);
+  if (!lesson) {
+    throw new ApiError(404, 'Lesson not found', { code: 'LESSON_NOT_FOUND' });
+  }
+
+  lesson.cbt = {
+    title,
+    durationMinutes,
+    negativeMarking,
+    questions: normalizedQuestions,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user?.id || 'admin',
+  };
+  course.updated_at = new Date().toISOString();
+  const updatedCourse = await coursesRepository.updateCourseModule(courseId, course);
+
+  return ok(res, {
+    message: 'Lesson CBT attached successfully',
+    lesson,
+    course: updatedCourse,
+  });
+});
+
+const deleteLessonCbt = asyncHandler(async (req, res) => {
+  const courseId = requireString(req.params.courseId, 'course id');
+  const moduleId = requireString(req.params.moduleId, 'module id');
+  const lessonId = requireString(req.params.lessonId, 'lesson id');
+  const chapterId = optionalString(req.body?.chapterId, '', { maxLength: 120 });
+
+  const course = await loadCourseOrThrow(courseId);
+  const module = loadModuleOrThrow(course, moduleId);
+  const lessons = findLessonContainerOrThrow(module, lessonId, chapterId);
+  const lesson = lessons.find((entry) => entry.id === lessonId);
+  if (!lesson) {
+    throw new ApiError(404, 'Lesson not found', { code: 'LESSON_NOT_FOUND' });
+  }
+
+  lesson.cbt = null;
+  course.updated_at = new Date().toISOString();
+  const updatedCourse = await coursesRepository.updateCourseModule(courseId, course);
+
+  return ok(res, {
+    message: 'Lesson CBT deleted successfully',
+    lesson,
+    course: updatedCourse,
+  });
+});
+
 const updateCourse = asyncHandler(async (req, res) => {
   const id = requireString(req.params.id, 'course id');
   const course = await loadCourseOrThrow(id);
@@ -344,4 +456,6 @@ module.exports = {
   deleteModule,
   getCourseDetails,
   listCoursesAdmin,
+  attachLessonCbt,
+  deleteLessonCbt,
 };

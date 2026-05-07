@@ -17,7 +17,7 @@ const apiOrigin = (() => {
 const desktopViewport = { width: 1536, height: 1024 };
 const mobileViewport = { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 };
 
-const loginAndSeedStorage = async (page: puppeteer.Page, email: string, password: string) => {
+const loginAndStoreSession = async (page: puppeteer.Page, email: string, password: string) => {
   const response = await fetch(new URL('/backend/api/auth/login', apiOrigin), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -181,7 +181,7 @@ const ensureChecked = async (page: puppeteer.Page, selector: string) => {
 
 const goToBaseAndLogin = async (page: puppeteer.Page) => {
   await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await loginAndSeedStorage(page, process.env.QA_LOGIN_EMAIL || config.loginEmail, process.env.QA_LOGIN_PASSWORD || config.loginPassword);
+  await loginAndStoreSession(page, process.env.QA_LOGIN_EMAIL || config.loginEmail, process.env.QA_LOGIN_PASSWORD || config.loginPassword);
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForSelector(selectors.shellReady, { timeout: 30000 });
 };

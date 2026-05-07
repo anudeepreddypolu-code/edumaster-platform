@@ -17,6 +17,20 @@ const { paymentRepository, platformRepository, coursesRepository } = require("./
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+const PHONEPE_CLIENT_ID = process.env.PHONEPE_CLIENT_ID || "";
+const PHONEPE_CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || "";
+const PHONEPE_CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || "1";
+const PHONEPE_ENV = (process.env.PHONEPE_ENV || "sandbox").toLowerCase();
+const PHONEPE_API_BASE_URL = (
+  process.env.PHONEPE_API_BASE_URL
+  || (PHONEPE_ENV === "production" ? "https://api.phonepe.com/apis/pg" : "https://api-preprod.phonepe.com/apis/pg-sandbox")
+).replace(/\/+$/, "");
+const PHONEPE_AUTH_BASE_URL = (
+  process.env.PHONEPE_AUTH_BASE_URL
+  || (PHONEPE_ENV === "production" ? "https://api.phonepe.com/apis/identity-manager" : "https://api-preprod.phonepe.com/apis/pg-sandbox")
+).replace(/\/+$/, "");
+const phonePeConfigured = Boolean(PHONEPE_CLIENT_ID && PHONEPE_CLIENT_SECRET && PHONEPE_CLIENT_VERSION);
+let phonePeTokenCache: { accessToken: string; expiresAtMs: number } | null = null;
 
 const buildMediaPermissionsPolicy = () => {
   const allowedOrigins = [`https://${appConfig.jitsiMeetDomain}`];
@@ -84,6 +98,98 @@ const requirePositiveNumber = (value: unknown, fieldName: string) => {
   return parsed;
 };
 
+const parsePhonePePayload = async (response: Response) => {
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+};
+
+const getPhonePeAccessToken = async () => {
+  if (!phonePeConfigured) {
+    throw new RootApiError(503, "PhonePe is not configured on this environment.");
+  }
+
+  const now = Date.now();
+  if (phonePeTokenCache && phonePeTokenCache.expiresAtMs > now + 60_000) {
+    return phonePeTokenCache.accessToken;
+  }
+
+  const body = new URLSearchParams({
+    client_id: PHONEPE_CLIENT_ID,
+    client_version: PHONEPE_CLIENT_VERSION,
+    client_secret: PHONEPE_CLIENT_SECRET,
+    grant_type: "client_credentials",
+  });
+
+  const response = await fetch(`${PHONEPE_AUTH_BASE_URL}/v1/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const payload: any = await parsePhonePePayload(response);
+
+  if (!response.ok || !payload.access_token) {
+    throw new RootApiError(response.status || 502, payload.message || "Unable to authenticate with PhonePe.");
+  }
+
+  const expiresAt = Number(payload.expires_at || payload.expiresAt || 0);
+  const expiresAtMs = Number.isFinite(expiresAt) && expiresAt > 0
+    ? expiresAt > 10_000_000_000
+      ? expiresAt
+      : expiresAt > Math.floor(now / 1000)
+        ? expiresAt * 1000
+        : now + expiresAt * 1000
+    : now + 10 * 60 * 1000;
+
+  phonePeTokenCache = {
+    accessToken: payload.access_token,
+    expiresAtMs,
+  };
+  return phonePeTokenCache.accessToken;
+};
+
+const callPhonePe = async (path: string, options: RequestInit = {}) => {
+  const accessToken = await getPhonePeAccessToken();
+  const response = await fetch(`${PHONEPE_API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `O-Bearer ${accessToken}`,
+      ...(options.headers || {}),
+    },
+  });
+  const payload: any = await parsePhonePePayload(response);
+
+  if (!response.ok) {
+    throw new RootApiError(response.status || 502, payload.message || "PhonePe request failed.");
+  }
+
+  return payload;
+};
+
+const createPhonePeOrderId = (paymentId: string, courseId: string) => {
+  const safePaymentId = String(paymentId).replace(/[^a-zA-Z0-9_-]/g, "-");
+  const safeCourseId = String(courseId).replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `EDU-${safeCourseId.slice(0, 20)}-${safePaymentId}-${Date.now()}`;
+};
+
+const getPhonePeRedirectUrl = (payload: any) =>
+  payload?.redirectUrl
+  || payload?.data?.redirectUrl
+  || payload?.data?.instrumentResponse?.redirectInfo?.url
+  || payload?.instrumentResponse?.redirectInfo?.url
+  || "";
+
+const getPhonePeState = (payload: any) =>
+  String(payload?.state || payload?.data?.state || payload?.code || "").toUpperCase();
+
 const sendRootError = (res: express.Response, error: unknown) => {
   const status = error instanceof RootApiError ? error.status : 500;
   const message = error instanceof Error ? error.message : "Internal server error";
@@ -147,6 +253,111 @@ async function startServer() {
     return baseUrl;
   };
 
+  app.post("/api/phonepe/course-checkout", requireAuth, async (req: any, res) => {
+    try {
+      const courseId = requireString(req.body?.courseId, "courseId");
+      const origin = typeof req.body?.origin === "string" ? req.body.origin : undefined;
+      const course = await coursesRepository.findById(courseId);
+
+      if (!course) {
+        throw new RootApiError(404, "Course not found.");
+      }
+
+      const price = requirePositiveNumber(course.price, "price");
+      const courseTitle = requireString(course.title, "courseTitle");
+      const userId = req.user?.id;
+      const payment = await paymentRepository.createCheckout({
+        userId,
+        amount: price,
+        currency: "INR",
+        item: courseTitle,
+      });
+      const orderId = createPhonePeOrderId(payment._id, courseId);
+      const baseUrl = resolveBaseUrl(origin);
+      const redirectUrl = `${baseUrl}/phonepe-payment-return?order_id=${encodeURIComponent(orderId)}&course_id=${encodeURIComponent(courseId)}&payment_id=${encodeURIComponent(payment._id)}`;
+
+      const phonePePayment = await callPhonePe("/checkout/v2/pay", {
+        method: "POST",
+        body: JSON.stringify({
+          merchantOrderId: orderId,
+          amount: Math.round(price * 100),
+          expireAfter: 1200,
+          metaInfo: {
+            udf1: payment._id,
+            udf2: courseId,
+            udf3: userId,
+            udf4: "course",
+            udf5: "edumaster",
+          },
+          paymentFlow: {
+            type: "PG_CHECKOUT",
+            message: `Enrollment for ${courseTitle}`,
+            merchantUrls: {
+              redirectUrl,
+            },
+          },
+        }),
+      });
+
+      const url = getPhonePeRedirectUrl(phonePePayment);
+      if (!url) {
+        throw new RootApiError(502, "PhonePe did not return a checkout URL.");
+      }
+
+      return res.json({ url, orderId, paymentId: payment._id, provider: "phonepe" });
+    } catch (error) {
+      return sendRootError(res, error);
+    }
+  });
+
+  app.post("/api/phonepe/confirm-course-payment", requireAuth, async (req: any, res) => {
+    try {
+      const orderId = requireString(req.body?.orderId, "orderId");
+      const courseId = requireString(req.body?.courseId, "courseId");
+      const paymentId = requireString(req.body?.paymentId, "paymentId");
+      const safeCourseId = String(courseId).replace(/[^a-zA-Z0-9_-]/g, "-");
+      const safePaymentId = String(paymentId).replace(/[^a-zA-Z0-9_-]/g, "-");
+      if (!orderId.includes(safeCourseId.slice(0, 20)) || !orderId.includes(safePaymentId)) {
+        throw new RootApiError(403, "PhonePe order does not belong to this course payment.");
+      }
+
+      const status = await callPhonePe(`/checkout/v2/order/${encodeURIComponent(orderId)}/status`, {
+        method: "GET",
+      });
+      const state = getPhonePeState(status);
+
+      if (!["COMPLETED", "SUCCESS", "PAYMENT_SUCCESS"].includes(state)) {
+        throw new RootApiError(409, `PhonePe payment is ${state || "not completed"}.`);
+      }
+
+      await paymentRepository.handleWebhook({
+        event: "payment.completed",
+        paymentId,
+        status: "paid",
+        provider: "phonepe",
+        orderId,
+        gatewayState: state,
+      });
+
+      const enrollment = await platformRepository.enroll({
+        userId: req.user.id,
+        courseId,
+        source: "phonepe",
+        accessType: "course",
+      });
+
+      return res.json({
+        status: "paid",
+        enrollment,
+        courseId,
+        paymentId,
+        orderId,
+      });
+    } catch (error) {
+      return sendRootError(res, error);
+    }
+  });
+
   app.post("/api/stripe/course-checkout", requireAuth, async (req: any, res) => {
     try {
       if (!stripe) {
@@ -198,7 +409,7 @@ async function startServer() {
         },
       });
 
-      return res.json({ url: session.url, sessionId: session.id, paymentId: payment._id });
+      return res.json({ url: session.url, sessionId: session.id, paymentId: payment._id, provider: "stripe" });
     } catch (error) {
       return sendRootError(res, error);
     }
@@ -441,6 +652,45 @@ async function startServer() {
               sessionId: '${sessionId}',
               paymentId: '${req.query.payment_id || ""}'
             }, '*');
+          }
+        </script>
+      </body>
+      </html>
+    `);
+  });
+
+  app.get("/phonepe-payment-return", (req, res) => {
+    const payload = {
+      type: "PHONEPE_PAYMENT_RETURN",
+      courseId: String(req.query.course_id || ""),
+      orderId: String(req.query.order_id || ""),
+      paymentId: String(req.query.payment_id || ""),
+    };
+
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Confirming Payment | EduMaster</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f3f7ff; color: #111827; }
+          .card { width: min(90%, 440px); border-radius: 1.25rem; background: white; padding: 2rem; text-align: center; box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12); }
+          h1 { margin: 0 0 0.75rem; font-size: 1.6rem; }
+          p { margin: 0 0 1.5rem; color: #52627a; line-height: 1.55; }
+          .btn { border: 0; border-radius: 0.75rem; background: #2563eb; color: white; cursor: pointer; font-weight: 700; padding: 0.85rem 1.5rem; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>Confirming Payment</h1>
+          <p>We are checking PhonePe before activating your course. You can return to the EduMaster app now.</p>
+          <button onclick="window.close()" class="btn">Close This Tab</button>
+        </div>
+        <script>
+          if (window.opener) {
+            window.opener.postMessage(${JSON.stringify(payload)}, '*');
           }
         </script>
       </body>

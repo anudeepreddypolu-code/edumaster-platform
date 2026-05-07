@@ -10,7 +10,12 @@
     "dev:local": "npm run dev",
     "start": "NODE_ENV=production tsx server.ts",
     "build": "vite build",
+    "build:mobile:web": "vite build --mode production",
     "build:firebase": "vite build",
+    "mobile:sync": "npm run build:mobile:web && ./node_modules/.bin/cap sync",
+    "mobile:android": "npm run mobile:sync && ./node_modules/.bin/cap open android",
+    "mobile:ios": "npm run mobile:sync && ./node_modules/.bin/cap open ios",
+    "mobile:apk": "npm run mobile:sync && ./android/gradlew assembleDebug",
     "deploy:firebase": "./deploy-quick.sh",
     "track:worker": "node backend/workers/watch-aggregator.cjs",
     "preview": "vite preview",
@@ -19,6 +24,10 @@
     "validate:production": "node scripts/validate-production-config.cjs"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/ios": "^6.2.1",
     "@google/genai": "^1.29.0",
     "@stripe/react-stripe-js": "^6.0.0",
     "@stripe/stripe-js": "^9.0.0",

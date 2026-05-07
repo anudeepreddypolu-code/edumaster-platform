@@ -1,0 +1,18 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-18-30-406Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-18-30-406Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-05-06T12:18:37.998Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    }
+  ],
+  "failures": [],
+  "error": "Live class did not appear after create submit. waitForFunction failed: frame got detached. Visible text: "
+}

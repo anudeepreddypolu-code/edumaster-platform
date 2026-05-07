@@ -20,6 +20,12 @@ export interface CourseLesson {
   title: string;
   type: 'youtube' | 'premium' | 'pdf' | 'video' | 'private-video' | string;
   durationMinutes: number;
+  cbt?: {
+    title?: string;
+    durationMinutes?: number;
+    negativeMarking?: number;
+    questions: MockQuestion[];
+  } | null;
   videoUrl?: string;
   notesUrl?: string;
   premium?: boolean;

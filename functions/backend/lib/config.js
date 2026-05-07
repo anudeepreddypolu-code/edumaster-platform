@@ -47,7 +47,7 @@ const appConfig = {
   rateLimitWindowMs: toNumber(process.env.RATE_LIMIT_WINDOW_MS, 60_000),
   rateLimitMax: toNumber(process.env.RATE_LIMIT_MAX, 300),
   jwtSecret: process.env.JWT_SECRET || DEFAULT_JWT_SECRET,
-  adminName: process.env.ADMIN_NAME || 'Demo Admin',
+  adminName: process.env.ADMIN_NAME || 'Platform Admin',
   adminEmail: process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL,
   adminPassword: process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD,
   mongoUri: process.env.MONGODB_URI || '',
@@ -71,8 +71,6 @@ const appConfig = {
   aiBaseUrl: process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash-lite',
-  autoSeedDemoData: toBool(process.env.AUTO_SEED_DEMO_DATA, false),
-  enableDevSeedRoutes: toBool(process.env.ENABLE_DEV_SEED_ROUTES, false),
   allowMemoryFallback: toBool(
     process.env.ALLOW_MEMORY_FALLBACK,
     !(process.env.MONGODB_URI || process.env.POSTGRES_URL),
@@ -142,8 +140,6 @@ const getConfigSummary = () => ({
   hasMongo: Boolean(appConfig.mongoUri),
   hasPostgres: Boolean(appConfig.postgresUrl),
   hasFirebaseStateStorage: appConfig.firebaseStateStorage,
-  autoSeedDemoData: appConfig.autoSeedDemoData,
-  enableDevSeedRoutes: appConfig.enableDevSeedRoutes,
   allowMemoryFallback: appConfig.allowMemoryFallback,
   hasRedis: Boolean(appConfig.redisUrl),
   hasStripe: Boolean(appConfig.stripeSecretKey && appConfig.stripePublishableKey),
@@ -183,14 +179,6 @@ const getProductionConfigDiagnostics = () => {
 
   if (isProduction && appConfig.allowMemoryFallback) {
     errors.push('ALLOW_MEMORY_FALLBACK must be disabled in production.');
-  }
-
-  if (isProduction && appConfig.autoSeedDemoData) {
-    errors.push('AUTO_SEED_DEMO_DATA must be disabled in production.');
-  }
-
-  if (isProduction && appConfig.enableDevSeedRoutes) {
-    errors.push('ENABLE_DEV_SEED_ROUTES must be disabled in production.');
   }
 
   if (isProduction && appConfig.exposeSampleCredentials) {

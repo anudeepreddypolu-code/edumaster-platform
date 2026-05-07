@@ -8,13 +8,20 @@ import { CaptureRecord, FailureRecord } from './types.js';
 const chromeExecutable = process.env.QA_CHROME_EXECUTABLE || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const adminEmail = process.env.QA_ADMIN_EMAIL || 'admin@local.edumaster';
 const adminPassword = process.env.QA_ADMIN_PASSWORD || 'AdminChangeMe_2026';
-const studentEmail = process.env.QA_LOGIN_EMAIL || config.loginEmail;
-const studentPassword = process.env.QA_LOGIN_PASSWORD || config.loginPassword;
+const studentEmail = process.env.QA_LOGIN_EMAIL || config.loginEmail || `qa.live.student+${Date.now()}@local.test`;
+const studentPassword = process.env.QA_LOGIN_PASSWORD || config.loginPassword || 'Student@12345';
 const chromeUserDataDir = process.env.QA_CHROME_USER_DATA_DIR || path.join('/tmp', `edumaster-live-qa-chrome-${Date.now()}`);
 
 const desktopViewport = { width: 1536, height: 1024, deviceScaleFactor: 1 };
 const tabletViewport = { width: 1024, height: 1366, deviceScaleFactor: 1 };
 const mobileViewport = { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
+const apiOrigin = (() => {
+  const url = new URL(config.baseUrl);
+  if (url.hostname === '10.0.2.2') {
+    url.hostname = '127.0.0.1';
+  }
+  return url.origin;
+})();
 
 const timestampSuffix = () => new Date().toISOString().replace(/[:.]/g, '-');
 
@@ -23,10 +30,11 @@ const takeScreenshot = async (
   ctx: Awaited<ReturnType<typeof createRunContext>>,
   stepId: string,
   label: string,
+  options: { fullPage?: boolean } = {},
 ) => {
   const screenshotPath = artifactPath(ctx.screenshotDir, stepId, label, 'png');
   const sourcePath = artifactPath(ctx.sourceDir, stepId, label, 'html');
-  await page.screenshot({ path: screenshotPath, fullPage: true });
+  await page.screenshot({ path: screenshotPath, fullPage: options.fullPage ?? true });
   await fs.writeFile(sourcePath, await page.content(), 'utf8');
   return { screenshotPath, sourcePath };
 };
@@ -38,8 +46,9 @@ const recordCapture = async (
   stepId: string,
   label: string,
   notes: string[] = [],
+  options: { fullPage?: boolean } = {},
 ) => {
-  const { screenshotPath, sourcePath } = await takeScreenshot(page, ctx, stepId, label);
+  const { screenshotPath, sourcePath } = await takeScreenshot(page, ctx, stepId, label, options);
   captures.push({
     stepId,
     label,
@@ -169,6 +178,45 @@ const clickByText = async (page: puppeteer.Page, text: string) => {
   }
 };
 
+const clickVisibleMatchingSelector = async (page: puppeteer.Page, selector: string) => {
+  const clicked = await page.evaluate((targetSelector) => {
+    const node = Array.from(document.querySelectorAll(targetSelector))
+      .find((candidate) => (candidate as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
+    node?.click();
+    return Boolean(node);
+  }, selector).catch(() => false);
+
+  if (!clicked) {
+    throw new Error(`Unable to click visible selector: ${selector}`);
+  }
+};
+
+const handleSessionConflictIfPresent = async (page: puppeteer.Page) => {
+  try {
+    await page.waitForFunction(
+      () => {
+        const bodyText = document.body?.innerText || '';
+        return bodyText.includes('Log out older device and continue')
+          || bodyText.includes('Log Out 1 Device to Continue')
+          || bodyText.includes('Device Limit Reached');
+      },
+      { timeout: 5000 },
+    );
+  } catch {
+    return;
+  }
+
+  const options = ['Log out older device and continue', 'Log Out 1 Device to Continue', 'Log Out'];
+  for (const option of options) {
+    try {
+      await clickByText(page, option);
+      return;
+    } catch {
+      // Try the next visible label.
+    }
+  }
+};
+
 const type = async (page: puppeteer.Page, selector: string, value: string) => {
   await waitForSelector(page, selector);
   await page.locator(selector).fill(value);
@@ -198,27 +246,107 @@ const setInputValue = async (page: puppeteer.Page, selector: string, value: stri
   }
 };
 
+const loginAndStoreSession = async (
+  page: puppeteer.Page,
+  email: string,
+  password: string,
+  device: string,
+) => {
+  const response = await fetch(new URL('/backend/api/auth/login', apiOrigin), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      password,
+      device,
+      forceLogoutOtherSessions: true,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.token) {
+    throw new Error(payload?.error || payload?.message || `Unable to login as ${email}`);
+  }
+
+  await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.evaluate((token) => {
+    window.localStorage.setItem('edumaster.jwt', token);
+  }, payload.token as string);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+};
+
 const loginThroughUi = async (
   page: puppeteer.Page,
   email: string,
   password: string,
   roleLabel: 'admin' | 'student',
 ) => {
+  if (roleLabel === 'admin' || process.env.QA_LOGIN_EMAIL || config.loginEmail) {
+    await loginAndStoreSession(
+      page,
+      email,
+      password,
+      roleLabel === 'admin' ? 'QA Live Admin Review' : 'QA Live Student Review',
+    );
+    try {
+      await page.waitForFunction(
+        () => Boolean(document.querySelector('[data-testid="nav-live"]'))
+          || Boolean(document.querySelector('[data-testid="mobile-nav-live"]'))
+          || (document.body?.innerText || '').includes('Live Classes'),
+        { timeout: 45000 },
+      );
+      return;
+    } catch (error) {
+      const bodyText = await page.evaluate(() => (document.body?.innerText || '').trim());
+      throw new Error(`Login shell did not load for ${roleLabel}. Visible text: ${bodyText.slice(0, 1200)}`);
+    }
+  }
+
   await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  try {
+    await waitForText(page, 'Logged Out Successfully', 5000);
+    await clickByText(page, 'Continue to Login');
+  } catch {
+    // No takeover success screen in front of the auth form.
+  }
+
   await waitForSelector(page, '[data-testid="auth-login-email"]', 30000);
+
+  if (roleLabel === 'admin') {
+    const usedShortcut = await page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll('button')).find((node) =>
+        (node.textContent || '').includes('Use admin login'),
+      ) as HTMLButtonElement | undefined;
+      button?.click();
+      return Boolean(button);
+    }).catch(() => false);
+
+    if (usedShortcut) {
+      await sleep(300);
+    }
+  }
+
+  if (roleLabel === 'student' && !config.loginEmail && !process.env.QA_LOGIN_EMAIL) {
+    await page.evaluate(() => {
+      const registerButton = Array.from(document.querySelectorAll('button'))
+        .find((node) => (node.textContent || '').includes('Create account')) as HTMLButtonElement | undefined;
+      registerButton?.click();
+    });
+    await waitForSelector(page, '[data-testid="auth-register-name"]', 30000);
+    await page.locator('[data-testid="auth-register-name"]').fill('QA Live Student');
+    await page.locator('[data-testid="auth-register-email"]').fill(email);
+    await page.locator('[data-testid="auth-register-password"]').fill(password);
+    await page.locator('[data-testid="auth-register-submit"]').click();
+    await page.waitForFunction(
+      () => Boolean(document.querySelector('[data-testid="mobile-nav-live"]') || document.querySelector('[data-testid="nav-live"]')),
+      { timeout: 45000 },
+    );
+    return;
+  }
   await type(page, '[data-testid="auth-login-email"]', email);
   await type(page, '[data-testid="auth-login-password"]', password);
   await click(page, '[data-testid="auth-login-submit"]');
-
-  try {
-    await page.waitForFunction(
-      () => (document.body?.innerText || '').includes('Log out older device and continue'),
-      { timeout: 4000 },
-    );
-    await clickByText(page, 'Log out older device and continue');
-  } catch {
-    // No session conflict modal.
-  }
+  await handleSessionConflictIfPresent(page);
 
   try {
     await page.waitForFunction(
@@ -444,23 +572,52 @@ const createLiveClass = async (page: puppeteer.Page, title: string) => {
 
     await waitForSelector(page, '[data-testid="live-create-form"]', 20000);
     await setInputValue(page, '[data-testid="live-create-title"]', title);
+    await setInputValue(page, '[data-testid="live-create-subject"]', 'Physics');
     await setInputValue(page, '[data-testid="live-create-instructor"]', 'QA Live Teacher');
-    const localDateTime = new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16);
-    await setInputValue(page, '[data-testid="live-create-start-time"]', localDateTime);
+    await click(page, '[data-testid="live-create-next"]');
+    const scheduled = new Date(Date.now() + 5 * 60 * 1000);
+    const localDateTime = new Date(scheduled.getTime() - scheduled.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    await page.evaluate((value) => {
+      const input = document.querySelector('[data-testid="live-create-start-datetime"]') as HTMLInputElement | null;
+      if (!input) {
+        return false;
+      }
+      const prototype = Object.getPrototypeOf(input);
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+      descriptor?.set?.call(input, String(value));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }, localDateTime);
     await setInputValue(page, '[data-testid="live-create-duration"]', '90');
-    await setInputValue(page, '[data-testid="live-create-topics"]', 'Physics, Class 12, Automation');
+    await click(page, '[data-testid="live-create-next"]');
+    await click(page, '[data-testid="live-create-next"]');
+    await click(page, '[data-testid="live-create-next"]');
     await click(page, '[data-testid="live-create-submit"]');
 
-    await page.waitForFunction(
-      () => {
-        const detailVisible = Boolean(document.querySelector('[data-testid="live-class-detail-page"]'));
-        const listVisible = Boolean(document.querySelector('[data-testid="live-classes-page"]'));
-        const createFormVisible = Boolean(document.querySelector('[data-testid="live-create-form"]'));
-        const createButtonBusy = Boolean((document.querySelector('[data-testid="live-create-submit"]') as HTMLButtonElement | null)?.disabled);
-        return (detailVisible || listVisible) && !createFormVisible && !createButtonBusy;
-      },
-      { timeout: 60000 },
-    );
+    const submitDeadline = Date.now() + 60000;
+    while (Date.now() < submitDeadline) {
+      try {
+        const settled = await page.evaluate((expectedTitle) => {
+          const detailVisible = Boolean(document.querySelector('[data-testid="live-class-detail-page"]'));
+          const listVisible = Boolean(document.querySelector('[data-testid="live-classes-page"]'));
+          const createFormVisible = Boolean(document.querySelector('[data-testid="live-create-form"]'));
+          const createButtonBusy = Boolean((document.querySelector('[data-testid="live-create-submit"]') as HTMLButtonElement | null)?.disabled);
+          const bodyText = document.body?.innerText || '';
+          const titleVisible = bodyText.includes(String(expectedTitle));
+          return ((detailVisible || listVisible || titleVisible) && !createFormVisible && !createButtonBusy)
+            || bodyText.includes('Live class created')
+            || bodyText.includes('Live class updated');
+        }, title).catch(() => false);
+
+        if (settled) {
+          break;
+        }
+      } catch {
+        // Ignore transient frame churn after submit and try again.
+      }
+      await sleep(800);
+    }
 
     const detailId = await page.evaluate(() => (
       document.querySelector('[data-testid="live-class-detail-page"]')?.getAttribute('data-live-class-id')
@@ -481,6 +638,130 @@ const createLiveClass = async (page: puppeteer.Page, title: string) => {
   } catch (error) {
     const bodyText = await page.evaluate(() => (document.body?.innerText || '').trim()).catch(() => '');
     throw new Error(`Live class did not appear after create submit. ${error instanceof Error ? error.message : String(error)} Visible text: ${bodyText.slice(0, 1200)}`);
+  }
+};
+
+const captureMobileCreateFlow = async (
+  page: puppeteer.Page,
+  ctx: Awaited<ReturnType<typeof createRunContext>>,
+  captures: CaptureRecord[],
+  title: string,
+) => {
+  const originalViewport = page.viewport();
+  await page.setViewport(mobileViewport);
+  await sleep(700);
+  await ensureLiveListPage(page);
+  await recordCapture(page, ctx, captures, 'live-list-mobile-admin', 'live-list-mobile-admin', [
+    'Admin mobile live list baseline before opening create flow.',
+  ], { fullPage: false });
+
+  const openCreate = async () => {
+    const clicked = await page.evaluate(() => {
+      const button = (
+        document.querySelector('[data-testid="live-create-toggle-mobile"]')
+        || document.querySelector('[data-testid="live-create-toggle"]')
+      ) as HTMLButtonElement | null;
+      button?.click();
+      return Boolean(button);
+    }).catch(() => false);
+
+    if (!clicked) {
+      throw new Error('Unable to open mobile live create flow.');
+    }
+    await waitForSelector(page, '[data-testid="live-create-form"]', 20000);
+  };
+
+  try {
+    await openCreate();
+    await setInputValue(page, '[data-testid="live-create-title"]', title);
+    await setInputValue(page, '[data-testid="live-create-subject"]', 'Physics');
+    await setInputValue(page, '[data-testid="live-create-instructor"]', 'Rahul Sharma');
+    await recordCapture(page, ctx, captures, 'live-create-mobile-step-1', 'live-create-mobile-step-1', [
+      'Mobile create flow step 1: class information.',
+    ], { fullPage: false });
+
+    await click(page, '[data-testid="live-create-next"]');
+    const scheduled = new Date(Date.now() + 5 * 60 * 1000);
+    const localDateTime = new Date(scheduled.getTime() - scheduled.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    await page.evaluate((value) => {
+      const input = document.querySelector('[data-testid="live-create-start-datetime"]') as HTMLInputElement | null;
+      if (!input) {
+        return false;
+      }
+      const prototype = Object.getPrototypeOf(input);
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+      descriptor?.set?.call(input, String(value));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }, localDateTime);
+    await setInputValue(page, '[data-testid="live-create-duration"]', '90');
+    await recordCapture(page, ctx, captures, 'live-create-mobile-step-2', 'live-create-mobile-step-2', [
+      'Mobile create flow step 2: schedule.',
+    ], { fullPage: false });
+
+    await click(page, '[data-testid="live-create-next"]');
+    await page.evaluate(() => {
+      const textareas = Array.from(document.querySelectorAll('textarea')) as HTMLTextAreaElement[];
+      if (textareas[0]) {
+        textareas[0].value = 'In this live class, we will cover the concept of electric field, flux, potential, and related numerical problems with clear explanations.';
+        textareas[0].dispatchEvent(new Event('input', { bubbles: true }));
+        textareas[0].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (textareas[1]) {
+        textareas[1].value = 'Understand electric field due to point charge and dipole\nLearn electric flux and Gauss law\nCalculate electric potential and capacitance\nSolve important numericals';
+        textareas[1].dispatchEvent(new Event('input', { bubbles: true }));
+        textareas[1].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const inputs = Array.from(document.querySelectorAll('input')) as HTMLInputElement[];
+      const roleInput = inputs.find((input) => input.placeholder === 'Physics Expert');
+      const expInput = inputs.find((input) => input.placeholder === '8+ Years');
+      if (roleInput) {
+        roleInput.value = 'Physics Expert';
+        roleInput.dispatchEvent(new Event('input', { bubbles: true }));
+        roleInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (expInput) {
+        expInput.value = '8+ Years';
+        expInput.dispatchEvent(new Event('input', { bubbles: true }));
+        expInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    await recordCapture(page, ctx, captures, 'live-create-mobile-step-3', 'live-create-mobile-step-3', [
+      'Mobile create flow step 3: class details.',
+    ], { fullPage: false });
+
+    await click(page, '[data-testid="live-create-next"]');
+    await recordCapture(page, ctx, captures, 'live-create-mobile-step-4', 'live-create-mobile-step-4', [
+      'Mobile create flow step 4: settings.',
+    ], { fullPage: false });
+
+    await click(page, '[data-testid="live-create-next"]');
+    await waitForSelector(page, '[data-testid="live-create-submit"]', 10000);
+    await recordCapture(page, ctx, captures, 'live-create-mobile-step-5', 'live-create-mobile-step-5', [
+      'Mobile create flow step 5: review and publish.',
+    ], { fullPage: false });
+
+    await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+      const cancelButton = buttons.find((button) => (button.textContent || '').trim() === 'Cancel');
+      cancelButton?.click();
+      return Boolean(cancelButton);
+    }).catch(() => false);
+    await sleep(300);
+    await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+      const backButton = buttons.find((button) =>
+        button.offsetParent !== null
+        && (button.textContent || '').trim().length === 0,
+      );
+      backButton?.click();
+      return Boolean(backButton);
+    }).catch(() => false);
+    await waitForLiveListSurface(page, 15000);
+  } finally {
+    await page.setViewport(originalViewport || desktopViewport);
+    await sleep(700);
   }
 };
 
@@ -658,7 +939,7 @@ const captureResponsiveScreens = async (
     await waitForLiveListSurface(page, 30000);
     await recordCapture(page, ctx, captures, `${stepId}-${entry.suffix}`, `${label}-${entry.suffix}`, [
       `Responsive capture at ${entry.viewport.width}x${entry.viewport.height}.`,
-    ]);
+    ], { fullPage: entry.suffix !== 'mobile' });
   }
 
   await page.setViewport(originalViewport || desktopViewport);
@@ -690,7 +971,7 @@ const captureResponsiveDetailScreens = async (
     await sleep(500);
     await recordCapture(page, ctx, captures, `${label}-${entry.suffix}`, `${label}-${entry.suffix}`, [
       `Responsive detail capture at ${entry.viewport.width}x${entry.viewport.height}.`,
-    ]);
+    ], { fullPage: entry.suffix !== 'mobile' });
   }
 
   await page.setViewport(originalViewport || desktopViewport);
@@ -812,7 +1093,7 @@ export const runLiveReview = async () => {
     const adminPage = await adminContext.newPage();
     const studentPage = await studentContext.newPage();
     await adminPage.setViewport(desktopViewport);
-    await studentPage.setViewport(desktopViewport);
+    await studentPage.setViewport(mobileViewport);
 
     [adminPage, studentPage].forEach((page, index) => {
       const label = index === 0 ? 'admin' : 'student';
@@ -837,6 +1118,7 @@ export const runLiveReview = async () => {
     console.log('Step 2: open live tab');
     await openLiveTab(adminPage);
     console.log('Step 3: create live class');
+    await captureMobileCreateFlow(adminPage, ctx, captures, classTitle);
     const createdLiveClassId = await createLiveClass(adminPage, classTitle);
     const onDetailPageAfterCreate = await adminPage.evaluate(() =>
       Boolean(document.querySelector('[data-testid="live-class-detail-page"]')),
@@ -853,7 +1135,31 @@ export const runLiveReview = async () => {
       await ensureLiveSurface(adminPage);
     }
 
-    console.log('Step 4: open detail and start class');
+    console.log('Step 4: login student');
+    await loginThroughUi(studentPage, studentEmail, studentPassword, 'student');
+    await recordCapture(studentPage, ctx, captures, 'student-login', 'student-login', ['Student login completed.']);
+
+    console.log('Step 5: student open live list and detail');
+    await openLiveTab(studentPage);
+    await recordCapture(studentPage, ctx, captures, 'student-live-list-mobile', 'student-live-list-mobile', [
+      'Student mobile live list before opening the selected class.',
+    ], { fullPage: false });
+    try {
+      await waitForLiveBadge(studentPage, classTitle);
+    } catch (error) {
+      consoleIssues.push(`student-live-badge-delay: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      await clickVisibleMatchingSelector(studentPage, '[data-testid="live-featured-card"]');
+      await waitForSelector(studentPage, '[data-testid="live-class-detail-page"]', 15000);
+    } catch {
+      await openLiveClassDetail(studentPage, classTitle);
+    }
+    await recordCapture(studentPage, ctx, captures, 'student-live-detail-mobile', 'student-live-detail-mobile', [
+      'Student mobile live class detail before joining the room.',
+    ], { fullPage: false });
+
+    console.log('Step 6: open detail and start class');
     await openLiveClassDetail(adminPage, classTitle, createdLiveClassId || undefined);
     try {
       await captureResponsiveDetailScreens(adminPage, ctx, captures, 'live-detail', classTitle, createdLiveClassId || undefined);
@@ -865,7 +1171,27 @@ export const runLiveReview = async () => {
     await adminPage.setViewport(desktopViewport);
     await sleep(700);
     await openLiveClassDetail(adminPage, classTitle, createdLiveClassId || undefined);
-    await click(adminPage, '[data-testid="live-admin-start"]');
+    await clickVisibleMatchingSelector(adminPage, '[data-testid="live-admin-start"]');
+    await adminPage.waitForFunction(
+      () => {
+        if (document.querySelector('[data-testid="live-runtime-page"]')) {
+          return 'runtime';
+        }
+        const joinButton = document.querySelector('[data-testid="live-details-join-button"]') as HTMLButtonElement | null;
+        return joinButton && !joinButton.disabled ? 'join' : false;
+      },
+      { timeout: 45000 },
+    );
+    const shouldClickJoin = await adminPage.evaluate(() => {
+      if (document.querySelector('[data-testid="live-runtime-page"]')) {
+        return false;
+      }
+      const joinButton = document.querySelector('[data-testid="live-details-join-button"]') as HTMLButtonElement | null;
+      return Boolean(joinButton && !joinButton.disabled);
+    });
+    if (shouldClickJoin) {
+      await clickVisibleMatchingSelector(adminPage, '[data-testid="live-details-join-button"]');
+    }
     await waitForRoomLoaded(adminPage);
     try {
       await waitForLiveMedia(adminPage);
@@ -884,20 +1210,21 @@ export const runLiveReview = async () => {
     const adminRoomName = await getRoomName(adminPage);
     const adminUserId = await getCurrentUserId(adminPage);
 
-    console.log('Step 5: login student');
-    await loginThroughUi(studentPage, studentEmail, studentPassword, 'student');
-    await recordCapture(studentPage, ctx, captures, 'student-login', 'student-login', ['Student login completed.']);
-
-    console.log('Step 6: student open live and join');
+    console.log('Step 7: student open live and join');
     await openLiveTab(studentPage);
     try {
       await waitForLiveBadge(studentPage, classTitle);
     } catch (error) {
       consoleIssues.push(`student-live-badge-delay: ${error instanceof Error ? error.message : String(error)}`);
     }
-    await openLiveClassDetail(studentPage, classTitle);
+    try {
+      await clickVisibleMatchingSelector(studentPage, '[data-testid="live-featured-card"]');
+      await waitForSelector(studentPage, '[data-testid="live-class-detail-page"]', 15000);
+    } catch {
+      await openLiveClassDetail(studentPage, classTitle);
+    }
     await waitForEnabledSelector(studentPage, '[data-testid="live-details-join-button"]', 45000);
-    await click(studentPage, '[data-testid="live-details-join-button"]');
+    await clickVisibleMatchingSelector(studentPage, '[data-testid="live-details-join-button"]');
     try {
       await waitForRoomLoaded(studentPage);
     } catch (error) {
@@ -930,7 +1257,7 @@ export const runLiveReview = async () => {
 
     const studentUserId = await getCurrentUserId(studentPage);
 
-    console.log('Step 7: chat sync');
+    console.log('Step 8: chat sync');
     await postChat(adminPage, 'Admin says hello from automation');
     await waitForChatMessage(studentPage, 'Admin says hello from automation');
     await postChat(studentPage, 'Student reply from automation');
@@ -938,7 +1265,7 @@ export const runLiveReview = async () => {
     await recordCapture(adminPage, ctx, captures, 'chat-interaction-admin', 'chat-interaction-admin', ['Admin view after real-time chat sync.']);
     await recordCapture(studentPage, ctx, captures, 'chat-interaction-student', 'chat-interaction-student', ['Student view after real-time chat sync.']);
 
-    console.log('Step 8: raise hand reject approve');
+    console.log('Step 9: raise hand reject approve');
     await click(studentPage, '[data-testid="live-raise-hand"]');
     await waitForParticipantState(adminPage, studentUserId, 'data-hand-status', 'pending');
     await recordCapture(adminPage, ctx, captures, 'raise-hand-flow-admin', 'raise-hand-flow-admin', ['Admin sees student raised hand.']);
@@ -955,7 +1282,7 @@ export const runLiveReview = async () => {
     await waitForSelfState(studentPage, 'data-self-can-speak', 'true');
     await recordCapture(adminPage, ctx, captures, 'admin-approve', 'admin-approve', ['Admin approved student to speak.']);
 
-    console.log('Step 9: mute and unmute');
+    console.log('Step 10: mute and unmute');
     await click(adminPage, `[data-testid="live-admin-toggle-mute-${studentUserId}"]`);
     await waitForSelfState(studentPage, 'data-self-mic-muted', 'false');
     await recordCapture(adminPage, ctx, captures, 'admin-unmute', 'admin-unmute', ['Admin unmuted student.']);
@@ -964,20 +1291,20 @@ export const runLiveReview = async () => {
     await waitForSelfState(studentPage, 'data-self-mic-muted', 'true');
     await recordCapture(adminPage, ctx, captures, 'admin-mute', 'admin-mute', ['Admin muted student again.']);
 
-    console.log('Step 10: screen share');
+    console.log('Step 11: screen share');
     await click(adminPage, '[data-testid="live-toggle-screen-share"]');
     await waitForSelfState(adminPage, 'data-screen-sharing', 'true', 45000);
     await waitForParticipantState(studentPage, adminUserId, 'data-screen-sharing', 'true', 45000);
     await recordCapture(adminPage, ctx, captures, 'screen-share-admin', 'screen-share-admin', ['Admin started screen sharing.']);
     await recordCapture(studentPage, ctx, captures, 'screen-share-student', 'screen-share-student', ['Student sees admin screen-sharing state.']);
 
-    console.log('Step 11: remove student');
+    console.log('Step 12: remove student');
     await click(adminPage, `[data-testid="live-admin-remove-${studentUserId}"]`);
     await waitForSelector(studentPage, '[data-testid="live-class-detail-page"]', 30000);
     await recordCapture(adminPage, ctx, captures, 'admin-remove-student', 'admin-remove-student', ['Admin removed student from room.']);
     await recordCapture(studentPage, ctx, captures, 'student-removed', 'student-removed', ['Student was returned out of the room after removal.']);
 
-    console.log('Step 12: end class');
+    console.log('Step 13: end class');
     await click(adminPage, '[data-testid="live-admin-end"]');
     await waitForSelector(adminPage, '[data-testid="live-class-detail-page"]', 30000);
     await waitForFunctionOnPageText(adminPage, 'ended');

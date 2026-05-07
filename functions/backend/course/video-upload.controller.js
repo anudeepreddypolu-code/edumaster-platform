@@ -147,6 +147,32 @@ const uploadVideoToModule = asyncHandler(async (req, res) => {
   });
 });
 
+const findVideoInModule = (targetModule, videoId) => {
+  const directIndex = (targetModule.lessons || []).findIndex((lesson) => lesson.id === videoId);
+  if (directIndex >= 0) {
+    return {
+      video: targetModule.lessons[directIndex],
+      lessons: targetModule.lessons,
+      index: directIndex,
+      chapter: null,
+    };
+  }
+
+  for (const chapter of targetModule.chapters || []) {
+    const chapterIndex = (chapter.lessons || []).findIndex((lesson) => lesson.id === videoId);
+    if (chapterIndex >= 0) {
+      return {
+        video: chapter.lessons[chapterIndex],
+        lessons: chapter.lessons,
+        index: chapterIndex,
+        chapter,
+      };
+    }
+  }
+
+  return null;
+};
+
 const deleteVideoFromModule = asyncHandler(async (req, res) => {
   const courseId = requireString(req.params.courseId, 'courseId');
   const moduleId = requireString(req.params.moduleId, 'moduleId');
@@ -162,19 +188,19 @@ const deleteVideoFromModule = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Module not found', { code: 'MODULE_NOT_FOUND' });
   }
 
-  const videoIndex = targetModule.lessons?.findIndex((l) => l.id === videoId);
-  if (videoIndex === -1 || videoIndex === undefined) {
+  const videoLocation = findVideoInModule(targetModule, videoId);
+  if (!videoLocation) {
     throw new ApiError(404, 'Video not found', { code: 'VIDEO_NOT_FOUND' });
   }
 
-  const video = targetModule.lessons[videoIndex];
+  const video = videoLocation.video;
   await deleteStoredPrivateVideo({
     storageProvider: video.storageProvider,
     storagePath: video.storagePath,
   });
   await deleteProcessedHlsAssets(video.hlsManifestPath);
 
-  targetModule.lessons.splice(videoIndex, 1);
+  videoLocation.lessons.splice(videoLocation.index, 1);
   await coursesRepository.updateCourseModule(courseId, course);
   return ok(res, { message: 'Video deleted successfully' });
 });
@@ -214,12 +240,15 @@ const getVideoMetadata = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Module not found', { code: 'MODULE_NOT_FOUND' });
   }
 
-  const video = targetModule.lessons?.find((l) => l.id === videoId);
-  if (!video) {
+  const videoLocation = findVideoInModule(targetModule, videoId);
+  if (!videoLocation) {
     throw new ApiError(404, 'Video not found', { code: 'VIDEO_NOT_FOUND' });
   }
 
-  return ok(res, video);
+  return ok(res, {
+    ...videoLocation.video,
+    chapterId: videoLocation.chapter?.id || videoLocation.video.chapterId || null,
+  });
 });
 
 module.exports = {

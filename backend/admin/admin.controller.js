@@ -38,15 +38,6 @@ const getAnalytics = async (req, res) => {
   }
 };
 
-const seedSampleData = async (req, res) => {
-  try {
-    const result = await adminRepository.seedSampleData();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
 const uploadQuestions = async (req, res) => {
   try {
     const result = await adminRepository.uploadQuestions(req.body || {});
@@ -64,6 +55,5 @@ module.exports = {
   getCourses,
   getTests,
   getAnalytics,
-  seedSampleData,
   uploadQuestions
 };

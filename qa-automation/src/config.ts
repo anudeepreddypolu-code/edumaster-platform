@@ -7,7 +7,7 @@ export const config: RunConfig = {
   appiumPort: Number(process.env.QA_APPIUM_PORT || 4723),
   androidDeviceName: process.env.QA_ANDROID_DEVICE || 'Android Emulator',
   browserName: process.env.QA_BROWSER_NAME || 'Chrome',
-  loginEmail: process.env.QA_LOGIN_EMAIL || 'student@edumaster.local',
+  loginEmail: process.env.QA_LOGIN_EMAIL || '',
   loginPassword: process.env.QA_LOGIN_PASSWORD || 'Student@123',
   slowThresholdMs: Number(process.env.QA_SLOW_MS || 6000),
   openAiApiKey: process.env.OPENAI_API_KEY,

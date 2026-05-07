@@ -2,7 +2,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { appConfig } = require('../lib/config.js');
-const { usersRepository, sanitizeUser, sessionRepository, adminRepository, platformRepository } = require('../lib/repositories.js');
+const { usersRepository, sanitizeUser, sessionRepository, platformRepository } = require('../lib/repositories.js');
 const { ApiError, asyncHandler, ok, created, requireString, optionalString, requireBoolean } = require('../lib/http.js');
 
 const validatePassword = (password) => {
@@ -38,7 +38,7 @@ const register = asyncHandler(async (req, res) => {
 });
 
 const login = asyncHandler(async (req, res) => {
-  await platformRepository.ensureSeeded().catch(() => undefined);
+  await platformRepository.ensureReady().catch(() => undefined);
 
   const email = requireString(req.body?.email, 'email', { maxLength: 160 }).toLowerCase();
   const password = requireString(req.body?.password, 'password', { minLength: 1, maxLength: 128 });
@@ -61,22 +61,7 @@ const login = asyncHandler(async (req, res) => {
     return user;
   };
 
-  let user;
-  try {
-    user = await authenticate();
-  } catch (error) {
-    if (
-      appConfig.nodeEnv !== 'production'
-      && error instanceof ApiError
-      && error.status === 401
-      && error.code === 'INVALID_CREDENTIALS'
-    ) {
-      await adminRepository.seedSampleData().catch(() => undefined);
-      user = await authenticate();
-    } else {
-      throw error;
-    }
-  }
+  const user = await authenticate();
 
   const userId = user._id.toString();
   const activeSessionId = await sessionRepository.getActiveSessionId(userId, user.session || null);

@@ -27,6 +27,10 @@
         "function": "api"
       },
       {
+        "source": "/phonepe-payment-return",
+        "function": "api"
+      },
+      {
         "source": "/healthz",
         "function": "api"
       },

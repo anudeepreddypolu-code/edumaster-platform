@@ -1,5 +1,6 @@
 // Test Controller
 const { testsRepository } = require('../lib/repositories.js');
+const { requireString } = require('../lib/http.js');
 
 const getTests = async (req, res) => {
   try {
@@ -36,6 +37,43 @@ const createTest = async (req, res) => {
   }
 };
 
+const updateTest = async (req, res) => {
+  try {
+    const testId = requireString(req.params.id, 'test id');
+    if (!req.body?.title) {
+      return res.status(400).json({ message: 'title is required' });
+    }
+
+    const test = await testsRepository.update(testId, {
+      ...req.body,
+      _id: testId,
+      updatedBy: req.user?.id || null,
+    });
+
+    if (!test) {
+      return res.status(404).json({ message: 'Test not found' });
+    }
+
+    return res.json(test);
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+const deleteTest = async (req, res) => {
+  try {
+    const testId = requireString(req.params.id, 'test id');
+    const deleted = await testsRepository.delete(testId);
+    if (!deleted) {
+      return res.status(404).json({ message: 'Test not found' });
+    }
+
+    return res.json({ message: 'Test deleted successfully', testId });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
 const submitTest = async (req, res) => {
   try {
     const { answers, startedAt } = req.body || {};
@@ -59,4 +97,4 @@ const submitTest = async (req, res) => {
   }
 };
 
-module.exports = { getTests, getTest, createTest, submitTest };
+module.exports = { getTests, getTest, createTest, updateTest, deleteTest, submitTest };

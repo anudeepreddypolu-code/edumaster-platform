@@ -1,5 +1,6 @@
 const { liveClassesRepository, usersRepository } = require('../lib/repositories.js');
 const path = require('path');
+const fs = require('fs');
 const {
   ApiError,
   asyncHandler,
@@ -79,6 +80,91 @@ const rewriteLiveHlsManifest = (manifestText, payload) => rewriteHlsManifestUris
   return buildLiveHlsAssetUrl(payload, resolvedAssetPath, getHlsAssetMimeType(resolvedAssetPath));
 });
 
+const sanitizeTeacherProfileInput = (value, fallbackName = 'Live Faculty') => {
+  const profile = value && typeof value === 'object' ? value : {};
+  return {
+    name: optionalString(profile.name, fallbackName, { maxLength: 120 }),
+    role: optionalString(profile.role, '', { maxLength: 120 }) || null,
+    experience: optionalString(profile.experience, '', { maxLength: 160 }) || null,
+    bio: optionalString(profile.bio, '', { maxLength: 1200 }) || null,
+    avatarUrl: optionalString(profile.avatarUrl, '', { maxLength: 2000 }) || null,
+  };
+};
+
+const isLocalLiveImageUploadPath = (value) => typeof value === 'string' && value.startsWith('/uploads/live-posters/');
+
+const removeLocalLiveImageIfManaged = (value) => {
+  if (!isLocalLiveImageUploadPath(value)) {
+    return;
+  }
+
+  try {
+    const resolvedPath = path.join(__dirname, '../../', value);
+    if (fs.existsSync(resolvedPath)) {
+      fs.unlinkSync(resolvedPath);
+    }
+  } catch (error) {
+    console.error(`Failed to remove live image asset: ${value}`, error);
+  }
+};
+
+const sanitizeResourceItemsInput = (value) => (
+  Array.isArray(value)
+    ? value
+      .map((item, index) => {
+        const entry = item && typeof item === 'object' ? item : {};
+        const title = optionalString(entry.title, '', { maxLength: 160 });
+        if (!title) {
+          return null;
+        }
+        return {
+          id: optionalString(entry.id, `resource-${index + 1}`, { maxLength: 80 }) || `resource-${index + 1}`,
+          title,
+          type: optionalString(entry.type, '', { maxLength: 40 }) || null,
+          url: optionalString(entry.url, '', { maxLength: 2000 }) || null,
+          description: optionalString(entry.description, '', { maxLength: 500 }) || null,
+          lines: Array.isArray(entry.lines)
+            ? entry.lines.map((line) => optionalString(line, '', { maxLength: 240 })).filter(Boolean)
+            : [],
+        };
+      })
+      .filter(Boolean)
+    : []
+);
+
+const sanitizeActivePollInput = (value) => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const question = optionalString(value.question, '', { maxLength: 240 });
+  const options = Array.isArray(value.options)
+    ? value.options
+      .map((option, index) => {
+        const entry = option && typeof option === 'object' ? option : {};
+        const text = optionalString(entry.text, '', { maxLength: 120 });
+        if (!text) {
+          return null;
+        }
+        return {
+          id: optionalString(entry.id, `option-${index + 1}`, { maxLength: 80 }) || `option-${index + 1}`,
+          text,
+        };
+      })
+      .filter(Boolean)
+    : [];
+
+  if (!question || options.length === 0) {
+    return null;
+  }
+
+  return {
+    question,
+    status: optionalString(value.status, 'live', { maxLength: 40 }) || 'live',
+    options,
+  };
+};
+
 const getActingUser = async (req) => {
   const user = await usersRepository.findById(req.user?.id || '');
   if (!user) {
@@ -112,6 +198,22 @@ const listAdminLiveClasses = asyncHandler(async (req, res) => {
   return ok(res, { liveClasses: liveClasses.map(buildAdminIngestDetails) });
 });
 
+const uploadLiveImageAsset = asyncHandler(async (req, res) => {
+  requireAdmin(req);
+  if (!req.file) {
+    throw new ApiError(400, 'Image file is required', { code: 'LIVE_IMAGE_REQUIRED' });
+  }
+
+  return created(res, {
+    asset: {
+      url: `/uploads/live-posters/${req.file.filename}`,
+      name: req.file.originalname || req.file.filename,
+      mimeType: req.file.mimetype || null,
+      size: Number(req.file.size || 0),
+    },
+  });
+});
+
 const createLiveClass = asyncHandler(async (req, res) => {
   requireAdmin(req);
   const title = requireString(req.body?.title, 'title', { maxLength: 160 });
@@ -121,6 +223,8 @@ const createLiveClass = asyncHandler(async (req, res) => {
   const mockTestId = optionalString(req.body?.mockTestId, '', { maxLength: 120 }) || null;
   const mockTestTitle = optionalString(req.body?.mockTestTitle, '', { maxLength: 255 }) || null;
   const courseId = optionalString(req.body?.courseId, '', { maxLength: 120 }) || null;
+  const instructor = optionalString(req.body?.instructor, 'Live Faculty', { maxLength: 120 });
+  const teacherProfile = sanitizeTeacherProfileInput(req.body?.teacherProfile, instructor);
   const linkageType = optionalString(
     req.body?.linkageType,
     mockTestId ? 'mock-test' : courseId ? 'course' : 'standalone',
@@ -144,7 +248,7 @@ const createLiveClass = asyncHandler(async (req, res) => {
     chapterTitle: optionalString(req.body?.chapterTitle, '', { maxLength: 160 }) || null,
     mockTestId,
     mockTestTitle,
-    instructor: optionalString(req.body?.instructor, 'Live Faculty', { maxLength: 120 }),
+    instructor,
     startTime,
     durationMinutes,
     provider,
@@ -156,6 +260,14 @@ const createLiveClass = asyncHandler(async (req, res) => {
     chatEnabled: req.body?.chatEnabled === undefined ? true : requireBoolean(req.body.chatEnabled, 'chatEnabled'),
     doubtSolving: req.body?.doubtSolving === undefined ? true : requireBoolean(req.body.doubtSolving, 'doubtSolving'),
     replayAvailable: req.body?.replayAvailable === undefined ? true : requireBoolean(req.body.replayAvailable, 'replayAvailable'),
+    posterUrl: optionalString(req.body?.posterUrl, '', { maxLength: 2000 }) || null,
+    description: optionalString(req.body?.description, '', { maxLength: 3000 }) || null,
+    teacherProfile,
+    sessionNotes: Array.isArray(req.body?.sessionNotes)
+      ? req.body.sessionNotes.map((item) => optionalString(item, '', { maxLength: 240 })).filter(Boolean)
+      : [],
+    resources: sanitizeResourceItemsInput(req.body?.resources),
+    activePoll: sanitizeActivePollInput(req.body?.activePoll),
     topicTags,
   });
 
@@ -182,6 +294,13 @@ const createLiveClass = asyncHandler(async (req, res) => {
 const updateLiveClass = asyncHandler(async (req, res) => {
   requireAdmin(req);
   const liveClass = await findLiveClassOrThrow(req.params.liveClassId);
+  const nextPosterUrl = req.body?.posterUrl === undefined ? liveClass.posterUrl : optionalString(req.body.posterUrl, '', { maxLength: 2000 }) || null;
+  const nextTeacherProfile = req.body?.teacherProfile === undefined
+    ? liveClass.teacherProfile
+    : sanitizeTeacherProfileInput(
+      req.body.teacherProfile,
+      req.body?.instructor === undefined ? liveClass.instructor : requireString(req.body.instructor, 'instructor', { maxLength: 120 }),
+    );
   const nextLiveClass = await liveClassesRepository.update(liveClass._id, {
     title: req.body?.title === undefined ? liveClass.title : requireString(req.body.title, 'title', { maxLength: 160 }),
     instructor: req.body?.instructor === undefined ? liveClass.instructor : requireString(req.body.instructor, 'instructor', { maxLength: 120 }),
@@ -205,14 +324,38 @@ const updateLiveClass = asyncHandler(async (req, res) => {
     replayAvailable: req.body?.replayAvailable === undefined ? liveClass.replayAvailable : requireBoolean(req.body.replayAvailable, 'replayAvailable'),
     replayCourseId: req.body?.replayCourseId === undefined ? liveClass.replayCourseId : optionalString(req.body.replayCourseId, '', { maxLength: 120 }) || null,
     replayLessonId: req.body?.replayLessonId === undefined ? liveClass.replayLessonId : optionalString(req.body.replayLessonId, '', { maxLength: 120 }) || null,
+    posterUrl: nextPosterUrl,
+    description: req.body?.description === undefined ? liveClass.description : optionalString(req.body.description, '', { maxLength: 3000 }) || null,
+    teacherProfile: nextTeacherProfile,
+    sessionNotes: Array.isArray(req.body?.sessionNotes)
+      ? req.body.sessionNotes.map((item) => optionalString(item, '', { maxLength: 240 })).filter(Boolean)
+      : liveClass.sessionNotes,
+    resources: req.body?.resources === undefined ? liveClass.resources : sanitizeResourceItemsInput(req.body.resources),
+    activePoll: req.body?.activePoll === undefined ? liveClass.activePoll : sanitizeActivePollInput(req.body.activePoll),
     topicTags: Array.isArray(req.body?.topicTags) ? req.body.topicTags.map((tag) => String(tag).trim()).filter(Boolean) : liveClass.topicTags,
   });
+
+  if (nextPosterUrl !== liveClass.posterUrl) {
+    removeLocalLiveImageIfManaged(liveClass.posterUrl);
+  }
+  if ((nextTeacherProfile?.avatarUrl || null) !== (liveClass.teacherProfile?.avatarUrl || null)) {
+    removeLocalLiveImageIfManaged(liveClass.teacherProfile?.avatarUrl || null);
+  }
 
   sessionService.ensureSession(nextLiveClass, {
     status: nextLiveClass.status,
     roomName: nextLiveClass.roomName || liveClass.roomName || null,
   });
   return ok(res, { liveClass: buildAdminIngestDetails(nextLiveClass) });
+});
+
+const deleteLiveClass = asyncHandler(async (req, res) => {
+  requireAdmin(req);
+  const liveClass = await findLiveClassOrThrow(req.params.liveClassId);
+  removeLocalLiveImageIfManaged(liveClass.posterUrl);
+  removeLocalLiveImageIfManaged(liveClass.teacherProfile?.avatarUrl || null);
+  await liveClassesRepository.delete(liveClass._id);
+  return ok(res, { message: 'Live class deleted successfully', liveClassId: liveClass._id });
 });
 
 const startLiveClass = asyncHandler(async (req, res) => {
@@ -530,8 +673,10 @@ const streamEvents = asyncHandler(async (req, res) => {
 module.exports = {
   listLiveClasses,
   listAdminLiveClasses,
+  uploadLiveImageAsset,
   createLiveClass,
   updateLiveClass,
+  deleteLiveClass,
   startLiveClass,
   endLiveClass,
   getLiveClassAccess,

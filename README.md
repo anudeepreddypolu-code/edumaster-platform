@@ -29,12 +29,12 @@ Useful endpoints:
 
 ## Production expectations
 
-This repo is now configured so production mode does **not**:
+This repo is configured for production mode with:
 
-- auto-seed demo data
-- expose sample credentials
-- enable dev seed routes
-- allow memory fallback when persistent storage is required
+- real database-backed platform data
+- configured admin credentials
+- production-only API surfaces
+- persistent storage required unless memory mode is explicitly allowed for local testing
 
 Before production deployment you must provide:
 

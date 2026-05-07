@@ -15,11 +15,7 @@
 - **Mongo mode** when `MONGODB_URI` is configured and reachable
 - **Unavailable** when persistent storage is required but missing/down
 - **Memory mode** only when explicitly allowed for non-production testing
-
-Demo seeding is no longer a default production path. It must be explicitly enabled with:
-
-- `AUTO_SEED_DEMO_DATA=true`
-- `ENABLE_DEV_SEED_ROUTES=true`
+- No bundled users, courses, tests, quizzes, enrollments, or sample activity are created by the backend
 
 ## Important routes
 
@@ -38,8 +34,8 @@ Demo seeding is no longer a default production path. It must be explicitly enabl
 ## Production hardening already added
 
 - production config validation for unsafe defaults
-- seed/demo routes disabled by default
-- sample credentials removed from frontend overview payloads
+- runtime APIs expose only production data workflows
+- frontend overview payloads are built from real platform records
 - memory fallback blocked in production-safe configs
 - deploy-time validation hook for Firebase deployment
 

@@ -17,6 +17,8 @@ const {
   deleteModule,
   getCourseDetails,
   listCoursesAdmin,
+  attachLessonCbt,
+  deleteLessonCbt,
 } = require('./course-admin.controller.js');
 const { requireAuth, attachAuthIfPresent } = require('../middleware/auth.js');
 const { requireAdmin } = require('../middleware/admin.js');
@@ -37,6 +39,8 @@ router.delete('/:courseId/modules/:moduleId', requireAuth, requireAdmin, deleteM
 router.post('/:courseId/modules/:moduleId/chapters', requireAuth, requireAdmin, addChapter);
 router.put('/:courseId/modules/:moduleId/chapters/:chapterId', requireAuth, requireAdmin, updateChapter);
 router.delete('/:courseId/modules/:moduleId/chapters/:chapterId', requireAuth, requireAdmin, deleteChapter);
+router.put('/:courseId/modules/:moduleId/lessons/:lessonId/cbt', requireAuth, requireAdmin, attachLessonCbt);
+router.delete('/:courseId/modules/:moduleId/lessons/:lessonId/cbt', requireAuth, requireAdmin, deleteLessonCbt);
 
 // Admin routes - video upload and management
 router.post('/:courseId/modules/:moduleId/videos', requireAuth, requireAdmin, upload.single('video'), uploadVideoToModule);

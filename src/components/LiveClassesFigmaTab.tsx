@@ -23,8 +23,11 @@ import {
   Send,
   Share2,
   Settings,
+  ImageIcon,
+  Loader2,
   UserRound,
   Users,
+  Upload,
   Video,
   VideoOff,
   Hand,
@@ -98,6 +101,14 @@ const getErrorMessage = (error: unknown) => (
       ? error
       : 'Unknown media error'
 );
+
+const normalizeLiveUiErrorMessage = (error: unknown, fallback: string) => {
+  const message = getErrorMessage(error);
+  if (/could not establish signal connection|failed to fetch|websocket|connection was lost|not connected/i.test(message)) {
+    return 'Live media connection was lost. Re-open the classroom if audio or video does not recover.';
+  }
+  return message || fallback;
+};
 
 const readActiveLiveRoom = () => {
   if (typeof window === 'undefined') {
@@ -208,6 +219,51 @@ const getDisplayLiveClassTitle = (liveClass: LiveClass | null) => {
     .trim();
 };
 
+const liveMetadataTagPrefixes = {
+  subject: 'subject:',
+  category: 'category:',
+  level: 'level:',
+  language: 'language:',
+  reminder: 'reminder:',
+  visibility: 'visibility:',
+  price: 'price:',
+  certificate: 'certificate:',
+} as const;
+
+const readLiveMetadataTag = (
+  liveClass: LiveClass | null,
+  key: keyof typeof liveMetadataTagPrefixes,
+) => {
+  const prefix = liveMetadataTagPrefixes[key];
+  const match = (liveClass?.topicTags || []).find((tag) => String(tag || '').toLowerCase().startsWith(prefix));
+  return match ? String(match).slice(prefix.length).trim() : '';
+};
+
+const withLiveMetadataTag = (tags: string[], key: keyof typeof liveMetadataTagPrefixes, value: string) => {
+  const prefix = liveMetadataTagPrefixes[key];
+  const sanitizedValue = String(value || '').trim();
+  const next = tags.filter((tag) => !String(tag || '').toLowerCase().startsWith(prefix));
+  if (!sanitizedValue) {
+    return next;
+  }
+  return [...next, `${prefix}${sanitizedValue}`];
+};
+
+const getLiveSubject = (liveClass: LiveClass | null) => readLiveMetadataTag(liveClass, 'subject') || getCleanLiveClassTags(liveClass)[0] || 'General';
+const getLiveCategory = (liveClass: LiveClass | null) => readLiveMetadataTag(liveClass, 'category') || '';
+const getLiveLevel = (liveClass: LiveClass | null) => readLiveMetadataTag(liveClass, 'level') || '';
+const getLiveLanguage = (liveClass: LiveClass | null) => readLiveMetadataTag(liveClass, 'language') || 'English';
+const getLiveVisibility = (liveClass: LiveClass | null) => readLiveMetadataTag(liveClass, 'visibility') || 'Immediately';
+const getLiveCertificate = (liveClass: LiveClass | null) => readLiveMetadataTag(liveClass, 'certificate') || 'No Certificate';
+const getLiveReminderLeadMinutes = (liveClass: LiveClass | null) => Number(readLiveMetadataTag(liveClass, 'reminder') || 15);
+const getLiveClassPriceLabel = (liveClass: LiveClass | null) => {
+  const rawValue = readLiveMetadataTag(liveClass, 'price');
+  if (!rawValue || rawValue === '0' || rawValue.toLowerCase() === 'free') {
+    return 'Free';
+  }
+  return rawValue.startsWith('₹') ? rawValue : `₹${rawValue}`;
+};
+
 const getCleanLiveClassTags = (liveClass: LiveClass | null) => (
   (liveClass?.topicTags || [])
     .map((tag) => String(tag || '').trim())
@@ -219,12 +275,77 @@ const getCleanLiveClassTags = (liveClass: LiveClass | null) => (
 );
 
 const getLiveClassTopicLine = (liveClass: LiveClass | null) => (
-  getCleanLiveClassTags(liveClass).slice(0, 2).join(' • ') || 'Important Concepts & PYQs'
+  [getLiveCategory(liveClass), ...getCleanLiveClassTags(liveClass).slice(0, 2)].filter(Boolean).join(' • ') || 'Important Concepts & PYQs'
 );
 
 const getPrimaryTopic = (liveClass: LiveClass | null) => (
-  getCleanLiveClassTags(liveClass)[0] || 'Physics'
+  getLiveSubject(liveClass)
 );
+
+const getLiveMetaLine = (liveClass: LiveClass | null) => {
+  const subject = getLiveSubject(liveClass);
+  const level = getLiveLevel(liveClass);
+  return [subject, level].filter(Boolean).join(' • ') || 'Live Session';
+};
+
+const getLivePreviewResource = (liveClass: LiveClass | null) => (
+  (liveClass?.resources || []).find((resource) => String(resource.type || '').toLowerCase() === 'preview-video') || null
+);
+
+const getLiveAttachmentResource = (liveClass: LiveClass | null) => (
+  (liveClass?.resources || []).find((resource) => String(resource.type || '').toLowerCase() === 'attachment') || null
+);
+
+const formatDateInputValue = (value: string) => {
+  if (!value) {
+    return '';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  const offset = parsed.getTimezoneOffset();
+  const local = new Date(parsed.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+};
+
+const formatTimeInputValue = (value: string) => {
+  if (!value) {
+    return '';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const buildDateTimeValue = (datePart: string, timePart: string) => (
+  datePart && timePart ? `${datePart}T${timePart}` : ''
+);
+
+const calculateDurationMinutes = (startDateTime: string, endTime: string, fallbackMinutes: number) => {
+  if (!startDateTime || !endTime) {
+    return fallbackMinutes;
+  }
+  const start = new Date(startDateTime);
+  if (Number.isNaN(start.getTime())) {
+    return fallbackMinutes;
+  }
+  const [endHours, endMinutes] = endTime.split(':').map((entry) => Number(entry));
+  if (!Number.isFinite(endHours) || !Number.isFinite(endMinutes)) {
+    return fallbackMinutes;
+  }
+  const end = new Date(start);
+  end.setHours(endHours, endMinutes, 0, 0);
+  if (end.getTime() <= start.getTime()) {
+    end.setDate(end.getDate() + 1);
+  }
+  const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  return Math.max(durationMinutes, 15);
+};
 
 const formatCountdown = (startTime: string) => {
   const delta = Math.max(Date.parse(startTime) - Date.now(), 0);
@@ -459,25 +580,6 @@ const normalizeLiveTeacherProfile = (liveClass: LiveClass | null): LiveTeacherPr
   avatarUrl: liveClass?.teacherProfile?.avatarUrl || null,
 });
 
-const buildLiveResourcesFromText = (value: string): LiveClassResource[] => (
-  value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => {
-      const [titlePart, typePart, urlPart, descriptionPart] = line.split('|').map((entry) => entry.trim());
-      const title = titlePart || `Resource ${index + 1}`;
-      return {
-        id: `resource-${index + 1}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-        title,
-        type: typePart || 'PDF',
-        url: urlPart || null,
-        description: descriptionPart || null,
-        lines: descriptionPart ? [descriptionPart] : [],
-      };
-    })
-);
-
 const buildLivePollFromForm = (question: string, optionsText: string): LiveClassPoll | null => {
   const normalizedQuestion = question.trim();
   const options = optionsText
@@ -494,12 +596,6 @@ const buildLivePollFromForm = (question: string, optionsText: string): LiveClass
     options,
   };
 };
-
-const formatLiveResourcesForEditor = (resources: LiveClassResource[] | undefined) => (
-  (resources || [])
-    .map((resource) => [resource.title, resource.type || 'PDF', resource.url || '', resource.description || ''].filter((entry, index, source) => index < 2 || source.slice(index).some(Boolean)).join(' | '))
-    .join('\n')
-);
 
 const isValidLiveAssetUrl = (value: string) => {
   const normalized = value.trim();
@@ -681,6 +777,28 @@ const LiveBoardArtwork = ({ dark = false }: { dark?: boolean }) => (
   </div>
 );
 
+const LivePosterEmptyState = ({ compact = false, dark = false, message = 'Upload a class poster' }: { compact?: boolean; dark?: boolean; message?: string }) => (
+  <div className={cn(
+    'flex h-full w-full flex-col items-center justify-center gap-3 rounded-[18px] border border-dashed text-center',
+    compact ? 'min-h-[140px] p-4' : 'min-h-[220px] p-6',
+    dark
+      ? 'border-white/12 bg-[linear-gradient(180deg,rgba(15,23,42,0.96)_0%,rgba(16,24,40,0.92)_100%)] text-white/78'
+      : 'border-[#d7e3fb] bg-[linear-gradient(180deg,#f8fbff_0%,#eef4ff_100%)] text-[#5e7091]',
+  )}>
+    <div className={cn(
+      'flex items-center justify-center rounded-full',
+      compact ? 'h-10 w-10' : 'h-12 w-12',
+      dark ? 'bg-white/8 text-white/82' : 'bg-white text-[#2f6fe4] shadow-[0_8px_18px_rgba(47,111,228,0.08)]',
+    )}>
+      <ImageIcon className={compact ? 'h-5 w-5' : 'h-6 w-6'} />
+    </div>
+    <div>
+      <p className={cn('font-semibold', compact ? 'text-[12px]' : 'text-[14px]')}>{message}</p>
+      <p className={cn('mt-1', compact ? 'text-[11px]' : 'text-[12px]', dark ? 'text-white/56' : 'text-[#7b88a8]')}>No image uploaded yet.</p>
+    </div>
+  </div>
+);
+
 const LiveNotesArtwork = () => (
   <div className="relative h-[128px] w-full overflow-hidden rounded-[18px] bg-[linear-gradient(180deg,#f4f7ff_0%,#eef4ff_100%)] md:h-[150px]">
     <svg viewBox="0 0 164 124" className="h-full w-full" aria-hidden="true">
@@ -768,18 +886,31 @@ const LiveRoomStageArtwork = () => (
 
 const initialCreateForm = {
   title: '',
+  subject: '',
+  category: '',
+  classLevel: '',
   instructor: '',
+  language: 'English',
   startTime: '',
   durationMinutes: 90,
-  topicTags: '',
   posterUrl: '',
+  previewVideoUrl: '',
+  attachmentTitle: '',
+  attachmentUrl: '',
   classDescription: '',
   teacherRole: '',
   teacherExperience: '',
   teacherBio: '',
   teacherAvatarUrl: '',
   sessionNotesText: '',
-  resourcesText: '',
+  reminderLeadMinutes: 15,
+  visibleToStudents: 'Immediately',
+  maxAttendees: 500,
+  priceLabel: 'Free',
+  certificateLabel: 'No Certificate',
+  allowLiveChat: true,
+  allowQa: true,
+  enableClassRecording: true,
   pollQuestion: '',
   pollOptionsText: '',
   linkageType: 'standalone' as 'standalone' | 'course' | 'mock-test',
@@ -797,6 +928,14 @@ type Props = {
   onInitialLiveClassHandled?: () => void;
 };
 
+const liveCreationSteps = [
+  { id: 'info', label: 'Class Info' },
+  { id: 'schedule', label: 'Schedule' },
+  { id: 'details', label: 'Details' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'review', label: 'Review & Publish' },
+] as const;
+
 export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, initialLiveClassId, onInitialLiveClassHandled }: Props) => {
   const { user, isAdmin } = useAuth();
   const [liveClasses, setLiveClasses] = useState<LiveClass[]>(overview.liveClasses || []);
@@ -811,6 +950,9 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   const [createOpen, setCreateOpen] = useState(false);
   const [editingLiveClassId, setEditingLiveClassId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState(initialCreateForm);
+  const [createStep, setCreateStep] = useState(0);
+  const [uploadingPoster, setUploadingPoster] = useState(false);
+  const [uploadingTeacherPhoto, setUploadingTeacherPhoto] = useState(false);
   const [localMicMuted, setLocalMicMuted] = useState(!isAdmin);
   const [localVideoEnabled, setLocalVideoEnabled] = useState(Boolean(isAdmin));
   const [localScreenSharing, setLocalScreenSharing] = useState(false);
@@ -2240,22 +2382,37 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
 
   const beginEditLiveClass = (liveClass: LiveClass) => {
     const teacherProfile = normalizeLiveTeacherProfile(liveClass);
+    const previewResource = getLivePreviewResource(liveClass);
+    const attachmentResource = getLiveAttachmentResource(liveClass);
     setUtilityPanel(null);
     setEditingLiveClassId(liveClass._id);
     setCreateForm({
-      title: liveClass.title || '',
-      instructor: liveClass.instructor || teacherProfile.name || '',
+      title: getDisplayLiveClassTitle(liveClass),
+      subject: getLiveSubject(liveClass),
+      category: getLiveCategory(liveClass),
+      classLevel: getLiveLevel(liveClass),
+      instructor: teacherProfile.name || liveClass.instructor || '',
+      language: getLiveLanguage(liveClass),
       startTime: liveClass.startTime ? new Date(liveClass.startTime).toISOString().slice(0, 16) : '',
       durationMinutes: Number(liveClass.durationMinutes || 90),
-      topicTags: (liveClass.topicTags || []).join(', '),
       posterUrl: liveClass.posterUrl || '',
+      previewVideoUrl: previewResource?.url || '',
+      attachmentTitle: attachmentResource?.title || '',
+      attachmentUrl: attachmentResource?.url || '',
       classDescription: liveClass.description || '',
       teacherRole: teacherProfile.role || '',
       teacherExperience: teacherProfile.experience || '',
       teacherBio: teacherProfile.bio || '',
       teacherAvatarUrl: teacherProfile.avatarUrl || '',
       sessionNotesText: (liveClass.sessionNotes || []).join('\n'),
-      resourcesText: formatLiveResourcesForEditor(liveClass.resources),
+      reminderLeadMinutes: getLiveReminderLeadMinutes(liveClass),
+      visibleToStudents: getLiveVisibility(liveClass),
+      maxAttendees: Number(liveClass.maxAttendees || 500),
+      priceLabel: getLiveClassPriceLabel(liveClass),
+      certificateLabel: getLiveCertificate(liveClass),
+      allowLiveChat: liveClass.chatEnabled !== false,
+      allowQa: liveClass.doubtSolving !== false,
+      enableClassRecording: liveClass.replayAvailable !== false,
       pollQuestion: liveClass.activePoll?.question || '',
       pollOptionsText: (liveClass.activePoll?.options || []).map((option) => option.text).join('\n'),
       linkageType: (liveClass.linkageType as 'standalone' | 'course' | 'mock-test') || 'standalone',
@@ -2264,6 +2421,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       chapterId: liveClass.chapterId || '',
       mockTestId: liveClass.mockTestId || '',
     });
+    setCreateStep(0);
     setCreateOpen(true);
   };
 
@@ -2271,11 +2429,46 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     setEditingLiveClassId(null);
     setCreateOpen(false);
     setCreateForm(initialCreateForm);
+    setCreateStep(0);
+  };
+
+  const handleLiveImageUpload = async (kind: 'poster' | 'teacher-avatar', file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    if (kind === 'poster') {
+      setUploadingPoster(true);
+    } else {
+      setUploadingTeacherPhoto(true);
+    }
+    setError(null);
+
+    try {
+      const response = await EduService.uploadLiveClassImage(file);
+      setCreateForm((current) => ({
+        ...current,
+        ...(kind === 'poster'
+          ? { posterUrl: response.asset.url }
+          : { teacherAvatarUrl: response.asset.url }),
+      }));
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Unable to upload image.');
+    } finally {
+      if (kind === 'poster') {
+        setUploadingPoster(false);
+      } else {
+        setUploadingTeacherPhoto(false);
+      }
+    }
   };
 
   const validateLiveClassForm = () => {
     if (!createForm.title.trim()) {
       return 'Add a live class title.';
+    }
+    if (!createForm.subject.trim()) {
+      return 'Select or enter a subject for this live class.';
     }
     if (!createForm.instructor.trim()) {
       return 'Add a teacher name for the live class.';
@@ -2291,6 +2484,12 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     }
     if (!isValidLiveAssetUrl(createForm.teacherAvatarUrl)) {
       return 'Teacher photo URL must be a valid http(s) URL or app-relative path.';
+    }
+    if (!isValidLiveAssetUrl(createForm.previewVideoUrl)) {
+      return 'Preview video URL must be a valid http(s) URL or app-relative path.';
+    }
+    if (!isValidLiveAssetUrl(createForm.attachmentUrl)) {
+      return 'Attachment URL must be a valid http(s) URL or app-relative path.';
     }
     if (createForm.pollQuestion.trim() && getPollOptionCount(createForm.pollOptionsText) < 2) {
       return 'Add at least two poll options when a poll question is provided.';
@@ -2339,6 +2538,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     }
     setEditingLiveClassId(null);
     setCreateForm(initialCreateForm);
+    setCreateStep(0);
     setCreateOpen(true);
   };
 
@@ -2356,22 +2556,43 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       const selectedModule = selectedCourse?.modules.find((module) => module.id === createForm.moduleId) || null;
       const selectedChapter = selectedModule?.chapters?.find((chapter) => chapter.id === createForm.chapterId) || null;
       const selectedMockTest = overview.testSeries.find((test) => test._id === createForm.mockTestId) || null;
-      const linkTags = [
-        createForm.linkageType === 'mock-test' && selectedMockTest ? `mock-test-id:${selectedMockTest._id}` : '',
-        createForm.linkageType === 'mock-test' && selectedMockTest ? `mock-test:${selectedMockTest.title}` : '',
-        createForm.linkageType === 'course' && selectedCourse ? `course:${selectedCourse.title}` : '',
-        createForm.linkageType === 'course' && selectedModule ? `module:${selectedModule.title}` : '',
-      ].filter(Boolean);
+      let nextTopicTags = withLiveMetadataTag([], 'subject', createForm.subject);
+      nextTopicTags = withLiveMetadataTag(nextTopicTags, 'category', createForm.category);
+      nextTopicTags = withLiveMetadataTag(nextTopicTags, 'level', createForm.classLevel);
+      nextTopicTags = withLiveMetadataTag(nextTopicTags, 'language', createForm.language);
+      nextTopicTags = withLiveMetadataTag(nextTopicTags, 'reminder', String(createForm.reminderLeadMinutes || 15));
+      nextTopicTags = withLiveMetadataTag(nextTopicTags, 'visibility', createForm.visibleToStudents);
+      nextTopicTags = withLiveMetadataTag(nextTopicTags, 'certificate', createForm.certificateLabel);
+      nextTopicTags = withLiveMetadataTag(nextTopicTags, 'price', createForm.priceLabel);
+      const nextResources: LiveClassResource[] = [
+        createForm.previewVideoUrl.trim()
+          ? {
+            id: 'preview-video',
+            title: 'Class Preview',
+            type: 'preview-video',
+            url: createForm.previewVideoUrl.trim(),
+            description: 'Preview link for the live class card and detail view.',
+            lines: [],
+          }
+          : null,
+        createForm.attachmentUrl.trim()
+          ? {
+            id: 'attachment',
+            title: createForm.attachmentTitle.trim() || 'Class Attachment',
+            type: 'attachment',
+            url: createForm.attachmentUrl.trim(),
+            description: 'Reference material for enrolled students.',
+            lines: [],
+          }
+          : null,
+      ].filter(Boolean) as LiveClassResource[];
       const payload = {
         title: createForm.title,
         instructor: createForm.instructor || user?.name || 'Live Faculty',
         startTime: createForm.startTime,
         durationMinutes: Number(createForm.durationMinutes || 90),
         linkageType: createForm.linkageType,
-        topicTags: [
-          ...createForm.topicTags.split(',').map((entry) => entry.trim()).filter(Boolean),
-          ...linkTags,
-        ],
+        topicTags: nextTopicTags,
         courseId: createForm.linkageType === 'course' ? createForm.courseId || null : selectedMockTest?.course || null,
         moduleId: createForm.linkageType === 'course' ? selectedModule?.id || null : null,
         moduleTitle: createForm.linkageType === 'course' ? selectedModule?.title || null : null,
@@ -2390,8 +2611,12 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
           avatarUrl: createForm.teacherAvatarUrl.trim() || null,
         },
         sessionNotes: createForm.sessionNotesText.split('\n').map((entry) => entry.trim()).filter(Boolean),
-        resources: buildLiveResourcesFromText(createForm.resourcesText),
+        resources: nextResources,
         activePoll: buildLivePollFromForm(createForm.pollQuestion, createForm.pollOptionsText),
+        maxAttendees: Number(createForm.maxAttendees || 500),
+        chatEnabled: createForm.allowLiveChat,
+        doubtSolving: createForm.allowQa,
+        replayAvailable: createForm.enableClassRecording,
       };
       const response = editingLiveClassId
         ? await EduService.updateLiveClass(editingLiveClassId, payload)
@@ -2452,7 +2677,13 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       await onRefresh();
       await handleJoinLiveClass();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to start live class.');
+      const nextMessage = normalizeLiveUiErrorMessage(nextError, 'Unable to start live class.');
+      if (/Live media connection was lost/i.test(nextMessage)) {
+        setMediaWarning(nextMessage);
+        setError(null);
+      } else {
+        setError(nextMessage);
+      }
     } finally {
       setBusy(false);
     }
@@ -2587,7 +2818,13 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       clearActiveLiveRoom();
       setMediaNotice(null);
       setView('detail');
-      setError(nextError instanceof Error ? nextError.message : 'Unable to join the live classroom.');
+      const nextMessage = normalizeLiveUiErrorMessage(nextError, 'Unable to join the live classroom.');
+      if (/Live media connection was lost/i.test(nextMessage)) {
+        setMediaWarning(nextMessage);
+        setError(null);
+      } else {
+        setError(nextMessage);
+      }
     } finally {
       setBusy(false);
     }
@@ -3169,9 +3406,11 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   } : {
     title: getDisplayLiveClassTitle(selectedLiveClass),
     subtitle: getLiveClassTopicLine(selectedLiveClass),
-    meta: `${getPrimaryTopic(selectedLiveClass)} • Class 12`,
+    meta: getLiveMetaLine(selectedLiveClass),
     teacher: selectedTeacherProfile.name || selectedLiveClass?.instructor || 'Live Faculty',
-    audience: `${formatCompactCount(Math.max(selectedLiveClass?.attendees || 0, joinedCount))} Students watching`,
+    audience: Math.max(selectedLiveClass?.attendees || 0, joinedCount) > 0
+      ? `${formatCompactCount(Math.max(selectedLiveClass?.attendees || 0, joinedCount))} Students watching`
+      : 'Open for enrolled students',
     badge: selectedStatus === 'live' ? 'Live now' : String(selectedLiveClass?.status || 'scheduled'),
     startedAt: selectedLiveClass?.startTime ? formatTime(selectedLiveClass.startTime) : '--:--',
     duration: `${selectedLiveClass?.durationMinutes || 0} min`,
@@ -3187,6 +3426,14 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     teacherExperience: selectedTeacherProfile.experience || 'Live classroom instructor',
     countdown,
   };
+  const detailInfoRows = isReferenceMode
+    ? classInfoRows
+    : [
+      { label: 'Topics to be covered', value: detailDisplay.topics, icon: CalendarDays, tone: 'bg-[#eef4ff] text-[#2b63df]' },
+      { label: 'Class Notes', value: activeResources.length ? `${activeResources.length} shared resources` : 'Will be shared in class', icon: FileText, tone: 'bg-[#f5edff] text-[#8d52ff]' },
+      { label: 'Recording', value: selectedLiveClass?.replayAvailable ? 'Available after class ends' : 'Recording disabled', icon: Video, tone: 'bg-[#fff1f1] text-[#ff6d5b]' },
+      { label: 'Language', value: getLiveLanguage(selectedLiveClass), icon: Radio, tone: 'bg-[#edfbf1] text-[#26a55a]' },
+    ];
   const mobileFeaturedDisplay = isReferenceMode ? {
     liveClassId: referenceClassBindings.featuredId,
     status: liveFigmaReference.featured.status,
@@ -3206,11 +3453,13 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       badge: String(featuredLiveClass.status).toLowerCase() === 'live' ? 'LIVE NOW' : String(featuredLiveClass.status || 'scheduled'),
       title: getDisplayLiveClassTitle(featuredLiveClass),
       subtitle: getLiveClassTopicLine(featuredLiveClass),
-      meta: `${getPrimaryTopic(featuredLiveClass)} • Class 12`,
+      meta: getLiveMetaLine(featuredLiveClass),
       teacher: featuredTeacherProfile.name || featuredLiveClass.instructor || 'Live Faculty',
       teacherAvatarUrl: featuredTeacherProfile.avatarUrl || null,
       posterUrl: featuredLiveClass.posterUrl || null,
-      audience: `${formatCompactCount(Math.max(featuredLiveClass.attendees || 0, joinedCount))} watching`,
+      audience: Math.max(featuredLiveClass.attendees || 0, joinedCount) > 0
+        ? `${formatCompactCount(Math.max(featuredLiveClass.attendees || 0, joinedCount))} watching`
+        : 'Open for students',
       buttonLabel: String(featuredLiveClass.status).toLowerCase() === 'live' ? 'Join Live Class' : 'View Details',
     } : null
   );
@@ -3222,12 +3471,12 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       meridiem: formatTime(liveClass.startTime).split(' ')[1] || '',
       topic: getPrimaryTopic(liveClass) || 'Live Session',
       title: getDisplayLiveClassTitle(liveClass),
-      meta: 'Class 12 • Session 2024-25',
+      meta: [getLiveLevel(liveClass), getLiveLanguage(liveClass)].filter(Boolean).join(' • ') || 'Upcoming Session',
       teacher: normalizeLiveTeacherProfile(liveClass).name || liveClass.instructor || 'Live Faculty',
       teacherAvatarUrl: normalizeLiveTeacherProfile(liveClass).avatarUrl || null,
       status: String(liveClass.status || 'scheduled').toLowerCase(),
       statusLabel: String(liveClass.status || 'scheduled').toUpperCase(),
-      attendees: `${formatCompactCount(Math.max(liveClass.attendees || 0, 0))} going`,
+      attendees: Math.max(liveClass.attendees || 0, 0) > 0 ? `${formatCompactCount(Math.max(liveClass.attendees || 0, 0))} going` : 'Open',
       colorIndex: index,
     }));
   const mobileTomorrowCard = isReferenceMode
@@ -3238,12 +3487,14 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       meridiem: formatTime((orderedLiveClasses[1] || orderedLiveClasses[0]).startTime).split(' ')[1] || '',
       topic: getPrimaryTopic(orderedLiveClasses[1] || orderedLiveClasses[0]) || 'Biology',
       title: getDisplayLiveClassTitle(orderedLiveClasses[1] || orderedLiveClasses[0]),
-      meta: 'Class 12 • Session 2024-25',
+      meta: [getLiveLevel(orderedLiveClasses[1] || orderedLiveClasses[0]), getLiveLanguage(orderedLiveClasses[1] || orderedLiveClasses[0])].filter(Boolean).join(' • ') || 'Upcoming Session',
       teacher: normalizeLiveTeacherProfile(orderedLiveClasses[1] || orderedLiveClasses[0]).name || (orderedLiveClasses[1] || orderedLiveClasses[0]).instructor || 'Live Faculty',
       teacherAvatarUrl: normalizeLiveTeacherProfile(orderedLiveClasses[1] || orderedLiveClasses[0]).avatarUrl || null,
       status: 'upcoming',
       statusLabel: 'UPCOMING',
-      attendees: `${formatCompactCount(Math.max((orderedLiveClasses[1] || orderedLiveClasses[0]).attendees || 0, 0))} going`,
+      attendees: Math.max((orderedLiveClasses[1] || orderedLiveClasses[0]).attendees || 0, 0) > 0
+        ? `${formatCompactCount(Math.max((orderedLiveClasses[1] || orderedLiveClasses[0]).attendees || 0, 0))} going`
+        : 'Open',
       colorIndex: 3,
     } : null);
   const scheduleCards = [...mobileTodayCards, ...(mobileTomorrowCard ? [mobileTomorrowCard] : [])];
@@ -3499,9 +3750,498 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     jitsiApiRef.current?.executeCommand?.('toggleShareScreen');
   };
 
+  const createStartDate = formatDateInputValue(createForm.startTime);
+  const createStartClock = formatTimeInputValue(createForm.startTime);
+  const createEndClock = (() => {
+    if (!createForm.startTime) {
+      return '';
+    }
+    const end = new Date(new Date(createForm.startTime).getTime() + Number(createForm.durationMinutes || 90) * 60000);
+    const hours = String(end.getHours()).padStart(2, '0');
+    const minutes = String(end.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  })();
+  const createPreviewTeacher = createForm.instructor.trim() || user?.name || 'Live Faculty';
+  const createPreviewRole = createForm.teacherRole.trim() || 'Teacher';
+  const createPreviewMeta = [createForm.subject.trim(), createForm.classLevel.trim()].filter(Boolean).join(' • ') || 'Live Session';
+  const createLearningPoints = createForm.sessionNotesText.split('\n').map((entry) => entry.trim()).filter(Boolean);
+  const createSectionCardClassName = 'rounded-[20px] border border-[#e6ecf7] bg-white p-4 shadow-[0_10px_22px_rgba(16,24,40,0.04)] md:p-5';
+  const createFieldClassName = 'h-[46px] w-full rounded-[12px] border border-[#dbe4f4] bg-white px-4 text-[14px] text-[#162340] outline-none transition focus:border-[#4f46e5] focus:ring-2 focus:ring-[#dcd8ff]';
+  const createTextAreaClassName = 'w-full rounded-[12px] border border-[#dbe4f4] bg-white px-4 py-3 text-[14px] text-[#162340] outline-none transition focus:border-[#4f46e5] focus:ring-2 focus:ring-[#dcd8ff]';
+
+  const updateCreateFormDateTime = (patch: { date?: string; time?: string; endTime?: string }) => {
+    const nextDate = patch.date ?? createStartDate ?? '';
+    const nextTime = patch.time ?? createStartClock ?? '';
+    const resolvedDate = nextDate || new Date().toISOString().slice(0, 10);
+    const resolvedTime = nextTime || '10:00';
+    const nextStartTime = buildDateTimeValue(resolvedDate, resolvedTime);
+    const nextDuration = patch.endTime
+      ? calculateDurationMinutes(nextStartTime, patch.endTime, Number(createForm.durationMinutes || 90))
+      : createForm.durationMinutes;
+    setCreateForm((current) => ({
+      ...current,
+      startTime: nextStartTime,
+      durationMinutes: nextDuration,
+    }));
+  };
+
+  const renderCreateField = (
+    label: string,
+    control: React.ReactNode,
+    options?: { required?: boolean; hint?: string },
+  ) => (
+    <label className="block">
+      <span className="mb-2 block text-[12px] font-semibold text-[#233256]">
+        {label}
+        {options?.required ? <span className="ml-1 text-[#ef4444]">*</span> : null}
+      </span>
+      {control}
+      {options?.hint ? <span className="mt-1 block text-[11px] text-[#7b88a8]">{options.hint}</span> : null}
+    </label>
+  );
+
+  const renderCreatePreviewCard = (mobile = false) => (
+    <aside className={cn(createSectionCardClassName, mobile ? '' : 'sticky top-6')}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[15px] font-semibold text-[#13244a]">Live Class Preview</p>
+          <p className="mt-1 text-[12px] text-[#7283a0]">Real student-facing summary</p>
+        </div>
+        <span className="rounded-full bg-[#fff1f1] px-2.5 py-1 text-[11px] font-semibold text-[#ef4444]">
+          {editingLiveClassId ? 'UPDATE' : 'LIVE'}
+        </span>
+      </div>
+      <div className="mt-4 overflow-hidden rounded-[18px] border border-[#e7ecf8] bg-[#0f172a]">
+        <div className="aspect-[16/9] overflow-hidden bg-[radial-gradient(circle_at_top,#2a58d8_0%,#13203b_55%,#0f172a_100%)]">
+          {createForm.posterUrl.trim() ? (
+            <img src={createForm.posterUrl.trim()} alt={createForm.title || 'Live class poster'} className="h-full w-full object-cover" />
+          ) : (
+            <div className="h-full w-full p-6">
+              <LivePosterEmptyState dark message="Upload a class poster to preview the live card" />
+            </div>
+          )}
+        </div>
+        <div className="space-y-3 px-4 py-4 text-white">
+          <span className="inline-flex rounded-full bg-[#fff5f5] px-2.5 py-1 text-[11px] font-semibold text-[#ef4444]">LIVE NOW</span>
+          <div>
+            <h3 className="text-[18px] font-semibold leading-[1.2]">{createForm.title.trim() || 'Enter class title'}</h3>
+            <p className="mt-1 text-[13px] text-white/75">{createForm.classDescription.trim() || 'Class description will appear here for students.'}</p>
+          </div>
+          <p className="text-[12px] font-medium text-white/70">{createPreviewMeta}</p>
+          <div className="flex items-center gap-3">
+            <TeacherAvatar name={createPreviewTeacher} photoUrl={createForm.teacherAvatarUrl.trim() || null} size="sm" />
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold">{createPreviewTeacher}</p>
+              <p className="truncate text-[12px] text-white/70">{createPreviewRole}</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[12px] text-white/75">
+            <div className="rounded-[12px] bg-white/10 px-3 py-2"><p>Date</p><p className="mt-1 font-semibold text-white">{createStartDate || 'Select date'}</p></div>
+            <div className="rounded-[12px] bg-white/10 px-3 py-2"><p>Time</p><p className="mt-1 font-semibold text-white">{createStartClock || 'Select time'}</p></div>
+            <div className="rounded-[12px] bg-white/10 px-3 py-2"><p>Duration</p><p className="mt-1 font-semibold text-white">{createForm.durationMinutes || 0} min</p></div>
+            <div className="rounded-[12px] bg-white/10 px-3 py-2"><p>Students</p><p className="mt-1 font-semibold text-white">Max {createForm.maxAttendees || 0}</p></div>
+          </div>
+        </div>
+      </div>
+      {createLearningPoints.length > 0 && (
+        <div className="mt-4 rounded-[16px] border border-[#ecf0f8] bg-[#fbfcff] p-4">
+          <p className="text-[13px] font-semibold text-[#13244a]">What students will learn</p>
+          <ul className="mt-3 space-y-2">
+            {createLearningPoints.slice(0, 4).map((point) => (
+              <li key={point} className="flex items-start gap-2 text-[12px] text-[#4a5c7a]">
+                <Check className="mt-0.5 h-4 w-4 text-[#4f46e5]" />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </aside>
+  );
+
+  const renderCreateStepContent = () => {
+    switch (createStep) {
+      case 0:
+        return (
+          <div className="grid gap-4 md:grid-cols-2">
+            {renderCreateField('Class Title', <input data-testid="live-create-title" value={createForm.title} onChange={(event) => setCreateForm((current) => ({ ...current, title: event.target.value }))} placeholder="Enter class title" className={createFieldClassName} />, { required: true })}
+            {renderCreateField('Subject', <input data-testid="live-create-subject" value={createForm.subject} onChange={(event) => setCreateForm((current) => ({ ...current, subject: event.target.value }))} placeholder="Physics" className={createFieldClassName} />, { required: true })}
+            {renderCreateField('Class Category', <input value={createForm.category} onChange={(event) => setCreateForm((current) => ({ ...current, category: event.target.value }))} placeholder="Important Concepts & PYQs" className={createFieldClassName} />)}
+            {renderCreateField('Class Level', <input value={createForm.classLevel} onChange={(event) => setCreateForm((current) => ({ ...current, classLevel: event.target.value }))} placeholder="Class 12" className={createFieldClassName} />)}
+            {renderCreateField('Teacher / Instructor', <input data-testid="live-create-instructor" value={createForm.instructor} onChange={(event) => setCreateForm((current) => ({ ...current, instructor: event.target.value }))} placeholder="Rahul Sharma" className={createFieldClassName} />, { required: true })}
+            {renderCreateField('Language', (
+              <select value={createForm.language} onChange={(event) => setCreateForm((current) => ({ ...current, language: event.target.value }))} className={createFieldClassName}>
+                <option value="English">English</option>
+                <option value="Hindi">Hindi</option>
+                <option value="Bilingual">Bilingual</option>
+              </select>
+            ))}
+            <div className="md:col-span-2">
+              {renderCreateField('Hero Image', (
+                <div className="rounded-[16px] border border-dashed border-[#d7e3fb] bg-[#fbfcff] p-4">
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                    <label className="flex min-h-[124px] cursor-pointer flex-col items-center justify-center rounded-[14px] border border-dashed border-[#cddbfb] bg-white px-4 py-5 text-center transition hover:border-[#2f6fe4] hover:bg-[#f9fbff]">
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => void handleLiveImageUpload('poster', event.target.files?.[0] || null)} />
+                      {uploadingPoster ? <Loader2 className="h-5 w-5 animate-spin text-[#2f6fe4]" /> : <Upload className="h-5 w-5 text-[#2f6fe4]" />}
+                      <span className="mt-3 text-[13px] font-semibold text-[#1f2d4e]">{uploadingPoster ? 'Uploading poster...' : 'Upload poster image'}</span>
+                      <span className="mt-1 text-[11px] text-[#7b88a8]">PNG, JPG, or WEBP up to 10 MB</span>
+                    </label>
+                    <div className="overflow-hidden rounded-[14px] border border-[#dfe7f5] bg-white">
+                      {createForm.posterUrl.trim() ? (
+                        <img src={createForm.posterUrl.trim()} alt={createForm.title || 'Poster preview'} className="h-full min-h-[124px] w-full object-cover" />
+                      ) : (
+                        <LivePosterEmptyState compact message="No poster uploaded" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ), { hint: 'Upload the live class poster used in the student list and detail views.' })}
+            </div>
+          </div>
+        );
+      case 1:
+        return (
+          <div className="space-y-4">
+            <input
+              data-testid="live-create-start-datetime"
+              type="datetime-local"
+              value={createForm.startTime}
+              onChange={(event) => setCreateForm((current) => ({ ...current, startTime: event.target.value }))}
+              className="sr-only"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+            <div className="grid gap-4 md:grid-cols-2">
+              {renderCreateField('Date', <input data-testid="live-create-date" type="date" value={createStartDate} onChange={(event) => updateCreateFormDateTime({ date: event.target.value })} className={createFieldClassName} />, { required: true })}
+              {renderCreateField('Start Time', <input data-testid="live-create-start-time" type="time" value={createStartClock} onChange={(event) => updateCreateFormDateTime({ time: event.target.value })} className={createFieldClassName} />, { required: true })}
+              {renderCreateField('End Time', <input data-testid="live-create-end-time" type="time" value={createEndClock} onChange={(event) => updateCreateFormDateTime({ endTime: event.target.value })} className={createFieldClassName} />)}
+              {renderCreateField('Duration', <input data-testid="live-create-duration" type="number" min={15} step={5} value={createForm.durationMinutes} onChange={(event) => setCreateForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} className={createFieldClassName} />, { required: true, hint: 'Minutes' })}
+            </div>
+            <div className="rounded-[16px] border border-[#d9e4ff] bg-[#f6f8ff] px-4 py-3 text-[12px] text-[#4d5f82]"><span className="font-semibold text-[#3c57d8]">Tip:</span> Students will receive a reminder before the class starts.</div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {renderCreateField('Link this live class to', (
+                <select data-testid="live-create-linkage-type" value={createForm.linkageType} onChange={(event) => setCreateForm((current) => ({ ...current, linkageType: event.target.value as typeof current.linkageType, courseId: '', moduleId: '', chapterId: '', mockTestId: '' }))} className={createFieldClassName}>
+                  <option value="standalone">Standalone live class</option>
+                  <option value="course">Course subject / chapter</option>
+                  <option value="mock-test">Mock test explanation</option>
+                </select>
+              ))}
+              {createForm.linkageType === 'mock-test' ? renderCreateField('Mock Test', (
+                <select value={createForm.mockTestId} onChange={(event) => setCreateForm((current) => ({ ...current, mockTestId: event.target.value }))} className={createFieldClassName}>
+                  <option value="">Select mock test</option>
+                  {overview.testSeries.map((test) => <option key={test._id} value={test._id}>{test.title}</option>)}
+                </select>
+              )) : <div />}
+              {createForm.linkageType === 'course' && renderCreateField('Course', (
+                <select value={createForm.courseId} onChange={(event) => setCreateForm((current) => ({ ...current, courseId: event.target.value, moduleId: '', chapterId: '' }))} className={createFieldClassName}>
+                  <option value="">Select course</option>
+                  {overview.courses.map((course) => <option key={course._id} value={course._id}>{course.title}</option>)}
+                </select>
+              ))}
+              {createForm.linkageType === 'course' && createForm.courseId && renderCreateField('Subject / Module', (
+                <select value={createForm.moduleId} onChange={(event) => setCreateForm((current) => ({ ...current, moduleId: event.target.value, chapterId: '' }))} className={createFieldClassName}>
+                  <option value="">Select subject / module</option>
+                  {(overview.courses.find((course) => course._id === createForm.courseId)?.modules || []).map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}
+                </select>
+              ))}
+              {createForm.linkageType === 'course' && createForm.moduleId && renderCreateField('Chapter', (
+                <select value={createForm.chapterId} onChange={(event) => setCreateForm((current) => ({ ...current, chapterId: event.target.value }))} className={createFieldClassName}>
+                  <option value="">Whole module</option>
+                  {(overview.courses.find((course) => course._id === createForm.courseId)?.modules.find((module) => module.id === createForm.moduleId)?.chapters || []).map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
+                </select>
+              ))}
+            </div>
+          </div>
+        );
+      case 2:
+        return (
+          <div className="space-y-4">
+            {renderCreateField('Short Description', <textarea value={createForm.classDescription} onChange={(event) => setCreateForm((current) => ({ ...current, classDescription: event.target.value }))} rows={4} placeholder="Describe what students should expect from this class." className={createTextAreaClassName} />, { required: true })}
+            {renderCreateField('What students will learn', <textarea value={createForm.sessionNotesText} onChange={(event) => setCreateForm((current) => ({ ...current, sessionNotesText: event.target.value }))} rows={5} placeholder={'Add one learning point per line'} className={createTextAreaClassName} />, { hint: 'One point per line.' })}
+            <div className="grid gap-4 md:grid-cols-2">
+              {renderCreateField('Teacher Role / Qualification', <input value={createForm.teacherRole} onChange={(event) => setCreateForm((current) => ({ ...current, teacherRole: event.target.value }))} placeholder="Physics Expert" className={createFieldClassName} />)}
+              {renderCreateField('Experience', <input value={createForm.teacherExperience} onChange={(event) => setCreateForm((current) => ({ ...current, teacherExperience: event.target.value }))} placeholder="8+ Years" className={createFieldClassName} />)}
+              <div className="md:col-span-2">
+                {renderCreateField('Teacher Bio', <textarea value={createForm.teacherBio} onChange={(event) => setCreateForm((current) => ({ ...current, teacherBio: event.target.value }))} rows={4} placeholder="Short instructor introduction" className={createTextAreaClassName} />)}
+              </div>
+              {renderCreateField('Teacher Photo', (
+                <div className="rounded-[16px] border border-dashed border-[#d7e3fb] bg-[#fbfcff] p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div className="flex items-center gap-3">
+                      <TeacherAvatar name={createForm.instructor || 'Teacher'} photoUrl={createForm.teacherAvatarUrl.trim() || null} size="lg" />
+                      <div>
+                        <p className="text-[13px] font-semibold text-[#1f2d4e]">{createForm.instructor.trim() || 'Teacher photo'}</p>
+                        <p className="mt-1 text-[11px] text-[#7b88a8]">Shown on class cards and details.</p>
+                      </div>
+                    </div>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-[12px] border border-[#dbe4f4] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#2f6fe4]">
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => void handleLiveImageUpload('teacher-avatar', event.target.files?.[0] || null)} />
+                      {uploadingTeacherPhoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                      <span>{uploadingTeacherPhoto ? 'Uploading...' : 'Upload photo'}</span>
+                    </label>
+                  </div>
+                </div>
+              ))}
+              {renderCreateField('Preview Video URL', <input value={createForm.previewVideoUrl} onChange={(event) => setCreateForm((current) => ({ ...current, previewVideoUrl: event.target.value }))} placeholder="https://..." className={createFieldClassName} />, { hint: 'Optional teaser or preview clip.' })}
+              {renderCreateField('Attachment Title', <input value={createForm.attachmentTitle} onChange={(event) => setCreateForm((current) => ({ ...current, attachmentTitle: event.target.value }))} placeholder="Electrostatics formula sheet" className={createFieldClassName} />)}
+              {renderCreateField('Attachment URL', <input value={createForm.attachmentUrl} onChange={(event) => setCreateForm((current) => ({ ...current, attachmentUrl: event.target.value }))} placeholder="https://..." className={createFieldClassName} />)}
+            </div>
+          </div>
+        );
+      case 3:
+        return (
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              {renderCreateField('Reminder', (
+                <select value={String(createForm.reminderLeadMinutes)} onChange={(event) => setCreateForm((current) => ({ ...current, reminderLeadMinutes: Number(event.target.value) }))} className={createFieldClassName}>
+                  <option value="15">15 min before</option>
+                  <option value="30">30 min before</option>
+                  <option value="60">1 hour before</option>
+                </select>
+              ))}
+              {renderCreateField('Visible to Students', (
+                <select value={createForm.visibleToStudents} onChange={(event) => setCreateForm((current) => ({ ...current, visibleToStudents: event.target.value }))} className={createFieldClassName}>
+                  <option value="Immediately">Immediately</option>
+                  <option value="After Publish">After publish</option>
+                </select>
+              ))}
+              {renderCreateField('Max Students', <input type="number" min={1} value={createForm.maxAttendees} onChange={(event) => setCreateForm((current) => ({ ...current, maxAttendees: Number(event.target.value) }))} className={createFieldClassName} />)}
+              {renderCreateField('Class Price', <input value={createForm.priceLabel} onChange={(event) => setCreateForm((current) => ({ ...current, priceLabel: event.target.value }))} placeholder="Free" className={createFieldClassName} />)}
+              {renderCreateField('Certificate', (
+                <select value={createForm.certificateLabel} onChange={(event) => setCreateForm((current) => ({ ...current, certificateLabel: event.target.value }))} className={createFieldClassName}>
+                  <option value="No Certificate">No Certificate</option>
+                  <option value="Completion Certificate">Completion Certificate</option>
+                </select>
+              ))}
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {[
+                { key: 'allowLiveChat', label: 'Allow Live Chat' },
+                { key: 'allowQa', label: 'Allow Q&A' },
+                { key: 'enableClassRecording', label: 'Enable Class Recording' },
+              ].map((option) => (
+                <label key={option.key} className="flex items-center justify-between rounded-[16px] border border-[#e5ebf7] bg-[#fbfcff] px-4 py-3">
+                  <span className="text-[13px] font-semibold text-[#1f2d4e]">{option.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCreateForm((current) => ({ ...current, [option.key]: !current[option.key as keyof typeof current] }))}
+                    className={cn('relative h-7 w-12 rounded-full transition', createForm[option.key as keyof typeof createForm] ? 'bg-[#4f46e5]' : 'bg-[#d7deec]')}
+                  >
+                    <span className={cn('absolute top-1 h-5 w-5 rounded-full bg-white transition', createForm[option.key as keyof typeof createForm] ? 'left-6' : 'left-1')} />
+                  </button>
+                </label>
+              ))}
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {renderCreateField('Poll Question', <input value={createForm.pollQuestion} onChange={(event) => setCreateForm((current) => ({ ...current, pollQuestion: event.target.value }))} placeholder="Optional live poll question" className={createFieldClassName} />)}
+              <div className="md:col-span-2">
+                {renderCreateField('Poll Options', <textarea value={createForm.pollOptionsText} onChange={(event) => setCreateForm((current) => ({ ...current, pollOptionsText: event.target.value }))} rows={3} placeholder={'One option per line'} className={createTextAreaClassName} />, { hint: 'Only needed when you want a poll in the live room.' })}
+              </div>
+            </div>
+          </div>
+        );
+      default:
+        return (
+          <div className="space-y-4">
+            <div className="rounded-[20px] border border-[#e5ebf7] bg-[#fbfcff] p-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#7283a0]">Basic Info</p>
+                  <div className="mt-3 space-y-2 text-[14px] text-[#1f2d4e]">
+                    <p><span className="font-semibold">Title:</span> {createForm.title || 'Pending'}</p>
+                    <p><span className="font-semibold">Subject:</span> {createForm.subject || 'Pending'}</p>
+                    <p><span className="font-semibold">Teacher:</span> {createPreviewTeacher}</p>
+                    <p><span className="font-semibold">Language:</span> {createForm.language}</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#7283a0]">Schedule & Settings</p>
+                  <div className="mt-3 space-y-2 text-[14px] text-[#1f2d4e]">
+                    <p><span className="font-semibold">Date:</span> {createStartDate || 'Pending'}</p>
+                    <p><span className="font-semibold">Start:</span> {createStartClock || 'Pending'}</p>
+                    <p><span className="font-semibold">Duration:</span> {createForm.durationMinutes} min</p>
+                    <p><span className="font-semibold">Max students:</span> {createForm.maxAttendees}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-[20px] border border-[#e5ebf7] bg-white p-4">
+              <p className="text-[15px] font-semibold text-[#13244a]">Ready to publish</p>
+              <p className="mt-1 text-[13px] text-[#7283a0]">Review the preview and publish this live class for students.</p>
+            </div>
+          </div>
+        );
+    }
+  };
+
+  const renderCreateStepper = (mobile = false) => (
+    <div className={cn('rounded-[18px] border border-[#e5ebf7] bg-white', mobile ? 'px-3 py-3' : 'px-4 py-3')}>
+      <div className={cn('flex flex-wrap items-center', mobile ? 'gap-x-3 gap-y-2' : 'gap-2 md:gap-3')}>
+        {liveCreationSteps.map((step, index) => (
+          <button
+            key={step.id}
+            type="button"
+            onClick={() => setCreateStep(index)}
+            className={cn(
+              'group inline-flex items-center rounded-full text-left',
+              mobile ? 'gap-1.5 px-0 py-0.5' : 'gap-2 px-2 py-1',
+            )}
+          >
+            <span className={cn(
+              'flex items-center justify-center rounded-full text-[12px] font-semibold',
+              mobile ? 'h-7 w-7' : 'h-7 w-7',
+              index === createStep
+                ? 'bg-[#4f46e5] text-white'
+                : index < createStep
+                  ? 'bg-[#eef4ff] text-[#3557d4]'
+                  : 'bg-[#f4f6fb] text-[#7b88a8]',
+            )}>
+              {index + 1}
+            </span>
+            <span className={cn('font-medium', mobile ? 'text-[11px]' : 'text-[13px]', index === createStep ? 'text-[#2a3e69]' : 'text-[#7b88a8]')}>
+              {step.label}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderCreateActions = (mobile = false) => (
+    <div className={cn('flex items-center justify-between gap-3', mobile && 'pb-[calc(env(safe-area-inset-bottom,0px)+4px)]')}>
+      <button
+        type="button"
+        onClick={() => setCreateStep((current) => Math.max(current - 1, 0))}
+        disabled={createStep === 0}
+        className={cn(
+          'rounded-[12px] border border-[#d8e2f4] bg-white font-semibold text-[#35507b] disabled:opacity-50',
+          mobile ? 'px-4 py-3 text-[14px]' : 'px-4 py-2 text-[13px]',
+        )}
+      >
+        Back
+      </button>
+      <div className="flex items-center gap-2">
+        {editingLiveClassId && !mobile && (
+          <button type="button" onClick={() => void handleDeleteLiveClass()} className="rounded-[12px] border border-[#ffd8d8] bg-[#fff5f5] px-4 py-2 text-[13px] font-semibold text-[#cf3f3f]">
+            Delete
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={resetLiveClassEditor}
+          className={cn(
+            'rounded-[12px] border border-[#d8e2f4] bg-white font-semibold text-[#35507b]',
+            mobile ? 'px-4 py-3 text-[14px]' : 'px-4 py-2 text-[13px]',
+          )}
+        >
+          Cancel
+        </button>
+        {createStep < liveCreationSteps.length - 1 ? (
+          <button
+            type="button"
+            data-testid="live-create-next"
+            onClick={() => setCreateStep((current) => Math.min(current + 1, liveCreationSteps.length - 1))}
+            className={cn(
+              'rounded-[12px] bg-[#4f46e5] font-semibold text-white',
+              mobile ? 'px-5 py-3 text-[14px]' : 'px-4 py-2 text-[13px]',
+            )}
+          >
+            Next
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-testid="live-create-submit"
+            disabled={busy}
+            onClick={() => void handleCreateLiveClass()}
+            className={cn(
+              'rounded-[12px] bg-[#4f46e5] font-semibold text-white disabled:opacity-60',
+              mobile ? 'px-5 py-3 text-[14px]' : 'px-5 py-2.5 text-[13px]',
+            )}
+          >
+            {busy ? (editingLiveClassId ? 'Saving...' : 'Publishing...') : (editingLiveClassId ? 'Save Changes' : 'Publish Live Class')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCreateBuilder = (mobile = false) => {
+    if (mobile) {
+      return (
+        <div data-testid="live-create-form" className="fixed inset-0 z-[90] bg-[#f6f8ff]">
+          <div className="mx-auto flex h-full max-w-[430px] flex-col">
+            <div className="border-b border-[#e7edf8] bg-[#f6f8ff] px-4 pb-4 pt-4">
+              <div className="flex items-center justify-between">
+                <button type="button" onClick={resetLiveClassEditor} className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#dde6f6] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+                <div className="text-center">
+                  <h3 className="text-[20px] font-semibold tracking-[-0.03em] text-[#13244a]">{editingLiveClassId ? 'Update Live Class' : 'Create Live Class'}</h3>
+                </div>
+                <div className="h-10 w-10" />
+              </div>
+              <p className="mt-3 text-[13px] text-[#7283a0]">Fill in the details below to schedule your live class.</p>
+              <div className="mt-4">
+                {renderCreateStepper(true)}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-[#dde6f6] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
+                  <div className="mb-4">
+                    <h4 className="text-[18px] font-semibold text-[#13244a]">{liveCreationSteps[createStep].label}</h4>
+                    <p className="mt-1 text-[13px] text-[#7283a0]">Guide the admin through one clear stage at a time.</p>
+                  </div>
+                  {renderCreateStepContent()}
+                </div>
+                {createStep === liveCreationSteps.length - 1 ? renderCreatePreviewCard(true) : null}
+              </div>
+            </div>
+
+            <div className="border-t border-[#e7edf8] bg-[#f6f8ff] px-4 py-3">
+              {renderCreateActions(true)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        data-testid="live-create-form"
+        className="mt-5 grid gap-4 rounded-[26px] border border-[#dde6f6] bg-[#f8fbff] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(0,1.65fr)_340px]"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-[24px] font-semibold tracking-[-0.03em] text-[#13244a]">{editingLiveClassId ? 'Update Live Class' : 'Create Live Class'}</h3>
+              <p className="mt-1 text-[13px] text-[#7283a0]">Fill in the details below to schedule your live class.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={resetLiveClassEditor} className="rounded-[12px] border border-[#d8e2f4] bg-white px-4 py-2 text-[13px] font-semibold text-[#35507b]">Save as Draft</button>
+              <button type="button" data-testid="live-create-next-header" onClick={() => setCreateStep((current) => Math.min(current + 1, liveCreationSteps.length - 1))} className="rounded-[12px] bg-[#4f46e5] px-4 py-2 text-[13px] font-semibold text-white">Next Step</button>
+            </div>
+          </div>
+          {renderCreateStepper(false)}
+          <div className={createSectionCardClassName}>
+            <div className="mb-4">
+              <h4 className="text-[18px] font-semibold text-[#13244a]">{liveCreationSteps[createStep].label}</h4>
+              <p className="mt-1 text-[13px] text-[#7283a0]">Guide the admin through one clear stage at a time.</p>
+            </div>
+            {renderCreateStepContent()}
+          </div>
+          {renderCreateActions(false)}
+        </div>
+        {renderCreatePreviewCard(false)}
+      </div>
+    );
+  };
+
   if (!selectedLiveClass) {
     return (
-      <div className="rounded-[32px] border border-white/70 bg-white/90 p-8 text-[var(--ink-soft)] shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+      <div data-testid="live-classes-page" className="rounded-[32px] border border-white/70 bg-white/90 p-8 text-[var(--ink-soft)] shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
         {error && (
           <div className="mb-5 rounded-[18px] border border-[#ffd2d2] bg-[#fff5f5] px-4 py-3 text-sm text-[#c93636]">
             {error}
@@ -3525,99 +4265,14 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
           )}
         </div>
 
-        {createOpen && isAdmin && (
-          <div data-testid="live-create-form" className="mt-5 grid gap-3 rounded-[22px] border border-[#dbe7ff] bg-[#f9fbff] p-4 md:grid-cols-2">
-            <input data-testid="live-create-title" value={createForm.title} onChange={(event) => setCreateForm((current) => ({ ...current, title: event.target.value }))} placeholder="Class title" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-            <input data-testid="live-create-instructor" value={createForm.instructor} onChange={(event) => setCreateForm((current) => ({ ...current, instructor: event.target.value }))} placeholder="Instructor" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-            <input data-testid="live-create-start-time" type="datetime-local" value={createForm.startTime} onChange={(event) => setCreateForm((current) => ({ ...current, startTime: event.target.value }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-            <input data-testid="live-create-duration" type="number" value={createForm.durationMinutes} onChange={(event) => setCreateForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="Duration" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-            <select data-testid="live-create-linkage-type" value={createForm.linkageType} onChange={(event) => setCreateForm((current) => ({ ...current, linkageType: event.target.value as typeof current.linkageType, courseId: '', moduleId: '', chapterId: '', mockTestId: '' }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none">
-              <option value="standalone">Create without course/mock</option>
-              <option value="course">Course subject/module</option>
-              <option value="mock-test">Mock test explanation</option>
-            </select>
-            {createForm.linkageType === 'course' && (
-              <select data-testid="live-create-course" value={createForm.courseId} onChange={(event) => setCreateForm((current) => ({ ...current, courseId: event.target.value, moduleId: '', chapterId: '' }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none">
-                <option value="">Select course</option>
-                {overview.courses.map((course) => <option key={course._id} value={course._id}>{course.title}</option>)}
-              </select>
-            )}
-            {createForm.linkageType === 'course' && createForm.courseId && (
-              <select data-testid="live-create-module" value={createForm.moduleId} onChange={(event) => setCreateForm((current) => ({ ...current, moduleId: event.target.value, chapterId: '' }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none">
-                <option value="">Select subject/module</option>
-                {(overview.courses.find((course) => course._id === createForm.courseId)?.modules || []).map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}
-              </select>
-            )}
-            {createForm.linkageType === 'course' && createForm.moduleId && (
-              <select data-testid="live-create-chapter" value={createForm.chapterId} onChange={(event) => setCreateForm((current) => ({ ...current, chapterId: event.target.value }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none">
-                <option value="">Whole module</option>
-                {(overview.courses.find((course) => course._id === createForm.courseId)?.modules.find((module) => module.id === createForm.moduleId)?.chapters || []).map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
-              </select>
-            )}
-            {createForm.linkageType === 'mock-test' && (
-              <select data-testid="live-create-mock-test" value={createForm.mockTestId} onChange={(event) => setCreateForm((current) => ({ ...current, mockTestId: event.target.value }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2">
-                <option value="">Select mock test</option>
-                {overview.testSeries.map((test) => <option key={test._id} value={test._id}>{test.title}</option>)}
-              </select>
-            )}
-            <input data-testid="live-create-topics" value={createForm.topicTags} onChange={(event) => setCreateForm((current) => ({ ...current, topicTags: event.target.value }))} placeholder="Topics, comma separated" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <input value={createForm.posterUrl} onChange={(event) => setCreateForm((current) => ({ ...current, posterUrl: event.target.value }))} placeholder="Hero poster image URL" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <input value={createForm.teacherAvatarUrl} onChange={(event) => setCreateForm((current) => ({ ...current, teacherAvatarUrl: event.target.value }))} placeholder="Teacher photo URL" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-            <input value={createForm.teacherRole} onChange={(event) => setCreateForm((current) => ({ ...current, teacherRole: event.target.value }))} placeholder="Teacher role" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-            <input value={createForm.teacherExperience} onChange={(event) => setCreateForm((current) => ({ ...current, teacherExperience: event.target.value }))} placeholder="Teacher experience" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <textarea value={createForm.teacherBio} onChange={(event) => setCreateForm((current) => ({ ...current, teacherBio: event.target.value }))} placeholder="Teacher bio" rows={3} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <textarea value={createForm.classDescription} onChange={(event) => setCreateForm((current) => ({ ...current, classDescription: event.target.value }))} placeholder="Class description" rows={3} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <textarea value={createForm.sessionNotesText} onChange={(event) => setCreateForm((current) => ({ ...current, sessionNotesText: event.target.value }))} placeholder="Session notes, one line per note" rows={4} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <textarea value={createForm.resourcesText} onChange={(event) => setCreateForm((current) => ({ ...current, resourcesText: event.target.value }))} placeholder="Resources: Title | Type | URL | Description (one per line)" rows={4} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <input value={createForm.pollQuestion} onChange={(event) => setCreateForm((current) => ({ ...current, pollQuestion: event.target.value }))} placeholder="Poll question" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <textarea value={createForm.pollOptionsText} onChange={(event) => setCreateForm((current) => ({ ...current, pollOptionsText: event.target.value }))} placeholder="Poll options, one per line" rows={3} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-            <div className="rounded-[18px] border border-[#dbe7ff] bg-white p-3 md:col-span-2">
-              <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#7283a0]">Live preview</p>
-              <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-                <div className="min-w-0">
-                  <p className="truncate text-[16px] font-semibold text-[#1f2d4e]">{createForm.title.trim() || 'Live class title'}</p>
-                  <p className="mt-1 text-[13px] text-[#7283a0]">{createForm.classDescription.trim() || 'Class description appears here for students.'}</p>
-                  <div className="mt-3 flex items-center gap-3">
-                    <TeacherAvatar name={createForm.instructor.trim() || user?.name || 'Live Faculty'} photoUrl={createForm.teacherAvatarUrl.trim() || null} size="md" />
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-semibold text-[#1f2d4e]">{createForm.instructor.trim() || user?.name || 'Live Faculty'}</p>
-                      <p className="truncate text-[12px] text-[#7283a0]">{createForm.teacherRole.trim() || 'Teacher role'}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="h-[108px] overflow-hidden rounded-[16px] border border-[#dbe7ff] bg-[#f4f7ff]">
-                  {createForm.posterUrl.trim() ? (
-                    <img src={createForm.posterUrl.trim()} alt={createForm.title || 'Live poster preview'} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <LiveBoardArtwork />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 md:col-span-2">
-              <button type="button" data-testid="live-create-submit" disabled={busy} onClick={() => void handleCreateLiveClass()} className="rounded-[14px] bg-[#125df4] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-                {busy ? (editingLiveClassId ? 'Saving...' : 'Creating...') : (editingLiveClassId ? 'Save Class' : 'Create Class')}
-              </button>
-              {editingLiveClassId && (
-                <button type="button" onClick={() => void handleDeleteLiveClass()} className="rounded-[14px] border border-[#ffd6d6] bg-[#fff5f5] px-5 py-2.5 text-sm font-semibold text-[#c93636]">
-                  Delete
-                </button>
-              )}
-              <button type="button" onClick={resetLiveClassEditor} className="rounded-[14px] border border-[#dbe4f4] bg-white px-5 py-2.5 text-sm font-semibold text-[#31486d]">
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+        {createOpen && isAdmin && renderCreateBuilder(false)}
       </div>
     );
   }
 
   return (
     <div className={cn('space-y-5', view === 'room' && 'space-y-3')} style={liveUiFontStyle}>
-      {error && (
+      {error && view !== 'room' && (
         <div className="rounded-[18px] border border-[#ffd2d2] bg-[#fff5f5] px-4 py-3 text-sm text-[#c93636]">
           {error}
         </div>
@@ -3678,28 +4333,28 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   data-testid="live-featured-card"
                   onClick={() => mobileFeaturedDisplay.liveClassId ? void openLiveClass(mobileFeaturedDisplay.liveClassId) : undefined}
                   className={cn(
-                    'mt-[18px] grid w-full gap-[8px] rounded-[22px] border border-[#dfe7f5] bg-[#eaf1ff] px-[16px] py-[15px] text-left shadow-[0_14px_30px_rgba(28,41,61,0.08)] md:grid-cols-[1fr_320px] md:gap-4 md:rounded-[20px] md:p-5',
-                    isReferenceMode ? 'grid-cols-[minmax(0,1fr)_194px] gap-[10px] px-[18px] py-[16px]' : 'grid-cols-[minmax(0,1fr)_170px]',
+                    'mt-[18px] grid w-full gap-[10px] rounded-[24px] border border-[#dfe7f5] bg-[#eef4ff] px-[16px] py-[16px] text-left shadow-[0_14px_30px_rgba(28,41,61,0.08)] md:grid-cols-[1fr_320px] md:gap-4 md:rounded-[20px] md:p-5',
+                    isReferenceMode ? 'grid-cols-[minmax(0,1fr)_194px] gap-[10px] px-[18px] py-[16px]' : 'grid-cols-[minmax(0,1fr)_138px]',
                   )}
                 >
-                  <div>
+                  <div className="min-w-0">
                     <span className={cn('inline-flex items-center gap-[6px] rounded-full px-[12px] py-[6px] text-[11px] font-semibold uppercase tracking-[0.12em]', mobileFeaturedDisplay.status === 'live' ? 'bg-[#fff0f0] text-[#d23b3b]' : getStatusTone(mobileFeaturedDisplay.status || 'scheduled'))}>
                       {mobileFeaturedDisplay.badge}
                     </span>
-                    <h3 className={cn('mt-[11px] line-clamp-2 leading-[1.14] tracking-[-0.02em] text-[#1a2f57] md:text-[1.95rem]', isReferenceMode ? 'max-w-[158px] text-[18px] font-semibold md:max-w-[320px] md:text-[18px]' : 'text-[18px] font-semibold')}>
+                    <h3 className={cn('mt-[12px] line-clamp-3 leading-[1.16] tracking-[-0.02em] text-[#1a2f57] md:text-[1.95rem]', isReferenceMode ? 'max-w-[158px] text-[18px] font-semibold md:max-w-[320px] md:text-[18px]' : 'max-w-[164px] text-[18px] font-semibold')}>
                       {mobileFeaturedDisplay.title}
                     </h3>
-                    <p className={cn('mt-[6px] line-clamp-2 leading-[1.38] text-[#5b6f93] md:text-[14px]', isReferenceMode ? 'max-w-[160px] text-[13px] md:max-w-[320px]' : 'text-[14px]')}>{mobileFeaturedDisplay.subtitle}</p>
-                    <p className="mt-[8px] text-[13px] text-[#7283a0] md:text-[13px]">{mobileFeaturedDisplay.meta}</p>
-                    <div className="mt-[11px] flex items-center gap-[10px] text-[#4b6288]">
+                    <p className={cn('mt-[7px] line-clamp-2 leading-[1.35] text-[#5b6f93] md:text-[14px]', isReferenceMode ? 'max-w-[160px] text-[13px] md:max-w-[320px]' : 'max-w-[162px] text-[13px]')}>{mobileFeaturedDisplay.subtitle}</p>
+                    <p className="mt-[6px] text-[12px] text-[#7283a0] md:text-[13px]">{mobileFeaturedDisplay.meta}</p>
+                    <div className="mt-[10px] flex items-center gap-[10px] text-[#4b6288]">
                       {isReferenceMode ? <ReferenceTeacherAvatar size="sm" /> : <TeacherAvatar name={mobileFeaturedDisplay.teacher} photoUrl={mobileFeaturedDisplay.teacherAvatarUrl} size="sm" />}
-                      <div>
-                        <p className={cn('font-semibold text-[#1f2d4e] md:text-[15px]', isReferenceMode ? 'text-[13px]' : 'text-[13px]')}>{mobileFeaturedDisplay.teacher}</p>
-                        <p className="text-[13px] text-[#6d7c93] md:text-[13px]">{mobileFeaturedDisplay.audience}</p>
+                      <div className="min-w-0">
+                        <p className={cn('truncate font-semibold text-[#1f2d4e] md:text-[15px]', isReferenceMode ? 'text-[13px]' : 'text-[13px]')}>{mobileFeaturedDisplay.teacher}</p>
+                        <p className="truncate text-[12px] text-[#6d7c93] md:text-[13px]">{mobileFeaturedDisplay.audience}</p>
                       </div>
                     </div>
                     <div className={cn('mt-[13px]', isReferenceMode && 'mt-[14px]')}>
-                      <div className={cn('inline-flex h-[40px] min-w-[156px] items-center justify-between rounded-[12px] bg-[#2f6fe4] px-[18px] text-[14px] font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.22)]', isReferenceMode ? 'w-[154px] max-w-full whitespace-nowrap' : 'w-full gap-2')}>
+                      <div className={cn('inline-flex h-[40px] min-w-[148px] items-center justify-between rounded-[12px] bg-[#2f6fe4] px-[16px] text-[14px] font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.22)]', isReferenceMode ? 'w-[154px] max-w-full whitespace-nowrap' : 'w-[152px] gap-2')}>
                         <span className="md:hidden">
                           {mobileFeaturedDisplay.buttonLabel}
                         </span>
@@ -3710,15 +4365,20 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                       </div>
                     </div>
                   </div>
-                  <div className={cn('overflow-hidden rounded-[18px] border border-[#d9e5ff] bg-white/78 p-1.5 shadow-[inset_0_0_0_1px_rgba(199,214,255,0.45)]', isReferenceMode && 'flex h-[166px] items-center justify-center rounded-[16px] border-0 bg-transparent p-0 shadow-none')}>
+                  <div className={cn('overflow-hidden rounded-[18px] border border-[#d9e5ff] bg-white/78 p-1.5 shadow-[inset_0_0_0_1px_rgba(199,214,255,0.45)]', isReferenceMode ? 'flex h-[166px] items-center justify-center rounded-[16px] border-0 bg-transparent p-0 shadow-none' : 'self-center')}>
                     {isReferenceMode ? (
                       <div className="origin-center scale-[1.42] translate-x-[-4px] translate-y-[10px]">
                         <LiveBoardArtwork />
                       </div>
                     ) : mobileFeaturedDisplay.posterUrl ? (
-                      <img src={mobileFeaturedDisplay.posterUrl} alt={mobileFeaturedDisplay.title} className="h-full w-full rounded-[16px] object-cover" />
+                      <img src={mobileFeaturedDisplay.posterUrl} alt={mobileFeaturedDisplay.title} className="h-[136px] w-full rounded-[16px] object-cover" />
                     ) : (
-                      <LiveBoardArtwork />
+                      <div className="flex h-[136px] w-full flex-col items-center justify-center rounded-[16px] border border-dashed border-[#d4dff7] bg-[#f7faff] px-3 text-center">
+                        <div className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-white text-[#4b83f6] shadow-[0_8px_18px_rgba(75,131,246,0.12)]">
+                          <ImageIcon className="h-5 w-5" />
+                        </div>
+                        <p className="mt-3 text-[12px] font-semibold text-[#5a7099]">Poster pending</p>
+                      </div>
                     )}
                   </div>
                 </button>
@@ -3742,102 +4402,17 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   type="button"
                   data-testid="live-create-toggle-mobile"
                   onClick={toggleNewLiveClassEditor}
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-[#125df4] px-4 py-3 text-[14px] font-semibold text-white shadow-[0_14px_26px_rgba(18,93,244,0.22)] md:hidden"
+                  className="fixed bottom-[88px] right-4 z-20 inline-flex h-[56px] w-[56px] items-center justify-center rounded-full bg-[#125df4] text-white shadow-[0_18px_30px_rgba(18,93,244,0.28)] md:hidden"
+                  aria-label="Create Live Class"
                 >
-                  <Plus className="h-4.5 w-4.5" />
-                  Create Live Class
+                  <Plus className="h-5 w-5" />
                 </button>
               )}
 
-              {createOpen && isAdmin && (
-                <div data-testid="live-create-form" className="mt-5 grid gap-3 rounded-[22px] border border-[#dbe7ff] bg-[#f9fbff] p-4 md:grid-cols-2">
-                  <input data-testid="live-create-title" value={createForm.title} onChange={(event) => setCreateForm((current) => ({ ...current, title: event.target.value }))} placeholder="Class title" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-                  <input data-testid="live-create-instructor" value={createForm.instructor} onChange={(event) => setCreateForm((current) => ({ ...current, instructor: event.target.value }))} placeholder="Instructor" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-                  <input data-testid="live-create-start-time" type="datetime-local" value={createForm.startTime} onChange={(event) => setCreateForm((current) => ({ ...current, startTime: event.target.value }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-                  <input data-testid="live-create-duration" type="number" value={createForm.durationMinutes} onChange={(event) => setCreateForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="Duration" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-                  <select data-testid="live-create-linkage-type-mobile" value={createForm.linkageType} onChange={(event) => setCreateForm((current) => ({ ...current, linkageType: event.target.value as typeof current.linkageType, courseId: '', moduleId: '', chapterId: '', mockTestId: '' }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none">
-                    <option value="standalone">Create without course/mock</option>
-                    <option value="course">Course subject/module</option>
-                    <option value="mock-test">Mock test explanation</option>
-                  </select>
-                  {createForm.linkageType === 'course' && (
-                    <select data-testid="live-create-course-mobile" value={createForm.courseId} onChange={(event) => setCreateForm((current) => ({ ...current, courseId: event.target.value, moduleId: '', chapterId: '' }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none">
-                      <option value="">Select course</option>
-                      {overview.courses.map((course) => <option key={course._id} value={course._id}>{course.title}</option>)}
-                    </select>
-                  )}
-                  {createForm.linkageType === 'course' && createForm.courseId && (
-                    <select data-testid="live-create-module-mobile" value={createForm.moduleId} onChange={(event) => setCreateForm((current) => ({ ...current, moduleId: event.target.value, chapterId: '' }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none">
-                      <option value="">Select subject/module</option>
-                      {(overview.courses.find((course) => course._id === createForm.courseId)?.modules || []).map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}
-                    </select>
-                  )}
-                  {createForm.linkageType === 'course' && createForm.moduleId && (
-                    <select data-testid="live-create-chapter-mobile" value={createForm.chapterId} onChange={(event) => setCreateForm((current) => ({ ...current, chapterId: event.target.value }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none">
-                      <option value="">Whole module</option>
-                      {(overview.courses.find((course) => course._id === createForm.courseId)?.modules.find((module) => module.id === createForm.moduleId)?.chapters || []).map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
-                    </select>
-                  )}
-                  {createForm.linkageType === 'mock-test' && (
-                    <select data-testid="live-create-mock-test-mobile" value={createForm.mockTestId} onChange={(event) => setCreateForm((current) => ({ ...current, mockTestId: event.target.value }))} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2">
-                      <option value="">Select mock test</option>
-                      {overview.testSeries.map((test) => <option key={test._id} value={test._id}>{test.title}</option>)}
-                    </select>
-                  )}
-                  <input data-testid="live-create-topics" value={createForm.topicTags} onChange={(event) => setCreateForm((current) => ({ ...current, topicTags: event.target.value }))} placeholder="Topics, comma separated" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <input value={createForm.posterUrl} onChange={(event) => setCreateForm((current) => ({ ...current, posterUrl: event.target.value }))} placeholder="Hero poster image URL" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <input value={createForm.teacherAvatarUrl} onChange={(event) => setCreateForm((current) => ({ ...current, teacherAvatarUrl: event.target.value }))} placeholder="Teacher photo URL" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-                  <input value={createForm.teacherRole} onChange={(event) => setCreateForm((current) => ({ ...current, teacherRole: event.target.value }))} placeholder="Teacher role" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none" />
-                  <input value={createForm.teacherExperience} onChange={(event) => setCreateForm((current) => ({ ...current, teacherExperience: event.target.value }))} placeholder="Teacher experience" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <textarea value={createForm.teacherBio} onChange={(event) => setCreateForm((current) => ({ ...current, teacherBio: event.target.value }))} placeholder="Teacher bio" rows={3} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <textarea value={createForm.classDescription} onChange={(event) => setCreateForm((current) => ({ ...current, classDescription: event.target.value }))} placeholder="Class description" rows={3} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <textarea value={createForm.sessionNotesText} onChange={(event) => setCreateForm((current) => ({ ...current, sessionNotesText: event.target.value }))} placeholder="Session notes, one line per note" rows={4} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <textarea value={createForm.resourcesText} onChange={(event) => setCreateForm((current) => ({ ...current, resourcesText: event.target.value }))} placeholder="Resources: Title | Type | URL | Description (one per line)" rows={4} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <input value={createForm.pollQuestion} onChange={(event) => setCreateForm((current) => ({ ...current, pollQuestion: event.target.value }))} placeholder="Poll question" className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <textarea value={createForm.pollOptionsText} onChange={(event) => setCreateForm((current) => ({ ...current, pollOptionsText: event.target.value }))} placeholder="Poll options, one per line" rows={3} className="rounded-[14px] border border-[#dbe4f4] bg-white px-4 py-3 outline-none md:col-span-2" />
-                  <div className="rounded-[18px] border border-[#dbe7ff] bg-white p-3 md:col-span-2">
-                    <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#7283a0]">Live preview</p>
-                    <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-                      <div className="min-w-0">
-                        <p className="truncate text-[16px] font-semibold text-[#1f2d4e]">{createForm.title.trim() || 'Live class title'}</p>
-                        <p className="mt-1 text-[13px] text-[#7283a0]">{createForm.classDescription.trim() || 'Class description appears here for students.'}</p>
-                        <div className="mt-3 flex items-center gap-3">
-                          <TeacherAvatar name={createForm.instructor.trim() || user?.name || 'Live Faculty'} photoUrl={createForm.teacherAvatarUrl.trim() || null} size="md" />
-                          <div className="min-w-0">
-                            <p className="truncate text-[14px] font-semibold text-[#1f2d4e]">{createForm.instructor.trim() || user?.name || 'Live Faculty'}</p>
-                            <p className="truncate text-[12px] text-[#7283a0]">{createForm.teacherRole.trim() || 'Teacher role'}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-[108px] overflow-hidden rounded-[16px] border border-[#dbe7ff] bg-[#f4f7ff]">
-                        {createForm.posterUrl.trim() ? (
-                          <img src={createForm.posterUrl.trim()} alt={createForm.title || 'Live poster preview'} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center">
-                            <LiveBoardArtwork />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="md:col-span-2 flex gap-3">
-                    <button type="button" data-testid="live-create-submit" disabled={busy} onClick={() => void handleCreateLiveClass()} className="rounded-[14px] bg-[#125df4] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-                      {busy ? (editingLiveClassId ? 'Saving...' : 'Creating...') : (editingLiveClassId ? 'Save Class' : 'Create Class')}
-                    </button>
-                    {editingLiveClassId && (
-                      <button type="button" onClick={() => void handleDeleteLiveClass()} className="rounded-[14px] border border-[#ffd6d6] bg-[#fff5f5] px-5 py-2.5 text-sm font-semibold text-[#c93636]">
-                        Delete
-                      </button>
-                    )}
-                    <button type="button" onClick={resetLiveClassEditor} className="rounded-[14px] border border-[#dbe4f4] bg-white px-5 py-2.5 text-sm font-semibold text-[#31486d]">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+              {createOpen && isAdmin && renderCreateBuilder(true)}
 
               {isAdmin && !isReferenceMode && orderedLiveClasses.length > 0 && (
-                <div className="mt-5 rounded-[22px] border border-[#dfe7f5] bg-white p-4 shadow-[0_8px_18px_rgba(28,41,61,0.05)]">
+                <div className="mt-5 hidden rounded-[22px] border border-[#dfe7f5] bg-white p-4 shadow-[0_8px_18px_rgba(28,41,61,0.05)] md:block">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="text-[15px] font-semibold text-[#1f2d4e]">Manage Live Classes</h3>
@@ -4131,7 +4706,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                       ) : selectedLiveClass?.posterUrl ? (
                         <img src={selectedLiveClass.posterUrl} alt={detailDisplay.title} className="h-full w-full rounded-[18px] object-cover" />
                       ) : (
-                        <LiveBoardArtwork dark />
+                        <LivePosterEmptyState compact dark message="Poster pending" />
                       )}
                     </div>
                   </div>
@@ -4170,23 +4745,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                 </button>
               </div>
 
-              {isAdmin && (
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => selectedLiveClass && beginEditLiveClass(selectedLiveClass)} className="rounded-[14px] border border-white/14 bg-white/8 px-3.5 py-3 text-[13px] font-semibold text-white">
-                    Edit Details
-                  </button>
-                  {selectedStatus !== 'live' && selectedStatus !== 'ended' && (
-                    <button type="button" data-testid="live-admin-start" disabled={busy} onClick={() => void handleStartLiveClass()} className="rounded-[14px] bg-[#1765f5] px-3.5 py-3 text-[13px] font-semibold text-white shadow-[0_12px_20px_rgba(23,101,245,0.24)]">
-                      Start Class
-                    </button>
-                  )}
-                  {selectedStatus === 'live' && (
-                    <button type="button" data-testid="live-admin-end" disabled={busy} onClick={() => void handleEndLiveClass()} className="rounded-[14px] bg-[#ea4335] px-3.5 py-3 text-[13px] font-semibold text-white shadow-[0_12px_20px_rgba(234,67,53,0.24)]">
-                      End Class
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
 
             {renderIngestSetupCard('mx-4')}
@@ -4246,7 +4804,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                     </div>
 
                     <div className="mt-[16px] divide-y divide-[#edf2fb] rounded-[18px] border border-[#edf2fb] bg-[#fbfcff]">
-                      {classInfoRows.map(({ label, value, icon: Icon, tone }, index) => (
+                      {detailInfoRows.map(({ label, value, icon: Icon, tone }, index) => (
                         <button
                           key={label}
                           type="button"
@@ -4263,7 +4821,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                             </div>
                             <p className="text-[14px] text-[#1f2d4e]">{label}</p>
                           </div>
-                          <p className="max-w-[148px] text-right text-[13px] leading-[1.45] text-[#7283a0]">{index === 0 ? detailDisplay.topics : value}</p>
+                          <p className="max-w-[148px] text-right text-[13px] leading-[1.45] text-[#7283a0]">{value}</p>
                         </button>
                       ))}
                     </div>
@@ -4275,6 +4833,33 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                 {detailTab === 'resources' && renderDetailResources()}
               </div>
             </div>
+
+            {isAdmin && (
+              <div className="mx-[14px] rounded-[18px] border border-[#e5ebf7] bg-white p-[14px] shadow-[0_8px_18px_rgba(28,41,61,0.05)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-[15px] font-semibold text-[#1f2d4e]">Manage live class</h3>
+                    <p className="mt-1 text-[12px] text-[#7283a0]">Update the schedule or control the live session without crowding the learner view.</p>
+                  </div>
+                  <span className="rounded-full bg-[#eef4ff] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#2f6fe4]">Admin</span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => selectedLiveClass && beginEditLiveClass(selectedLiveClass)} className="rounded-[14px] border border-[#dbe4f4] bg-white px-3.5 py-3 text-[13px] font-semibold text-[#2f6fe4]">
+                    Edit Details
+                  </button>
+                  {selectedStatus !== 'live' && selectedStatus !== 'ended' && (
+                    <button type="button" data-testid="live-admin-start" disabled={busy} onClick={() => void handleStartLiveClass()} className="rounded-[14px] bg-[#1765f5] px-3.5 py-3 text-[13px] font-semibold text-white shadow-[0_12px_20px_rgba(23,101,245,0.18)]">
+                      Start Class
+                    </button>
+                  )}
+                  {selectedStatus === 'live' && (
+                    <button type="button" data-testid="live-admin-end" disabled={busy} onClick={() => void handleEndLiveClass()} className="rounded-[14px] bg-[#ea4335] px-3.5 py-3 text-[13px] font-semibold text-white shadow-[0_12px_20px_rgba(234,67,53,0.18)]">
+                      End Class
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="mx-[14px] rounded-[18px] border border-[#e5ebf7] bg-white p-[14px] shadow-[0_8px_18px_rgba(28,41,61,0.05)]">
               <h3 className="text-[15px] font-semibold text-[#1f2d4e]">Meet your teacher</h3>
@@ -4427,9 +5012,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         <img src={selectedLiveClass.posterUrl} alt={detailDisplay.title} className="h-full min-h-[220px] w-full rounded-[18px] object-cover" />
                       </div>
                     ) : (
-                      <div className={cn(isReferenceMode && 'origin-top-left scale-[1.08]')}>
-                        <LiveBoardArtwork dark />
-                      </div>
+                      <LivePosterEmptyState compact dark message="Poster pending" />
                     )}
                   </div>
                 </div>
@@ -4474,7 +5057,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         <p className="mt-2.5 text-[14px] leading-6 text-[#6a7a96]">{detailDisplay.about}</p>
                         <button type="button" onClick={() => selectDetailTab('notes')} className="mt-4 text-[14px] font-semibold text-[#1765f5]">View More</button>
                         <div className="mt-5 divide-y divide-[#edf2fb] rounded-[18px] border border-[#edf2fb] bg-[#fbfcff]">
-                          {classInfoRows.map(({ label, value, icon: Icon, tone }, index) => (
+                          {detailInfoRows.map(({ label, value, icon: Icon, tone }) => (
                             <button
                               key={label}
                               type="button"
@@ -4491,7 +5074,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                                 </div>
                                 <p className="text-[14px] text-[#122444]">{label}</p>
                               </div>
-                              <p className="text-right text-[13px] text-[#6a7a96]">{index === 0 ? detailDisplay.topics : value}</p>
+                              <p className="text-right text-[13px] text-[#6a7a96]">{value}</p>
                             </button>
                           ))}
                         </div>
@@ -4788,7 +5371,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         {getDisplayLiveClassTitle(selectedLiveClass)}
                       </h2>
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-white/68">
-                        <span>{getPrimaryTopic(selectedLiveClass)} • Class 12</span>
+                        <span>{getLiveMetaLine(selectedLiveClass)}</span>
                         <span>•</span>
                         <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {formatCompactCount(joinedCount)}</span>
                       </div>
@@ -4838,7 +5421,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         data-testid="live-jitsi-container"
                         data-room-loaded={roomLoaded ? 'true' : 'false'}
                         data-room-name={access.liveRoomName || ''}
-                        className="relative h-[356px] w-full overflow-hidden bg-[#0d1422]"
+                        className="relative aspect-[16/9] w-full overflow-hidden bg-[#0d1422]"
                       >
                         <div className="absolute inset-0">
                           <video ref={mobileLiveKitStageRef} className={cn('h-full w-full object-cover', !liveKitActiveStageTrack && 'hidden')} playsInline autoPlay />
@@ -4855,7 +5438,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         <div ref={mobileLiveKitAudioSinkRef} className="hidden" aria-hidden="true" />
                       </div>
                     ) : directRoomMode ? (
-                      <div data-testid="live-jitsi-container" data-room-loaded="false" data-room-name={access.liveRoomName || ''} className="flex h-[356px] w-full flex-col items-center justify-center gap-4 bg-white px-5 text-center">
+                      <div data-testid="live-jitsi-container" data-room-loaded="false" data-room-name={access.liveRoomName || ''} className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-4 bg-white px-5 text-center">
                         <MonitorUp className="h-10 w-10 text-[#5f87ff]" />
                         <div>
                           <p className="text-[15px] font-semibold text-[#1f2d4e]">Open the live room tab to use camera, microphone, audio, and screen sharing.</p>
@@ -4863,7 +5446,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         </div>
                       </div>
                     ) : (
-                      <div ref={mobileJitsiContainerRef} data-testid="live-jitsi-container" data-room-loaded={roomLoaded ? 'true' : 'false'} data-room-name={access.liveRoomName || ''} className="h-[356px] w-full bg-white" />
+                      <div ref={mobileJitsiContainerRef} data-testid="live-jitsi-container" data-room-loaded={roomLoaded ? 'true' : 'false'} data-room-name={access.liveRoomName || ''} className="aspect-[16/9] w-full bg-white" />
                     )}
                     {(mediaNotice || mediaWarning) && (
                       <div className={cn('border-t px-4 py-3 text-[12px]', mediaWarning ? 'border-[#5b2b2b] bg-[#251317] text-[#ffc6ce]' : 'border-white/8 bg-[#0f1728] text-white/72')}>
@@ -4873,18 +5456,26 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   </div>
                 </div>
 
-                <div className="grid grid-cols-4 gap-2">
-                  {(session?.participants || []).slice(0, 4).map((participant) => (
-                    <div key={participant.userId} className="overflow-hidden rounded-[16px] border border-white/8 bg-[#111b2d]">
-                      <div className="flex h-[120px] items-center justify-center bg-[linear-gradient(180deg,#453a34_0%,#1b2029_100%)]">
-                        <TeacherAvatar name={participant.name} size="lg" online={!participant.micMuted} />
+                <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex min-w-max gap-2">
+                    {(session?.participants || []).slice(0, 3).map((participant) => (
+                      <div key={participant.userId} className="w-[86px] overflow-hidden rounded-[16px] border border-white/8 bg-[#111b2d] shadow-[0_10px_22px_rgba(0,0,0,0.18)]">
+                        <div className="relative flex h-[88px] items-center justify-center bg-[linear-gradient(180deg,#3a312d_0%,#151d2b_100%)]">
+                          <TeacherAvatar name={participant.name} size="md" online={!participant.micMuted} />
+                          <div className="absolute right-1.5 top-1.5 rounded-full bg-black/38 p-1">
+                            {participant.micMuted ? <MicOff className="h-3 w-3 text-white/62" /> : <Mic className="h-3 w-3 text-[#28d17c]" />}
+                          </div>
+                        </div>
+                        <div className="px-2 py-2">
+                          <p className="truncate text-[10.5px] font-semibold text-white">{participant.name}</p>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                        <p className="truncate text-[11px] font-semibold text-white">{participant.name}</p>
-                        {participant.micMuted ? <MicOff className="h-3.5 w-3.5 text-white/58" /> : <Mic className="h-3.5 w-3.5 text-[#28d17c]" />}
-                      </div>
+                    ))}
+                    <div className="flex w-[86px] flex-col justify-between rounded-[16px] border border-white/8 bg-[#111b2d] px-2 py-2 text-white shadow-[0_10px_22px_rgba(0,0,0,0.18)]">
+                      <div className="flex h-[88px] items-center justify-center rounded-[12px] bg-[#0b1220] text-[22px] font-semibold">+{Math.max(joinedCount - 3, 0)}</div>
+                      <p className="pt-2 text-center text-[10.5px] font-medium text-white/78">Participants</p>
                     </div>
-                  ))}
+                  </div>
                 </div>
 
                 <div className="overflow-hidden rounded-[22px] border border-white/8 bg-[#111b2d] text-white shadow-[0_18px_42px_rgba(9,16,32,0.18)]">
@@ -4913,7 +5504,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         <div className="mb-3 flex items-center gap-2">
                           <h3 className="text-[15px] font-semibold text-white">Live Chat</h3>
                         </div>
-                        <div className="max-h-[305px] space-y-3 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:#7a4dff_transparent]">
+                        <div className="max-h-[245px] space-y-3 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:#7a4dff_transparent]">
                           {messages.map((message) => (
                             <div data-testid={`live-chat-message-${message._id}`} key={message._id} className="space-y-2">
                               <div className="flex items-center gap-2 text-[11px] text-white/52">
@@ -4959,27 +5550,27 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
 
                 <div className="grid grid-cols-5 items-end gap-2 px-1 pt-1">
                   <button data-testid="live-toggle-audio" type="button" disabled={!roomLoaded || directRoomMode} onClick={toggleAudio} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded || directRoomMode ? 'text-white/34' : 'text-white')}>
-                    <span className={cn('flex h-[52px] w-[52px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#143c2b] text-[#91f1b9]')}>{localMicMuted ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}</span>
+                    <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#143c2b] text-[#91f1b9]')}>{localMicMuted ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}</span>
                     <span className="text-[11px] font-semibold">{localMicMuted ? 'Unmute' : 'Mute'}</span>
                   </button>
                   <button data-testid="live-toggle-video" type="button" disabled={!roomLoaded || directRoomMode} onClick={toggleVideo} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded || directRoomMode ? 'text-white/34' : 'text-white')}>
-                    <span className={cn('flex h-[52px] w-[52px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#3f1c2c] text-[#ffb8cb]')}>{localVideoEnabled ? <VideoOff className="h-4.5 w-4.5" /> : <Video className="h-4.5 w-4.5" />}</span>
+                    <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#3f1c2c] text-[#ffb8cb]')}>{localVideoEnabled ? <VideoOff className="h-4.5 w-4.5" /> : <Video className="h-4.5 w-4.5" />}</span>
                     <span className="text-[11px] font-semibold">{localVideoEnabled ? 'Stop Video' : 'Start Video'}</span>
                   </button>
                   <button type="button" data-testid="live-raise-hand" disabled={isAdmin} onClick={() => void EduService.updateLiveRaisedHand(selectedLiveClass._id, !Boolean(selfParticipant?.handRaised))} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', isAdmin ? 'text-white/34' : 'text-white')}>
-                    <span className={cn('flex h-[52px] w-[52px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', isAdmin ? 'bg-white/6' : 'bg-white/10')}><Hand className="h-4.5 w-4.5" /></span>
+                    <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', isAdmin ? 'bg-white/6' : 'bg-white/10')}><Hand className="h-4.5 w-4.5" /></span>
                     <span className="text-[11px] font-semibold">{selfParticipant?.handRaised ? 'Lower Hand' : 'Raise Hand'}</span>
                   </button>
                   {isAdmin ? (
                     <button data-testid="live-toggle-screen-share" type="button" disabled={!roomLoaded || directRoomMode} onClick={toggleScreenShare} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded || directRoomMode ? 'text-white/34' : 'text-white')}>
-                      <span className={cn('flex h-[52px] w-[52px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#215df5] text-white')}>
+                      <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#215df5] text-white')}>
                         <MonitorUp className="h-4.5 w-4.5" />
                       </span>
                       <span className="text-[11px] font-semibold">{localScreenSharing ? 'Stop Share' : 'Share'}</span>
                     </button>
                   ) : (
                     <button type="button" onClick={() => setMobileRoomMenuOpen((current) => !current)} className="flex min-w-0 flex-col items-center justify-center gap-2 text-white">
-                      <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-white/10 shadow-[0_14px_22px_rgba(0,0,0,0.18)]"><MoreHorizontal className="h-4.5 w-4.5" /></span>
+                      <span className="flex h-[56px] w-[56px] items-center justify-center rounded-full bg-white/10 shadow-[0_14px_22px_rgba(0,0,0,0.18)]"><MoreHorizontal className="h-4.5 w-4.5" /></span>
                       <span className="text-[11px] font-semibold">More</span>
                     </button>
                   )}
@@ -5004,7 +5595,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                 </div>
                 <div>
                   <h2 className="max-w-[230px] text-[1.08rem] font-semibold tracking-[-0.03em] md:max-w-none md:text-[1.15rem]">{getDisplayLiveClassTitle(selectedLiveClass)}</h2>
-                  <p className="text-[13px] text-white/62">{getPrimaryTopic(selectedLiveClass)} • Class 12</p>
+                  <p className="text-[13px] text-white/62">{getLiveMetaLine(selectedLiveClass)}</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-[13px] text-white/82">

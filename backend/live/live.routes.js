@@ -1,6 +1,7 @@
 const express = require('express');
 const controller = require('./live.controller.js');
 const { requireAuth, attachUserFromToken } = require('../middleware/auth.js');
+const uploadLiveImage = require('../lib/live-image-upload.js');
 
 const router = express.Router();
 
@@ -25,6 +26,7 @@ router.get('/', controller.listLiveClasses);
 router.post('/ingest/on-publish', controller.validateIngestPublish);
 router.get('/stream/:token', controller.streamProtectedLiveAsset);
 router.get('/admin', requireAuth, controller.listAdminLiveClasses);
+router.post('/assets/poster', requireAuth, uploadLiveImage.single('image'), controller.uploadLiveImageAsset);
 router.post('/', requireAuth, controller.createLiveClass);
 router.patch('/:liveClassId', requireAuth, controller.updateLiveClass);
 router.put('/:liveClassId', requireAuth, controller.updateLiveClass);

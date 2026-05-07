@@ -27,10 +27,24 @@ const { connectDatabase, getDatabaseMode } = require('./lib/database.js');
 const { isFirestoreStateEnabled, getStateDocumentRef } = require('./lib/firebase-state.js');
 const { resetState, serializeState } = require('./lib/store.js');
 
+const parseCorsOrigin = (value) => {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized === '*') {
+    return true;
+  }
+
+  const origins = normalized
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return origins.length <= 1 ? origins[0] : origins;
+};
+
 const app = express();
 app.set('trust proxy', appConfig.trustProxy);
 app.disable('x-powered-by');
-app.use(cors({ origin: appConfig.corsOrigin === '*' ? true : appConfig.corsOrigin }));
+app.use(cors({ origin: parseCorsOrigin(appConfig.corsOrigin) }));
 app.use(express.json({ limit: appConfig.jsonBodyLimit }));
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

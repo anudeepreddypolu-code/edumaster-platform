@@ -1,0 +1,138 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-05-06T12:51:36.557Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    },
+    {
+      "stepId": "class-created",
+      "label": "class-created",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/class-created-class-created.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/class-created-class-created.html",
+      "timestamp": "2026-05-06T12:51:40.012Z",
+      "notes": [
+        "Live class created from admin flow."
+      ]
+    },
+    {
+      "stepId": "live-list-desktop",
+      "label": "live-list-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/live-list-desktop-live-list-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/live-list-desktop-live-list-desktop.html",
+      "timestamp": "2026-05-06T12:51:41.343Z",
+      "notes": [
+        "Responsive capture at 1536x1024."
+      ]
+    },
+    {
+      "stepId": "live-list-tablet",
+      "label": "live-list-tablet",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/live-list-tablet-live-list-tablet.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/live-list-tablet-live-list-tablet.html",
+      "timestamp": "2026-05-06T12:51:42.442Z",
+      "notes": [
+        "Responsive capture at 1024x1366."
+      ]
+    },
+    {
+      "stepId": "live-list-mobile",
+      "label": "live-list-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/live-list-mobile-live-list-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/live-list-mobile-live-list-mobile.html",
+      "timestamp": "2026-05-06T12:51:50.621Z",
+      "notes": [
+        "Responsive capture at 390x844."
+      ]
+    },
+    {
+      "stepId": "live-detail-desktop",
+      "label": "live-detail-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/live-detail-desktop-live-detail-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/live-detail-desktop-live-detail-desktop.html",
+      "timestamp": "2026-05-06T12:52:00.457Z",
+      "notes": [
+        "Responsive detail capture at 1536x1024."
+      ]
+    },
+    {
+      "stepId": "live-detail-tablet",
+      "label": "live-detail-tablet",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/live-detail-tablet-live-detail-tablet.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/live-detail-tablet-live-detail-tablet.html",
+      "timestamp": "2026-05-06T12:52:01.934Z",
+      "notes": [
+        "Responsive detail capture at 1024x1366."
+      ]
+    },
+    {
+      "stepId": "live-detail-mobile",
+      "label": "live-detail-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/live-detail-mobile-live-detail-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/live-detail-mobile-live-detail-mobile.html",
+      "timestamp": "2026-05-06T12:52:09.691Z",
+      "notes": [
+        "Responsive detail capture at 390x844."
+      ]
+    },
+    {
+      "stepId": "class-started",
+      "label": "class-started",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/class-started-class-started.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/class-started-class-started.html",
+      "timestamp": "2026-05-06T12:52:55.296Z",
+      "notes": [
+        "Admin started the class and the room loaded."
+      ]
+    },
+    {
+      "stepId": "admin-in-room",
+      "label": "admin-in-room",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/admin-in-room-admin-in-room.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/admin-in-room-admin-in-room.html",
+      "timestamp": "2026-05-06T12:52:55.460Z",
+      "notes": [
+        "Admin is inside the live classroom."
+      ]
+    },
+    {
+      "stepId": "student-login",
+      "label": "student-login",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/screenshots/student-login-student-login.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-51-28-823Z/sources/student-login-student-login.html",
+      "timestamp": "2026-05-06T12:53:13.532Z",
+      "notes": [
+        "Student login completed."
+      ]
+    }
+  ],
+  "failures": [],
+  "error": "Unable to open live class detail for title: QA Live Automation 2026-05-06T12-51-28-825Z. Visible text: VARONENGLISH\n\nCompetitive exam platform\n\nCURRENT LEARNER\n\nAbuw Singh\n\nBeginner\n\nRecent\n\n9\n\nSnapshots\n\n265\n\nOverview\nAll Courses\nLive Classes\nMock Tests\nRevision\nAnalytics\n\nNEXT BEST MOVE\n\nResume Circuits & Network Reduction Essentials before opening something new.\n\nResume now\nSign out\n⌘ K\n0\nQL\n\nQA Live Student\n\nAspirant\n\nLive Classes\n\nLearn live from expert faculty and stay ahead.\n\nLIVE NOW\nQA Live Automation\n\nImportant Concepts & PYQs\n\nPhysics\n\nQL\n\nQA Live Teacher\n\n0 watching\n\nJoin Live Class\nF = 1\n4πε₀ q₁q₂\nr²\n\nAll Live Classes\n\nBrowse all\n\nSchedule\n\nView timetable\n\nMy Classes\n\nJoined classes\n\nNotifications\n\nStay updated\n\nToday's Live Classes\nView Schedule\n05:53\nPM\n\nPhysics\n\nQA Live Automation\n\nEnglish\n\nQL\nQA Live Teacher\nLIVE\n0 going\n05:58\nPM\n\nPhysics\n\nQA Live Automation\n\nEnglish\n\nQL\nQA Live Teacher\nLIVE\n0 going\n06:04\nPM\n\nPhysics\n\nQA Live Automation\n\nEnglish\n\nQL\nQA Live Teacher\nLIVE\n0 going\n06:16\nPM\n\nPhysics\n\nQA Live Automation\n\nEnglish\n\nQL\nQA Live Teacher\nLIVE\n0 going\n06:20\nPM\n\nPhysics\n\nQA Live Automation\n\nEnglish\n\nQL\nQA Live Teacher\nLIVE\n0 going\n06:26\nPM\n\nPhysics\n\nQA Live Automation\n\nEnglish\n\nQL\nQA Live Teacher\nLIVE\n0 going\nTomorrow's Schedule\nView All\n05:58\nPM\n\nPhysics\n\nQA Li"
+}

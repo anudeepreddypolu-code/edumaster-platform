@@ -8,32 +8,41 @@ import {
   Brain,
   CalendarClock,
   CheckCircle2,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  Eye,
+  EyeOff,
   Expand,
   Flame,
   Gauge,
   GraduationCap,
+  Info,
   LayoutDashboard,
   LifeBuoy,
   LoaderCircle,
   Lock,
   LogOut,
+  Mail,
   Mic,
   MicOff,
   MessageSquare,
+  Monitor,
   MoreHorizontal,
   Pause,
+  Phone,
   PlayCircle,
+  Plus,
   Radio,
   Search,
   Send,
   ShieldCheck,
-  Sparkles,
+  Smartphone,
   Target,
   Trophy,
+  Trash2,
   UserCircle2,
   Video,
   Wallet,
@@ -62,8 +71,8 @@ import { AdminVideoUpload } from './components/AdminVideoUpload';
 import Hls from 'hls.js';
 import {
   AiResponse,
-  DailyQuizResult,
   MockTest,
+  MockQuestion,
   NotificationItem,
   PlatformOverview,
   ProtectedLessonPlayback,
@@ -73,7 +82,7 @@ import {
 } from './types';
 import { cn } from './lib/utils';
 
-type TabKey = 'overview' | 'courses' | 'live' | 'tests' | 'quiz' | 'revision' | 'analytics' | 'admin';
+type TabKey = 'overview' | 'courses' | 'live' | 'tests' | 'revision' | 'analytics' | 'admin';
 
 const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
@@ -82,7 +91,6 @@ const tabs: { id: TabKey; label: string; icon: React.ComponentType<{ className?:
   { id: 'courses', label: 'All Courses', icon: BookOpen },
   { id: 'live', label: 'Live Classes', icon: Radio },
   { id: 'tests', label: 'Mock Tests', icon: ClipboardCheck },
-  { id: 'quiz', label: 'Daily Quiz', icon: Sparkles },
   { id: 'revision', label: 'Revision', icon: Brain },
   { id: 'analytics', label: 'Analytics', icon: Gauge },
   { id: 'admin', label: 'Admin', icon: ShieldCheck },
@@ -110,11 +118,6 @@ const shellTabMeta: Record<TabKey, { eyebrow: string; title: string; description
     eyebrow: 'Practice zone',
     title: 'Attempt mocks with a cleaner runway',
     description: 'Keep timed practice, review, and progress signals focused so the test flow feels intentional.',
-  },
-  quiz: {
-    eyebrow: 'Daily quiz',
-    title: 'Protect the streak with a quick win',
-    description: 'Open the daily quiz, finish it fast, and keep the streak visible without crowding the workspace.',
   },
   revision: {
     eyebrow: 'Revision center',
@@ -329,6 +332,37 @@ type RevisionDayPlan = {
   summary: string;
   actions: string[];
 };
+
+type EditableAssessmentQuestion = {
+  id: string;
+  questionText: string;
+  options: string[];
+  correctOption: number;
+  explanation: string;
+  marks: number;
+  topic: string;
+};
+
+const createEditableAssessmentQuestion = (seed?: Partial<MockQuestion>): EditableAssessmentQuestion => {
+  const rawOptions = Array.isArray(seed?.options) ? seed.options.map((option) => String(option || '')) : [];
+  const options = [...rawOptions];
+  while (options.length < 4) {
+    options.push('');
+  }
+
+  return {
+    id: String(seed?.id || `question_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+    questionText: String(seed?.questionText || ''),
+    options,
+    correctOption: Number.isFinite(Number(seed?.correctOption)) ? Number(seed?.correctOption) : 0,
+    explanation: String(seed?.explanation || ''),
+    marks: Number(seed?.marks || 1),
+    topic: String(seed?.topic || ''),
+  };
+};
+
+const toEditableAssessmentQuestions = (questions: MockQuestion[] = []) =>
+  questions.length > 0 ? questions.map((question) => createEditableAssessmentQuestion(question)) : [createEditableAssessmentQuestion()];
 
 const searchKindLabels: Record<SearchTarget['kind'], string> = {
   course: 'Course',
@@ -583,6 +617,337 @@ const MetricCard = ({
   </div>
 );
 
+const AssessmentQuestionBuilder = ({
+  title,
+  caption,
+  questions,
+  onChange,
+}: {
+  title: string;
+  caption: string;
+  questions: EditableAssessmentQuestion[];
+  onChange: (questions: EditableAssessmentQuestion[]) => void;
+}) => {
+  const updateQuestion = (questionId: string, patch: Partial<EditableAssessmentQuestion>) => {
+    onChange(questions.map((question) => (
+      question.id === questionId ? { ...question, ...patch } : question
+    )));
+  };
+
+  const updateOption = (questionId: string, optionIndex: number, value: string) => {
+    onChange(questions.map((question) => {
+      if (question.id !== questionId) {
+        return question;
+      }
+
+      const nextOptions = [...question.options];
+      nextOptions[optionIndex] = value;
+      return { ...question, options: nextOptions };
+    }));
+  };
+
+  const addQuestion = () => {
+    onChange([...questions, createEditableAssessmentQuestion()]);
+  };
+
+  const removeQuestion = (questionId: string) => {
+    if (questions.length === 1) {
+      onChange([createEditableAssessmentQuestion()]);
+      return;
+    }
+    onChange(questions.filter((question) => question.id !== questionId));
+  };
+
+  const addOption = (questionId: string) => {
+    onChange(questions.map((question) => (
+      question.id === questionId ? { ...question, options: [...question.options, ''] } : question
+    )));
+  };
+
+  const removeOption = (questionId: string, optionIndex: number) => {
+    onChange(questions.map((question) => {
+      if (question.id !== questionId) {
+        return question;
+      }
+
+      if (question.options.length <= 2) {
+        return question;
+      }
+
+      const nextOptions = question.options.filter((_, index) => index !== optionIndex);
+      const nextCorrect = question.correctOption >= nextOptions.length
+        ? Math.max(nextOptions.length - 1, 0)
+        : question.correctOption === optionIndex
+          ? 0
+          : question.correctOption > optionIndex
+            ? question.correctOption - 1
+            : question.correctOption;
+
+      return {
+        ...question,
+        options: nextOptions,
+        correctOption: nextCorrect,
+      };
+    }));
+  };
+
+  return (
+    <div className="md:col-span-2 rounded-[24px] border border-[var(--line)] bg-[linear-gradient(180deg,#ffffff_0%,#f9fbff_100%)] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[var(--ink)]">{title}</p>
+          <p className="mt-1 text-sm text-[var(--ink-soft)]">{caption}</p>
+        </div>
+        <button
+          type="button"
+          onClick={addQuestion}
+          className="inline-flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--ink)]"
+        >
+          <Plus className="h-4 w-4" />
+          Add question
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        {questions.map((question, questionIndex) => (
+          <div key={question.id} className="rounded-[22px] border border-[var(--line)] bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[var(--ink)]">Question {questionIndex + 1}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+                  {question.options.filter((option) => option.trim()).length} options
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeQuestion(question.id)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm font-semibold text-[var(--danger)]"
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <input
+                value={question.topic}
+                onChange={(event) => updateQuestion(question.id, { topic: event.target.value })}
+                placeholder="Topic"
+                className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+              />
+              <input
+                type="number"
+                min="1"
+                value={question.marks}
+                onChange={(event) => updateQuestion(question.id, { marks: Number(event.target.value) || 1 })}
+                placeholder="Marks"
+                className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+              />
+              <textarea
+                value={question.questionText}
+                onChange={(event) => updateQuestion(question.id, { questionText: event.target.value })}
+                placeholder="Question text"
+                className="md:col-span-2 h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+              />
+            </div>
+
+            <div className="mt-4 rounded-[18px] border border-[var(--line)] bg-[#fbfdff] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[var(--ink)]">Options</p>
+                <button
+                  type="button"
+                  onClick={() => addOption(question.id)}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add option
+                </button>
+              </div>
+
+              <div className="mt-3 space-y-3">
+                {question.options.map((option, optionIndex) => (
+                  <div key={`${question.id}-option-${optionIndex}`} className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_150px_auto]">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--line)] bg-white text-sm font-semibold text-[var(--ink-soft)]">
+                      {String.fromCharCode(65 + optionIndex)}
+                    </div>
+                    <input
+                      value={option}
+                      onChange={(event) => updateOption(question.id, optionIndex, event.target.value)}
+                      placeholder={`Option ${String.fromCharCode(65 + optionIndex)}`}
+                      className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 outline-none"
+                    />
+                    <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm text-[var(--ink)]">
+                      <input
+                        type="radio"
+                        name={`correct-option-${question.id}`}
+                        checked={question.correctOption === optionIndex}
+                        onChange={() => updateQuestion(question.id, { correctOption: optionIndex })}
+                      />
+                      Correct
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeOption(question.id, optionIndex)}
+                      className="inline-flex items-center justify-center rounded-2xl border border-[var(--line)] bg-white px-3 py-3 text-[var(--danger)]"
+                      aria-label={`Remove option ${optionIndex + 1}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <textarea
+              value={question.explanation}
+              onChange={(event) => updateQuestion(question.id, { explanation: event.target.value })}
+              placeholder="Explanation, optional"
+              className="mt-4 h-24 w-full rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const builderSteps = ['Basic Info', 'Targeting', 'Questions', 'Review'] as const;
+
+const BuilderStepper = ({
+  activeStep = 0,
+  onStepSelect,
+}: {
+  activeStep?: number;
+  onStepSelect?: (index: number) => void;
+}) => (
+  <div className="flex flex-wrap items-center gap-3">
+    {builderSteps.map((step, index) => {
+      const isActive = index === activeStep;
+      const isCompleted = index < activeStep;
+      return (
+        <button
+          key={step}
+          type="button"
+          onClick={() => onStepSelect?.(index)}
+          className="flex items-center gap-3 rounded-full transition hover:opacity-95"
+        >
+          <div className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold',
+            isActive
+              ? 'bg-[#2f6ef0] text-white shadow-[0_10px_22px_rgba(47,110,240,0.22)]'
+              : isCompleted
+                ? 'bg-[var(--success-soft)] text-[var(--success)]'
+                : 'bg-[#eef3fb] text-[var(--ink-soft)]',
+          )}>
+            {index + 1}
+          </div>
+          <span className={cn(
+            'text-sm font-medium',
+            isActive || isCompleted ? 'text-[var(--ink)]' : 'text-[var(--ink-soft)]',
+          )}>
+            {step}
+          </span>
+        </button>
+      );
+    })}
+  </div>
+);
+
+const AssessmentPreviewCard = ({
+  typeLabel,
+  accent,
+  title,
+  subtitle,
+  questionCount,
+  totalMarks,
+  durationMinutes,
+  negativeMarking,
+  topic,
+}: {
+  typeLabel: string;
+  accent: 'blue' | 'green';
+  title: string;
+  subtitle: string;
+  questionCount: number;
+  totalMarks: number;
+  durationMinutes: number;
+  negativeMarking: number;
+  topic: string;
+}) => {
+  const chipTone = accent === 'blue'
+    ? 'bg-[#eef4ff] text-[#2f6ef0]'
+    : 'bg-[#edf9f1] text-[#18995d]';
+
+  const rows = [
+    ['Questions', `${questionCount || 0}`],
+    ['Total marks', `${totalMarks || 0}`],
+    ['Duration', `${durationMinutes || 0} min`],
+    ['Negative marking', `${negativeMarking || 0}`],
+    ['Topic', topic || '--'],
+  ];
+
+  return (
+    <div className="rounded-[24px] border border-[var(--line)] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-5 shadow-[0_16px_42px_rgba(15,23,42,0.06)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">Live preview</p>
+          <h3 className="mt-2 text-lg font-semibold text-[var(--ink)]">{title || `Untitled ${typeLabel}`}</h3>
+          <p className="mt-2 text-sm leading-6 text-[var(--ink-soft)]">{subtitle || 'Preview updates as the admin fills the builder.'}</p>
+        </div>
+        <span className={cn('rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em]', chipTone)}>
+          {typeLabel}
+        </span>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between gap-3 rounded-[16px] border border-[var(--line)] bg-white px-4 py-3">
+            <span className="text-sm text-[var(--ink-soft)]">{label}</span>
+            <span className="text-sm font-semibold text-[var(--ink)]">{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const BuilderFrame = ({
+  eyebrow,
+  title,
+  description,
+  activeStep,
+  onStepSelect,
+  actions,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  activeStep: number;
+  onStepSelect: (index: number) => void;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) => (
+  <section className="overflow-hidden rounded-[30px] border border-white/70 bg-white/92 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+    <div className="border-b border-[var(--line)] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-6 py-5">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]">{eyebrow}</p>
+          <h3 className="mt-2 text-2xl font-semibold text-[var(--ink)]">{title}</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-7 text-[var(--ink-soft)]">{description}</p>
+        </div>
+        {actions}
+      </div>
+      <div className="mt-5">
+        <BuilderStepper activeStep={activeStep} onStepSelect={onStepSelect} />
+      </div>
+    </div>
+    <div className="px-6 py-6">
+      {children}
+    </div>
+  </section>
+);
+
 const LoadingShell = () => (
   <div className="min-h-screen bg-[var(--page-bg)]">
     <div className="flex min-h-screen">
@@ -790,66 +1155,76 @@ const MockSolutionCard = ({
   );
 };
 
-const QuizReviewCard = ({
-  reviewItem,
-  questionIndex,
-  open,
-  onToggle,
-}: {
-  reviewItem: DailyQuizResult['review'][number];
-  questionIndex: number;
-  open: boolean;
-  onToggle: () => void;
-}) => {
-  const isCorrect = reviewItem.selectedAnswer && reviewItem.selectedAnswer === reviewItem.correctAnswer;
-  const isSkipped = !reviewItem.selectedAnswer;
+const buildLocalTestAttemptResult = (
+  test: MockTest,
+  answers: Record<string, number>,
+  startedAt?: string | null,
+): TestAttemptResult => {
+  let score = 0;
+  let correctCount = 0;
+  let incorrectCount = 0;
+  let unattemptedCount = 0;
+  const topicStats = new Map<string, { correct: number; total: number }>();
 
-  return (
-    <div className="mt-4 rounded-[20px] border border-[var(--line)] bg-white p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-[var(--accent-cream)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-              Review {questionIndex + 1}
-            </span>
-            <span className={cn(
-              'rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em]',
-              isSkipped
-                ? 'bg-slate-100 text-slate-500'
-                : isCorrect
-                  ? 'bg-[var(--success-soft)] text-[var(--success)]'
-                  : 'bg-[var(--danger-soft)] text-[var(--danger)]',
-            )}>
-              {isSkipped ? 'skipped' : isCorrect ? 'correct' : 'incorrect'}
-            </span>
-            <span className="rounded-full border border-[var(--line)] px-3 py-2 text-xs text-[var(--ink-soft)]">
-              {reviewItem.topic}
-            </span>
-          </div>
-          <p className="mt-3 text-sm text-[var(--ink-soft)]">
-            Your answer: <span className="font-semibold text-[var(--ink)]">{reviewItem.selectedAnswer || 'Skipped'}</span>
-            {' '}• Correct: <span className="font-semibold text-[var(--success)]">{reviewItem.correctAnswer}</span>
-          </p>
-        </div>
-        <ReviewToggleButton open={open} onClick={onToggle} />
-      </div>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, height: 0, y: -8 }}
-            animate={{ opacity: 1, height: 'auto', y: 0 }}
-            exit={{ opacity: 0, height: 0, y: -8 }}
-            className="overflow-hidden"
-          >
-            <div className="mt-4 rounded-[18px] bg-[var(--accent-cream)] p-4 text-sm text-[var(--ink-soft)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">AI explanation</p>
-              <p className="mt-2 leading-7">{reviewItem.explanation}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+  const solutions = test.questions.map((question) => {
+    const selectedOptionRaw = answers[question.id];
+    const selectedOption = selectedOptionRaw === undefined ? null : Number(selectedOptionRaw);
+    const correctOption = Number(question.correctOption ?? 0);
+    const marks = Number(question.marks || 1);
+    const topic = question.topic || 'General Practice';
+    const stats = topicStats.get(topic) || { correct: 0, total: 0 };
+    stats.total += 1;
+
+    if (selectedOption === null) {
+      unattemptedCount += 1;
+    } else if (selectedOption === correctOption) {
+      correctCount += 1;
+      score += marks;
+      stats.correct += 1;
+    } else {
+      incorrectCount += 1;
+      score -= Number(test.negativeMarking || 0);
+    }
+
+    topicStats.set(topic, stats);
+
+    return {
+      questionId: question.id,
+      questionText: question.questionText,
+      selectedOption,
+      correctOption,
+      explanation: question.explanation || 'Explanation will appear here after review.',
+      topic,
+    };
+  });
+
+  const strongTopics: string[] = [];
+  const weakTopics: string[] = [];
+  topicStats.forEach((stats, topic) => {
+    const accuracy = stats.total > 0 ? stats.correct / stats.total : 0;
+    if (accuracy >= 0.75) {
+      strongTopics.push(topic);
+    } else {
+      weakTopics.push(topic);
+    }
+  });
+
+  return {
+    _id: `local-attempt:${test._id}:${Date.now()}`,
+    userId: 'local-user',
+    testId: test._id,
+    score: Number(score.toFixed(2)),
+    totalMarks: Number(test.totalMarks || test.questions.reduce((sum, question) => sum + Number(question.marks || 1), 0)),
+    correctCount,
+    incorrectCount,
+    unattemptedCount,
+    percentile: correctCount + incorrectCount + unattemptedCount > 0 ? Math.round((correctCount / Math.max(test.questions.length, 1)) * 100) : 0,
+    rank: 1,
+    weakTopics,
+    strongTopics,
+    solutions,
+    completedAt: startedAt || new Date().toISOString(),
+  };
 };
 
 const AuthScreen = ({
@@ -857,7 +1232,8 @@ const AuthScreen = ({
 }: {
   publicOverview: PlatformOverview | null;
 }) => {
-  const { login, register } = useAuth();
+  void publicOverview;
+  const { login, register, refreshSession } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -872,23 +1248,98 @@ const AuthScreen = ({
     }>;
     sessionLimit: number;
   } | null>(null);
+  const [takeoverSuccess, setTakeoverSuccess] = useState<{
+    device: string;
+    loggedOutAt: string;
+  } | null>(null);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-  const [registerForm, setRegisterForm] = useState<RegisterPayload>({
+  const [registerForm, setRegisterForm] = useState<RegisterPayload & {
+    mobileNumber: string;
+    confirmPassword: string;
+    agreeToTerms: boolean;
+  }>({
     name: '',
     email: '',
     password: '',
+    mobileNumber: '',
+    confirmPassword: '',
+    agreeToTerms: false,
   });
-  const authHighlights = [
-    '1-device protected access',
-    'Resume after restart',
-    'Mock tests, analytics',
-  ];
+  const [rememberMe, setRememberMe] = useState(true);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
   const localAdminCredentials = {
     email: 'admin@local.edumaster',
     password: 'AdminChangeMe_2026',
   };
   const showLocalAdminHelper = import.meta.env.DEV
     || (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname));
+
+  const passwordStrength = useMemo(() => {
+    const password = registerForm.password;
+    if (!password) {
+      return { label: 'Weak', tone: 'text-[#ef4444]', active: 0 };
+    }
+
+    let score = 0;
+    if (password.length >= 8) score += 1;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+    if (/\d/.test(password)) score += 1;
+    if (/[^A-Za-z0-9]/.test(password) || password.length >= 12) score += 1;
+
+    if (score <= 1) {
+      return { label: 'Weak', tone: 'text-[#ef4444]', active: 1 };
+    }
+    if (score === 2) {
+      return { label: 'Fair', tone: 'text-[#f59e0b]', active: 2 };
+    }
+    if (score === 3) {
+      return { label: 'Good', tone: 'text-[#8b5cf6]', active: 3 };
+    }
+    return { label: 'Strong', tone: 'text-[#22c55e]', active: 4 };
+  }, [registerForm.password]);
+
+  const takeOverDevice = sessionConflict?.activeSessions[0]?.device || sessionConflict?.activeDevice || 'another device';
+  const formatDeviceLabel = (value: string) => {
+    const label = value.trim();
+    const normalized = label.toLowerCase();
+    if (!label) {
+      return 'Web Browser';
+    }
+    if (
+      normalized.includes('chrome')
+      || normalized.includes('safari')
+      || normalized.includes('firefox')
+      || normalized.includes('browser')
+    ) {
+      return 'Web Browser';
+    }
+    if (label.length > 22) {
+      return `${label.slice(0, 22)}...`;
+    }
+    return label;
+  };
+
+  const authPanelClassName = 'min-h-screen overflow-hidden bg-[linear-gradient(180deg,rgba(18,24,38,0.97),rgba(10,15,28,0.99))] shadow-[0_24px_80px_rgba(2,6,23,0.55)] backdrop-blur-xl sm:min-h-[calc(100vh-32px)] sm:rounded-[28px] sm:border sm:border-white/10';
+  const authInputClassName = 'h-[40px] w-full rounded-[8px] border border-[#2a3142] bg-[#121826] px-12 text-[14px] text-[#f8fafc] outline-none transition placeholder:text-[#94a3b8] focus:border-[#6366f1] focus:bg-[#151c2d]';
+  const socialButtonClassName = 'flex h-[46px] w-full items-center justify-center gap-3 rounded-[12px] border border-[#2a3142] bg-transparent px-4 text-[16px] font-semibold text-[#f8fafc] transition hover:border-[#46506b] hover:bg-white/[0.02]';
+  const primaryButtonClassName = 'relative flex h-[48px] w-full items-center justify-center gap-3 rounded-[12px] bg-[linear-gradient(90deg,#7c3aed_0%,#3b82f6_100%)] px-4 text-[16px] font-semibold text-white shadow-[0_18px_40px_rgba(79,70,229,0.36)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60';
+  const renderPhoneStatusBar = () => (
+    <div className="mb-2 flex items-center justify-between text-[12px] font-semibold text-white/92 lg:hidden">
+      <span>9:41</span>
+      <div className="flex items-center gap-1.5 text-white">
+        <span className="h-[8px] w-[5px] rounded-[2px] bg-current opacity-70" />
+        <span className="h-[10px] w-[5px] rounded-[2px] bg-current opacity-85" />
+        <span className="h-[12px] w-[5px] rounded-[2px] bg-current" />
+        <svg width="22" height="11" viewBox="0 0 22 11" fill="none" xmlns="http://www.w3.org/2000/svg" className="ml-1">
+          <rect x="0.5" y="0.5" width="19" height="10" rx="3" stroke="currentColor" />
+          <rect x="2.5" y="2.5" width="13" height="6" rx="2" fill="currentColor" />
+          <rect x="20.5" y="3.25" width="1.5" height="4.5" rx="0.75" fill="currentColor" />
+        </svg>
+      </div>
+    </div>
+  );
 
   const submitLogin = async (
     email = loginForm.email,
@@ -928,10 +1379,27 @@ const AuthScreen = ({
   };
 
   const submitRegister = async () => {
+    if (!registerForm.name.trim() || !registerForm.email.trim() || !registerForm.password) {
+      setError('Please complete all required fields.');
+      return;
+    }
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setError('Password and confirm password must match.');
+      return;
+    }
+    if (!registerForm.agreeToTerms) {
+      setError('Please accept the Terms & Conditions and Privacy Policy.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
-      await register(registerForm);
+      await register({
+        name: registerForm.name,
+        email: registerForm.email,
+        password: registerForm.password,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create account');
     } finally {
@@ -944,220 +1412,473 @@ const AuthScreen = ({
       return;
     }
 
-    await submitLogin(sessionConflict.email, sessionConflict.password, { forceLogoutOtherSessions: true });
+    setSubmitting(true);
+    setError(null);
+    try {
+      await EduService.login(sessionConflict.email, sessionConflict.password, { forceLogoutOtherSessions: true });
+      setTakeoverSuccess({
+        device: takeOverDevice,
+        loggedOutAt: new Date().toISOString(),
+      });
+      setSessionConflict(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to log out the older device.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const fillLocalAdminLogin = () => {
     setMode('login');
     setError(null);
     setSessionConflict(null);
+    setTakeoverSuccess(null);
     setLoginForm(localAdminCredentials);
   };
 
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-[#eef4ff] text-[#15264b]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,149,255,0.26),transparent_30%),radial-gradient(circle_at_82%_18%,rgba(64,196,255,0.18),transparent_20%),radial-gradient(circle_at_bottom_center,rgba(33,92,255,0.12),transparent_26%),linear-gradient(180deg,#eef4ff_0%,#f7fbff_46%,#eef5ff_100%)]" />
-      <div className="absolute inset-0 opacity-50 [background-image:linear-gradient(rgba(87,118,170,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(87,118,170,0.08)_1px,transparent_1px)] [background-size:88px_88px]" />
-      <div className="relative mx-auto flex min-h-screen max-w-7xl items-center justify-center px-3 py-4 sm:px-6 sm:py-8 lg:px-10">
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-5xl overflow-hidden rounded-[28px] border border-[#d9e5f6] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,251,255,0.98))] shadow-[0_24px_70px_rgba(58,89,138,0.14)] backdrop-blur-xl sm:rounded-[36px] sm:shadow-[0_34px_100px_rgba(58,89,138,0.16)]"
+  const continueAfterTakeover = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await refreshSession();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to continue the login session.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const renderBrandMark = (large = false) => (
+    <div className="flex flex-col items-center text-center">
+      <div className={cn(
+        'relative flex items-center justify-center overflow-hidden rounded-[26px] border border-white/12 bg-[radial-gradient(circle_at_30%_30%,rgba(139,92,246,0.34),transparent_48%),linear-gradient(180deg,rgba(18,24,38,0.98),rgba(10,15,28,0.96))] shadow-[0_18px_40px_rgba(0,0,0,0.42)]',
+        large ? 'h-[62px] w-[62px] sm:h-[92px] sm:w-[92px]' : 'h-[88px] w-[88px]',
+      )}>
+        <img
+          src="/favicon.svg"
+          alt="VARONENGLISH"
+          className={cn('object-contain drop-shadow-[0_10px_24px_rgba(99,102,241,0.34)]', large ? 'h-[46px] w-[46px] sm:h-[66px] sm:w-[66px]' : 'h-[60px] w-[60px]')}
+          draggable="false"
+        />
+      </div>
+      <p className={cn('mt-1.5 font-bold tracking-[0.02em] text-white', large ? 'text-[18px] sm:text-[28px]' : 'text-[24px]')}>VARONENGLISH</p>
+      <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.24em] text-[#cbd5e1] sm:text-[11px] sm:tracking-[0.32em]">
+        FOR COMPETITIVE EXAMS
+      </p>
+    </div>
+  );
+
+  const renderAuthHeader = () => (
+    <div className="relative overflow-hidden px-6 pb-4 pt-10 sm:px-8 sm:pb-8 sm:pt-8">
+      <div className="absolute right-6 top-5 grid grid-cols-4 gap-2 opacity-90">
+        {Array.from({ length: 12 }).map((_, index) => (
+          <span key={index} className="h-1 w-1 rounded-full bg-[#7c3aed]" />
+        ))}
+      </div>
+      {mode === 'register' && (
+        <button
+          type="button"
+          onClick={() => {
+            setMode('login');
+            setError(null);
+          }}
+          className="absolute left-6 top-8 inline-flex h-8 w-8 items-center justify-center rounded-full text-white"
         >
-          <div className="grid lg:grid-cols-[0.92fr_1.08fr]">
-            <section className="relative overflow-hidden border-b border-[#e2ebf7] bg-[linear-gradient(160deg,#123a7b_0%,#1d5bcc_48%,#45baf2_100%)] p-4 text-white sm:p-8 lg:border-b-0 lg:border-r lg:border-[#d8e5f6] lg:p-10">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(10,35,78,0.26),transparent_30%)]" />
-              <div className="relative">
-                <div className="flex flex-col gap-2">
-                  <BrandLogo tone="dark" size="lg" showTagline />
-                  <p className="text-xs text-white/76 sm:text-sm">SSC JE and RRB JE premium access</p>
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
+      {renderBrandMark(true)}
+    </div>
+  );
+
+  const renderLoginForm = () => (
+    <>
+      <div>
+        <h1 className="!font-sans max-w-[300px] text-[22px] font-semibold leading-[1.2] text-white sm:max-w-none sm:text-[28px]">Welcome Back! <span className="align-middle">👋</span></h1>
+        <p className="mt-2 text-[14px] leading-5 text-[#94a3b8] sm:text-[16px]">Login to continue your exam preparation</p>
+      </div>
+
+      <form
+        className="mt-4 space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitLogin();
+        }}
+      >
+        <div>
+          <label className="text-[12px] font-medium text-white">Email or Mobile Number</label>
+          <div className="relative mt-2">
+            <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <input
+              data-testid="auth-login-email"
+              value={loginForm.email}
+              onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Enter your email or mobile number"
+              autoComplete="username"
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-[12px] font-medium text-white">Password</label>
+            <button type="button" className="text-[12px] font-medium text-[#7c63ff]">Forgot Password?</button>
+          </div>
+          <div className="relative mt-2">
+            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <input
+              data-testid="auth-login-password"
+              type={showLoginPassword ? 'text' : 'password'}
+              value={loginForm.password}
+              onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowLoginPassword((current) => !current)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
+            >
+              {showLoginPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+
+        <label className="flex items-center gap-3 text-[12px] text-[#e2e8f0]">
+          <button
+            type="button"
+            onClick={() => setRememberMe((current) => !current)}
+            className={cn(
+              'flex h-5 w-5 items-center justify-center rounded-[6px] border transition',
+              rememberMe ? 'border-[#6366f1] bg-[#6366f1] text-white' : 'border-[#3a4358] bg-transparent text-transparent',
+            )}
+          >
+            <Check className="h-3.5 w-3.5" />
+          </button>
+          Remember me
+        </label>
+
+        <button
+          data-testid="auth-login-submit"
+          type="submit"
+          disabled={submitting}
+          className={primaryButtonClassName}
+        >
+          <span>{submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : 'Login'}</span>
+          {!submitting && <ArrowRight className="absolute right-6 h-5 w-5" />}
+        </button>
+      </form>
+
+      <div className="my-3 flex items-center gap-4 text-[#64748b]">
+        <div className="h-px flex-1 bg-[#273043]" />
+        <span className="text-[15px]">OR</span>
+        <div className="h-px flex-1 bg-[#273043]" />
+      </div>
+
+      <div className="space-y-2.5">
+        <button type="button" className={socialButtonClassName}>
+          <span className="text-[24px] font-bold text-[#ea4335]">G</span>
+          Continue with Google
+        </button>
+        <button type="button" className={socialButtonClassName}>
+          <span className="text-[24px] leading-none text-white"></span>
+          Continue with Apple
+        </button>
+      </div>
+
+      <p className="mt-3 text-center text-[13px] text-[#94a3b8]">
+        Don&apos;t have an account?{' '}
+        <button
+          type="button"
+          onClick={() => {
+            setMode('register');
+            setError(null);
+          }}
+          className="font-semibold text-[#7c63ff]"
+        >
+          Sign Up
+        </button>
+      </p>
+    </>
+  );
+
+  const renderRegisterForm = () => (
+    <>
+      <div>
+        <h1 className="!font-sans max-w-[300px] text-[22px] font-semibold leading-[1.2] text-white sm:max-w-none sm:text-[28px]">Create Your Account <span className="align-middle">🚀</span></h1>
+        <p className="mt-1.5 text-[14px] leading-5 text-[#94a3b8] sm:text-[16px]">Join VaronEnglish and start your preparation</p>
+      </div>
+
+      <form
+        className="mt-3 space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitRegister();
+        }}
+      >
+        <div>
+          <label className="text-[12px] font-medium text-white">Full Name</label>
+          <div className="relative mt-2">
+            <UserCircle2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <input
+              data-testid="auth-register-name"
+              value={registerForm.name}
+              onChange={(event) => setRegisterForm((current) => ({ ...current, name: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Enter your full name"
+              autoComplete="name"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[12px] font-medium text-white">Email Address</label>
+          <div className="relative mt-2">
+            <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <input
+              data-testid="auth-register-email"
+              value={registerForm.email}
+              onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Enter your email address"
+              autoComplete="email"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[12px] font-medium text-white">Mobile Number (Optional)</label>
+          <div className="relative mt-2">
+            <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <input
+              value={registerForm.mobileNumber}
+              onChange={(event) => setRegisterForm((current) => ({ ...current, mobileNumber: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Enter your mobile number"
+              autoComplete="tel"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[12px] font-medium text-white">Password</label>
+          <div className="relative mt-2">
+            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <input
+              data-testid="auth-register-password"
+              type={showRegisterPassword ? 'text' : 'password'}
+              value={registerForm.password}
+              onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Create a password"
+              autoComplete="new-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowRegisterPassword((current) => !current)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
+            >
+              {showRegisterPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+          <div className="mt-1.5 flex items-center gap-3 text-[10px]">
+            <span className="text-[#ef4444]">Weak</span>
+            <div className="flex flex-1 gap-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <span
+                  key={index}
+                  className={cn(
+                    'h-[2px] flex-1 rounded-full',
+                    index < passwordStrength.active ? 'bg-current' : 'bg-[#2a3142]',
+                    passwordStrength.tone,
+                  )}
+                />
+              ))}
+            </div>
+            <span className={cn('font-medium', passwordStrength.tone)}>{passwordStrength.label}</span>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[12px] font-medium text-white">Confirm Password</label>
+          <div className="relative mt-2">
+            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <input
+              type={showRegisterConfirmPassword ? 'text' : 'password'}
+              value={registerForm.confirmPassword}
+              onChange={(event) => setRegisterForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Confirm your password"
+              autoComplete="new-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowRegisterConfirmPassword((current) => !current)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
+            >
+              {showRegisterConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+
+        <label className="flex items-start gap-3 text-[11px] leading-4 text-[#cbd5e1]">
+          <button
+            type="button"
+            onClick={() => setRegisterForm((current) => ({ ...current, agreeToTerms: !current.agreeToTerms }))}
+            className={cn(
+              'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border transition',
+              registerForm.agreeToTerms ? 'border-[#6366f1] bg-[#6366f1] text-white' : 'border-[#3a4358] bg-transparent text-transparent',
+            )}
+          >
+            <Check className="h-3.5 w-3.5" />
+          </button>
+          <span>
+            I agree to the <button type="button" className="text-[#7c63ff]">Terms &amp; Conditions</button> and <button type="button" className="text-[#7c63ff]">Privacy Policy</button>
+          </span>
+        </label>
+
+        <button
+          data-testid="auth-register-submit"
+          type="submit"
+          disabled={submitting}
+          className={primaryButtonClassName}
+        >
+          <span>{submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : 'Create Account'}</span>
+          {!submitting && <ArrowRight className="absolute right-6 h-5 w-5" />}
+        </button>
+      </form>
+
+      <p className="mt-2.5 text-center text-[13px] text-[#94a3b8]">
+        Already have an account?{' '}
+        <button
+          type="button"
+          onClick={() => {
+            setMode('login');
+            setError(null);
+          }}
+          className="font-semibold text-[#7c63ff]"
+        >
+          Login
+        </button>
+      </p>
+    </>
+  );
+
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-[#0b0f19] text-white" style={{ fontFamily: LIVE_FONT_STACK }}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.28),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_24%),linear-gradient(180deg,#0b0f19_0%,#0c1220_100%)]" />
+      <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] [background-size:64px_64px]" />
+
+      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-0 py-0 sm:px-4 sm:py-6 lg:px-8">
+        <div className="grid w-full max-w-[1260px] gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
+          <section className="hidden lg:block">
+            <div className="rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(11,15,25,0.92),rgba(15,23,42,0.92))] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.5)]">
+              <div className="flex items-center gap-5">
+                <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-white/[0.04]">
+                  <img src="/favicon.svg" alt="VARONENGLISH" className="h-14 w-14 object-contain" />
                 </div>
+                <div>
+                  <p className="font-serif text-[34px] font-black tracking-[0.04em] text-white">VARONENGLISH</p>
+                  <p className="mt-1 text-[14px] font-semibold uppercase tracking-[0.28em] text-[#cbd5e1]">FOR COMPETITIVE EXAMS</p>
+                </div>
+              </div>
 
-                <h1 className="mt-5 max-w-lg text-[27px] font-semibold leading-[1.08] tracking-[-0.03em] text-white sm:mt-10 sm:text-[52px]">
-                  Login or sign up to continue
-                </h1>
-                <p className="mt-3 max-w-md text-[13px] leading-6 text-white/80 sm:mt-4 sm:text-base sm:leading-7">
-                  Secure learner access with single-device protection, persistent sign-in, and quick entry to your prep dashboard.
-                </p>
-
-                <div className="mt-6 hidden rounded-[24px] border border-white/12 bg-white/10 p-4 shadow-[0_18px_34px_rgba(10,31,67,0.2)] sm:mt-8 sm:block sm:rounded-[28px] sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/60">Why this feels premium</p>
-                  <div className="mt-5 space-y-3">
-                    {authHighlights.map((item) => (
-                      <div key={item} className="flex items-center gap-3 text-sm text-white">
-                        <CheckCircle2 className="h-4 w-4 text-[#bfe8ff]" />
-                        {item}
-                      </div>
+              <div className="mt-10 grid grid-cols-2 gap-6 text-sm text-[#cbd5e1]">
+                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7c63ff]">Colors</p>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {['#6366F1', '#8B5CF6', '#38BDF8', '#1E293B', '#0F172A', '#22C55E', '#EF4444'].map((swatch) => (
+                      <span key={swatch} className="space-y-2">
+                        <span className="block h-11 w-20 rounded-[12px] border border-white/10" style={{ backgroundColor: swatch }} />
+                        <span className="block text-[11px] text-[#94a3b8]">{swatch}</span>
+                      </span>
                     ))}
                   </div>
                 </div>
-              </div>
-            </section>
-
-            <section className="relative bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-4 sm:p-8 lg:p-10">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7a8faf]">Access Portal</p>
-                  <p className="mt-2 text-[22px] font-semibold leading-[1.15] text-[#16264a] sm:mt-3 sm:text-2xl">{mode === 'login' ? 'Continue your preparation' : 'Create your learner account'}</p>
+                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7c63ff]">Typography</p>
+                  <div className="mt-4 space-y-3 text-[#f8fafc]">
+                    <p className="text-[32px] font-bold leading-none">Aa</p>
+                    <div className="space-y-2 text-[13px]">
+                      <p>H1 / 32px / 700</p>
+                      <p>H2 / 24px / 600</p>
+                      <p>Body / 14px / 400</p>
+                      <p>Button / 16px / 600</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="hidden rounded-2xl border border-[#dce7f6] bg-[#f4f8ff] p-3 sm:flex">
-                  <LifeBuoy className="h-6 w-6 text-[#5878ad]" />
+                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7c63ff]">Spacing</p>
+                  <div className="mt-4 flex flex-wrap gap-2 text-[12px] text-[#cbd5e1]">
+                    {[4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80].map((value) => (
+                      <span key={value} className="rounded-[10px] border border-white/10 px-3 py-2">{value}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7c63ff]">Components</p>
+                  <div className="mt-4 space-y-4">
+                    <button type="button" className="flex h-12 w-full items-center justify-center rounded-[14px] bg-[linear-gradient(90deg,#7c3aed_0%,#3b82f6_100%)] text-[16px] font-semibold text-white">Primary Button</button>
+                    <button type="button" className="flex h-12 w-full items-center justify-center rounded-[14px] border border-white/14 text-[16px] font-medium text-white">Outline Button</button>
+                  </div>
                 </div>
               </div>
+            </div>
+          </section>
 
-              <div className="mt-5 flex rounded-full border border-[#dce7f6] bg-[#eef4ff] p-1 sm:mt-7">
-                {(['login', 'register'] as const).map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => {
-                      setMode(item);
-                      setError(null);
-                      setSessionConflict(null);
-                    }}
-                    className={cn(
-                      'flex-1 rounded-full px-3 py-2.5 text-[13px] font-semibold transition sm:px-4 sm:py-3 sm:text-sm',
-                      mode === item
-                        ? 'bg-[linear-gradient(90deg,#249bff,#3163ff)] text-white shadow-[0_12px_28px_rgba(49,99,255,0.24)]'
-                        : 'text-[#6e84a7]',
-                    )}
-                  >
-                    {item === 'login' ? 'Login' : 'Create account'}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-6 sm:mt-8">
-                {mode === 'login' ? (
-                  <form
-                    className="space-y-4 sm:space-y-5"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void submitLogin();
-                    }}
-                    >
-                    <div>
-                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Email address</label>
-                      <input
-                        data-testid="auth-login-email"
-                        value={loginForm.email}
-                        onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
-                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
-                        placeholder="student@varonenglish.app"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Password</label>
-                      <input
-                        data-testid="auth-login-password"
-                        type="password"
-                        value={loginForm.password}
-                        onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
-                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
-                        placeholder="Enter your password"
-                      />
-                    </div>
-                    <button
-                      data-testid="auth-login-submit"
-                      type="submit"
-                      disabled={submitting}
-                      className="flex w-full items-center justify-center gap-2 rounded-[16px] bg-[linear-gradient(90deg,#249bff,#3163ff)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_18px_40px_rgba(49,99,255,0.26)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-[20px] sm:py-4"
-                    >
-                      {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
-                      Continue
-                    </button>
-                    {showLocalAdminHelper && (
-                      <div className="rounded-[16px] border border-[#dce7f6] bg-[#f4f8ff] p-4 text-[13px] text-[#526987] sm:rounded-[20px] sm:text-sm">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className="font-semibold text-[#16264a]">Local admin access</p>
-                            <p className="mt-1">Use the seeded admin account to open the admin workspace and manage platform content.</p>
-                            <p className="mt-2 font-mono text-[12px] text-[#41597d]">admin@local.edumaster / AdminChangeMe_2026</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={fillLocalAdminLogin}
-                            className="rounded-[14px] border border-[#cfe0fb] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#2458c7] shadow-[0_8px_18px_rgba(49,99,255,0.08)]"
-                          >
-                            Use admin login
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </form>
-                ) : (
-                  <form
-                    className="space-y-4 sm:space-y-5"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void submitRegister();
-                    }}
-                    >
-                    <div>
-                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Full name</label>
-                      <input
-                        data-testid="auth-register-name"
-                        value={registerForm.name}
-                        onChange={(event) => setRegisterForm((current) => ({ ...current, name: event.target.value }))}
-                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
-                        placeholder="Aspirant name"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Email address</label>
-                      <input
-                        data-testid="auth-register-email"
-                        value={registerForm.email}
-                        onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
-                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
-                        placeholder="you@example.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[13px] font-medium text-[#526987] sm:text-sm">Password</label>
-                      <input
-                        data-testid="auth-register-password"
-                        type="password"
-                        value={registerForm.password}
-                        onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
-                        className="mt-2 w-full rounded-[16px] border border-[#d9e5f6] bg-[#f7fbff] px-4 py-3.5 text-[15px] text-[#16264a] outline-none transition placeholder:text-[#97a8c1] focus:border-[#72a7ff] sm:rounded-[20px] sm:py-4"
-                        placeholder="Create a strong password"
-                      />
-                    </div>
-                    <button
-                      data-testid="auth-register-submit"
-                      type="submit"
-                      disabled={submitting}
-                      className="flex w-full items-center justify-center gap-2 rounded-[16px] bg-[linear-gradient(90deg,#1e88ff,#29b8f4)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_18px_40px_rgba(41,132,255,0.24)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-[20px] sm:py-4"
-                    >
-                      {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <GraduationCap className="h-5 w-5" />}
-                      Create account
-                    </button>
-                  </form>
-                )}
+          <section className="mx-auto w-full max-w-none sm:max-w-[480px]">
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={authPanelClassName}
+            >
+              {renderAuthHeader()}
+              <div className="border-t border-white/8 px-6 pb-5 pt-4 sm:px-8 sm:pb-8 sm:pt-7">
+                {mode === 'login' ? renderLoginForm() : renderRegisterForm()}
 
                 {error && (
-                  <div className="mt-4 rounded-[16px] border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700 sm:mt-5 sm:rounded-[20px] sm:py-4 sm:text-sm">
+                  <div className="mt-5 rounded-[14px] border border-[#7f1d1d] bg-[rgba(127,29,29,0.22)] px-4 py-3 text-[14px] text-[#fecaca]">
                     {error}
                   </div>
                 )}
 
-                <div className="mt-5 rounded-[18px] border border-[#dce7f6] bg-[#f4f8ff] p-4 sm:mt-7 sm:rounded-[24px] sm:p-5">
-                  <p className="text-[13px] font-semibold text-[#16264a] sm:text-sm">Session behavior</p>
-                  <div className="mt-3 space-y-3 text-[13px] text-[#5e7294] sm:mt-4 sm:text-sm">
+                <div className="mt-6 hidden rounded-[18px] border border-white/8 bg-white/[0.03] p-4 text-[13px] text-[#94a3b8] lg:block">
+                  <p className="font-semibold uppercase tracking-[0.2em] text-[#7c63ff]">Session behavior</p>
+                  <div className="mt-3 space-y-2.5">
                     <div className="flex items-start gap-3">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#29a86a]" />
-                      Stay logged in after refresh or PC restart.
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#22c55e]" />
+                      Stay logged in after refresh or restart on the same device.
                     </div>
                     <div className="flex items-start gap-3">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#29a86a]" />
-                      If your account is active elsewhere, we show a takeover screen before login continues.
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#22c55e]" />
+                      If your account is active elsewhere, we stop here and ask you before continuing.
                     </div>
                   </div>
                 </div>
+
+                {showLocalAdminHelper && (
+                  <div className="mt-4 hidden rounded-[18px] border border-[#3b4660] bg-[#111827] p-4 text-[13px] text-[#9fb0ca] lg:block">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white">Local admin access</p>
+                        <p className="mt-1 truncate">admin@local.edumaster / AdminChangeMe_2026</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={fillLocalAdminLogin}
+                        className="shrink-0 rounded-[12px] border border-[#3b4660] px-3 py-2 font-semibold text-[#7c63ff]"
+                      >
+                        Use admin login
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </section>
-          </div>
-        </motion.div>
+            </motion.div>
+          </section>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -1166,108 +1887,165 @@ const AuthScreen = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-30 bg-[#0b0d14] text-white"
+            className="fixed inset-0 z-30 overflow-hidden bg-[linear-gradient(180deg,#0b0f19_0%,#0d1220_100%)] text-white"
           >
-            <div className="mx-auto flex min-h-screen w-full max-w-[460px] flex-col px-6 pb-8 pt-10 sm:max-w-[520px] sm:px-8">
-              <motion.div
-                initial={{ opacity: 0, y: 24 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
-                className="flex min-h-full flex-col"
+            <div className="mx-auto flex h-screen w-full max-w-[430px] flex-col px-5 pb-4 pt-5">
+              {renderPhoneStatusBar()}
+              <button
+                type="button"
+                onClick={() => setSessionConflict(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white"
               >
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setSessionConflict(null)}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-full text-white/92"
-                  >
-                    <ChevronLeft className="h-8 w-8" />
-                  </button>
-                  <div className="flex items-center gap-[5px] text-[#f5f7fb]">
-                    <span className="h-[7px] w-[5px] rounded-[2px] bg-current" />
-                    <span className="h-[9px] w-[5px] rounded-[2px] bg-current" />
-                    <span className="h-[11px] w-[5px] rounded-[2px] bg-current" />
-                    <span className="ml-[4px] h-[10px] w-[20px] rounded-[4px] border border-current" />
-                  </div>
-                </div>
+                <ChevronLeft className="h-5 w-5" />
+              </button>
 
-                <div className="mt-10 flex flex-1 flex-col">
-                  <div className="mx-auto w-full max-w-[340px]">
-                    <div className="relative mx-auto h-[180px] w-full max-w-[300px]">
-                      <div className="absolute left-[12%] top-[54%] h-[78px] w-[126px] rounded-[10px] border border-[#536187] bg-[linear-gradient(180deg,#434753_0%,#2a2e37_100%)] shadow-[0_20px_40px_rgba(0,0,0,0.36)]" />
-                      <div className="absolute left-[7%] top-[79%] h-[3px] w-[140px] rounded-full bg-[#2a2d37]" />
-                      <div className="absolute left-[30%] top-[28%] h-[106px] w-[190px] rounded-[10px] border border-[#5a647c] bg-[linear-gradient(180deg,#3a3f4c_0%,#252932_100%)] shadow-[0_24px_48px_rgba(0,0,0,0.32)]" />
-                      <div className="absolute left-[30%] top-[82%] h-[4px] w-[206px] rounded-full bg-[#2a2d37]" />
-                      <div className="absolute right-[6%] top-[50%] flex h-[82px] w-[44px] items-center justify-center rounded-[10px] border border-[#5a647c] bg-[linear-gradient(180deg,#454955_0%,#2b2f38_100%)] shadow-[0_18px_36px_rgba(0,0,0,0.34)]">
-                        <div className="flex h-[44px] w-[44px] items-center justify-center rounded-full border border-white/22 bg-white/6">
-                          <AlertTriangle className="h-5 w-5 text-[#d7d8de]" />
-                        </div>
+              <div className="mt-5 flex min-h-0 flex-1 flex-col">
+                <div className="mx-auto flex h-[150px] w-full max-w-[260px] items-center justify-center">
+                  <div className="relative h-[112px] w-full">
+                    <div className="absolute left-[8%] top-[48%] h-[54px] w-[92px] rounded-[12px] border border-[#4b556a] bg-[linear-gradient(180deg,#242b39,#121824)]" />
+                    <div className="absolute left-[28%] top-[6%] h-[88px] w-[156px] rounded-[14px] border border-[#4b556a] bg-[linear-gradient(180deg,#2a3242,#171d29)]" />
+                    <div className="absolute right-[8%] top-[22%] flex h-[78px] w-[42px] items-center justify-center rounded-[12px] border border-[#4b556a] bg-[linear-gradient(180deg,#2a3242,#171d29)]">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#6366f1]/50 bg-[#6366f1]/10">
+                        <AlertTriangle className="h-5 w-5 text-[#a5b4fc]" />
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <div className="mt-5 text-center">
-                    <p className="text-[20px] font-semibold leading-[1.15] tracking-[-0.03em] text-white sm:text-[22px]">
-                      Login Pending, Device Limit Reached
-                    </p>
-                    <p className="mt-3 text-[15px] leading-6 text-[#8f95ab]">
-                      Your current plan supports {sessionConflict.sessionLimit} device only
-                    </p>
-                  </div>
+                <div className="mt-3 text-center">
+                  <h2 className="!font-sans text-[22px] font-semibold leading-[1.25] text-white">Login Pending, Device Limit Reached</h2>
+                  <p className="mt-2 text-[14px] text-[#cbd5e1]">Your current plan supports 1 device only</p>
+                </div>
 
-                  <div className="mt-8 rounded-[22px] bg-[#141925] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.22)]">
-                    <p className="text-[18px] font-semibold text-white">
-                      Log Out {sessionConflict.activeSessions.length} Device{sessionConflict.activeSessions.length === 1 ? '' : 's'} to Continue
-                    </p>
-
-                    <div className="mt-6 space-y-5">
-                      {sessionConflict.activeSessions.map((session, index) => {
-                        const SessionIcon = getSessionDeviceIcon(session.device);
-                        return (
-                          <div key={session.sessionId || index} className="flex items-center gap-4">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.03] text-[#aeb6d6]">
-                              <SessionIcon className="h-6 w-6" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-[16px] font-medium text-white">{session.device}</p>
-                              <p className="mt-1 text-[13px] text-[#8b93ad]">Last used : {formatSessionLastUsed(session.lastSeenAt)}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => void confirmTakeover()}
-                              disabled={submitting}
-                              className="inline-flex h-[52px] min-w-[120px] items-center justify-center rounded-[12px] bg-white/[0.06] px-4 text-[15px] font-semibold text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {submitting ? 'Logging Out...' : 'Log Out'}
-                            </button>
-                          </div>
-                        );
-                      })}
+                <div className="mt-7 rounded-[14px] border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[16px] font-semibold text-white">Logged In Device</p>
+                  <div className="mt-5 flex items-center gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] bg-[#1f2937] text-[#dbe3f3]">
+                      {takeOverDevice.toLowerCase().includes('iphone') || takeOverDevice.toLowerCase().includes('android') || takeOverDevice.toLowerCase().includes('mobile')
+                        ? <Smartphone className="h-6 w-6" />
+                        : <Monitor className="h-6 w-6" />}
                     </div>
-                  </div>
-
-                  <div className="mt-7 flex items-center gap-4 text-[#7c839c]">
-                    <div className="h-px flex-1 bg-white/12" />
-                    <span className="text-[14px] font-medium">Or Upgrade</span>
-                    <div className="h-px flex-1 bg-white/12" />
-                  </div>
-
-                  <div className="mt-7 rounded-[20px] bg-[#141925] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-                    <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[#f2af2f]">Recommended</p>
-                    <button
-                      type="button"
-                      onClick={() => setSessionConflict(null)}
-                      className="mt-3 flex w-full items-center justify-between gap-4 text-left"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-[17px] leading-6 text-white">Upgrade to 4 devices for ₹699</p>
-                        <p className="mt-1 truncate text-[13px] text-[#7f87a2]">Watch on TV, Laptop • 4K UHD • Dolby Atmos • Ads...</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
+                        <p className="truncate text-[15px] font-medium text-white">{formatDeviceLabel(takeOverDevice)}</p>
                       </div>
-                      <ChevronRight className="h-6 w-6 shrink-0 text-white/72" />
-                    </button>
+                      <p className="mt-1 text-[13px] text-[#94a3b8]">Last used : {formatSessionLastUsed(sessionConflict.activeSessions[0]?.lastSeenAt)}</p>
+                    </div>
+                    <span className="shrink-0 rounded-[6px] border border-[#7c3aed]/40 bg-[#7c3aed]/10 px-2 py-1 text-[10px] font-medium text-[#a78bfa]">
+                      Current Device
+                    </span>
                   </div>
                 </div>
-              </motion.div>
+
+                <button
+                  type="button"
+                  onClick={() => void confirmTakeover()}
+                  disabled={submitting}
+                  className="mt-7 flex h-12 w-full items-center justify-center gap-3 rounded-[12px] bg-[linear-gradient(90deg,#3b82f6_0%,#8b5cf6_100%)] text-[15px] font-semibold text-white shadow-[0_18px_40px_rgba(79,70,229,0.36)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
+                  Log out older device and continue
+                </button>
+
+                <div className="mt-6 flex items-center gap-4 text-[#94a3b8]">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-[14px]">Or Upgrade</span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSessionConflict(null)}
+                  className="mt-5 flex h-12 w-full items-center justify-center rounded-[12px] border border-[#8b5cf6]/70 text-[16px] font-medium text-white"
+                >
+                  Upgrade plan
+                </button>
+
+                <p className="mt-auto flex items-center justify-center gap-2 pt-4 text-[12px] text-[#8b97b0]">
+                  <ShieldCheck className="h-4 w-4 text-[#7c63ff]" />
+                  Your data is safe and secure with us.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {takeoverSuccess && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-30 overflow-hidden bg-[linear-gradient(180deg,#0b0f19_0%,#0d1220_100%)] text-white"
+          >
+            <div className="mx-auto flex h-screen w-full max-w-[430px] flex-col px-5 pb-4 pt-5">
+              {renderPhoneStatusBar()}
+              <button
+                type="button"
+                onClick={() => setTakeoverSuccess(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+
+              <div className="mt-5 flex min-h-0 flex-1 flex-col">
+                <div className="mx-auto flex h-[122px] w-[122px] items-center justify-center rounded-full border border-[#7c3aed]/50 bg-[radial-gradient(circle,rgba(99,102,241,0.16),transparent_64%)]">
+                  <CheckCircle2 className="h-14 w-14 text-[#22d3ee]" />
+                </div>
+
+                <div className="mt-6 text-center">
+                  <h2 className="!font-sans text-[22px] font-semibold leading-[1.25] text-[#8b5cf6]">Logged Out Successfully</h2>
+                  <p className="mt-2 text-[14px] text-[#cbd5e1]">You can now login on this device.</p>
+                </div>
+
+                <div className="mt-7 rounded-[14px] border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[16px] font-semibold text-white">Logged Out Device</p>
+                  <div className="mt-5 flex items-center gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] bg-[#1f2937] text-[#dbe3f3]">
+                      {takeoverSuccess.device.toLowerCase().includes('iphone') || takeoverSuccess.device.toLowerCase().includes('android') || takeoverSuccess.device.toLowerCase().includes('mobile')
+                        ? <Smartphone className="h-6 w-6" />
+                        : <Monitor className="h-6 w-6" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
+                        <p className="truncate text-[15px] font-medium text-white">{formatDeviceLabel(takeoverSuccess.device)}</p>
+                      </div>
+                      <p className="mt-1 text-[13px] text-[#94a3b8]">Logged out just now</p>
+                    </div>
+                    <span className="shrink-0 rounded-[6px] border border-[#22c55e]/30 bg-[#22c55e]/10 px-2 py-1 text-[10px] font-medium text-[#4ade80]">
+                      Logged Out
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-[14px] border border-[#334155] bg-[rgba(37,99,235,0.08)] px-4 py-4 text-[#cbd5e1]">
+                  <div className="flex items-start gap-3">
+                    <Info className="mt-0.5 h-5 w-5 text-[#6366f1]" />
+                    <div>
+                      <p className="text-[14px] font-medium text-white">You have successfully logged out from {takeoverSuccess.device}.</p>
+                      <p className="mt-2 text-[13px] text-[#cbd5e1]">You can now continue on this device.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void continueAfterTakeover()}
+                  disabled={submitting}
+                  className="mt-6 flex h-12 w-full items-center justify-center rounded-[12px] bg-[linear-gradient(90deg,#3b82f6_0%,#8b5cf6_100%)] text-[16px] font-semibold text-white shadow-[0_18px_40px_rgba(79,70,229,0.36)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : 'Continue to Login'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void continueAfterTakeover()}
+                  disabled={submitting}
+                  className="mt-4 flex h-12 w-full items-center justify-center rounded-[12px] border border-[#8b5cf6]/70 text-[16px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Go to Home
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -1311,6 +2089,7 @@ const Shell = ({
   const [isImmersiveCoursePlayer, setIsImmersiveCoursePlayer] = useState(false);
   const [isImmersiveTestsFlow, setIsImmersiveTestsFlow] = useState(false);
   const [pendingLiveClassId, setPendingLiveClassId] = useState<string | null>(null);
+  const [activeCourseCbtLaunch, setActiveCourseCbtLaunch] = useState<{ test: MockTest; onSubmitted?: () => void } | null>(null);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
 
   const visibleTabs = tabs.filter((tab) => tab.id !== 'admin' || isAdmin);
@@ -1352,7 +2131,6 @@ const Shell = ({
     courses: 'Courses',
     live: 'Live',
     tests: 'Tests',
-    quiz: 'Quiz',
     revision: 'Revision',
     analytics: 'Analytics',
     admin: 'Admin',
@@ -1458,7 +2236,7 @@ const Shell = ({
           onOpenLiveTab={() => setActiveTab('live')}
           onOpenTestsTab={() => setActiveTab('tests')}
           onOpenRevisionTab={() => setActiveTab('revision')}
-          onOpenQuizTab={() => setActiveTab('quiz')}
+          onOpenCoursesTab={() => setActiveTab('courses')}
           onOpenNotification={onOpenNotification}
         />
       );
@@ -1475,6 +2253,9 @@ const Shell = ({
           savedTopicIds={savedTopicIds}
           onToggleSavedTopic={onToggleSavedTopic}
           onImmersiveModeChange={setIsImmersiveCoursePlayer}
+          onOpenCbtExam={(test, onSubmitted) => {
+            setActiveCourseCbtLaunch({ test, onSubmitted });
+          }}
         />
       );
     }
@@ -1503,10 +2284,6 @@ const Shell = ({
           onInitialLiveClassHandled={() => setPendingLiveClassId(null)}
         />
       );
-    }
-
-    if (activeTab === 'quiz') {
-      return <QuizTab overview={overview} onRefresh={onRefresh} />;
     }
 
     if (activeTab === 'revision') {
@@ -1785,6 +2562,18 @@ const Shell = ({
             </AnimatePresence>
           </main>
 
+          {activeCourseCbtLaunch && (
+            <ExactCbtTestPlayer
+              test={activeCourseCbtLaunch.test}
+              onClose={() => setActiveCourseCbtLaunch(null)}
+              onSubmitAttempt={async (test, answers, startedAt) => buildLocalTestAttemptResult(test, answers, startedAt)}
+              onSubmitted={async () => {
+                activeCourseCbtLaunch.onSubmitted?.();
+                setActiveCourseCbtLaunch(null);
+              }}
+            />
+          )}
+
           {!isImmersiveWorkspace && !isImmersiveTestsFlow && !hideMobileShellNav && (
             <>
               <MobileMoreSheet
@@ -1997,7 +2786,7 @@ const OverviewTab = ({
                   <span className="text-white/78">{continueCourse?.progressPercent || 0}%</span>
                 </div>
                 <h3 className="mt-4 max-w-2xl text-3xl font-semibold tracking-[-0.04em] sm:text-[2.7rem]">
-                  {continueCourse?.title || 'SSC JE 2026 Electrical Power Track'}
+                  {continueCourse?.title || 'No active course yet'}
                 </h3>
                 <p className="mt-4 max-w-2xl text-sm leading-8 text-white/78 sm:text-base">
                   {continueCourse
@@ -2129,7 +2918,7 @@ const OverviewTab = ({
                       <div>
                         <p className="text-2xl">🔥 Keep the Streak On</p>
                         <p className="mt-2 text-sm text-[var(--ink-soft)]">
-                          Daily quiz, a short revision block, and one mock touchpoint keep your momentum alive.
+                          CBT practice, a short revision block, and one mock touchpoint keep your momentum alive.
                         </p>
                       </div>
                       <div className="rounded-[18px] bg-[var(--accent-cream)] px-4 py-3 text-right">
@@ -2456,7 +3245,7 @@ const buildRevisionPlan = (overview: PlatformOverview, savedTopics: SavedTopic[]
       title: 'Speed and accuracy day',
       summary: 'Balance timed practice with clean review so speed gains do not reduce accuracy.',
       actions: [
-        'Attempt today’s daily quiz without interruptions.',
+        'Attempt one lesson CBT without interruptions.',
         latestMock ? `Compare your pace against the latest mock score of ${latestMock.score}/${latestMock.totalMarks}.` : 'Attempt one timed mini-test.',
         weakTopics[1] ? `Close the day by revising ${weakTopics[1]}.` : 'Close the day with one weak-topic revision block.',
       ],
@@ -3899,10 +4688,12 @@ const ExactCbtTestPlayer = ({
   test,
   onClose,
   onSubmitted,
+  onSubmitAttempt,
 }: {
   test: MockTest;
   onClose: () => void;
   onSubmitted: (result: TestAttemptResult) => void;
+  onSubmitAttempt?: (test: MockTest, answers: Record<string, number>, startedAt: string) => Promise<TestAttemptResult>;
 }) => {
   const { user } = useAuth();
   const stageContentRef = useRef<HTMLElement | null>(null);
@@ -4097,7 +4888,9 @@ const ExactCbtTestPlayer = ({
     setSubmitting(true);
     try {
       const effectiveStartedAt = startedAt || new Date().toISOString();
-      const result = await EduService.submitMockTest(test._id, answers, effectiveStartedAt);
+      const result = onSubmitAttempt
+        ? await onSubmitAttempt(test, answers, effectiveStartedAt)
+        : await EduService.submitMockTest(test._id, answers, effectiveStartedAt);
       onSubmitted(result);
     } finally {
       setSubmitting(false);
@@ -5342,137 +6135,6 @@ const TestsTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
   );
 };
 
-const QuizTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefresh: () => Promise<void> }) => {
-  const { user } = useAuth();
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<DailyQuizResult | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [openQuizSolutions, setOpenQuizSolutions] = useState<Record<string, boolean>>({});
-
-  const quiz = overview.dailyQuiz?.quiz;
-  const attemptedCount = quiz ? quiz.questions.filter((question) => Boolean(answers[question.id])).length : 0;
-
-  const submitQuiz = async () => {
-    if (!quiz || !user) {
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const orderedAnswers = quiz.questions.map((question) => answers[question.id] || '');
-      const quizResult = await EduService.submitDailyQuiz(quiz._id, orderedAnswers);
-      setResult(quizResult);
-      await onRefresh();
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="grid gap-6 xl:grid-cols-[1.1fr_0.55fr]">
-      <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
-        <SectionHeader title="Daily quiz system" caption="5 to 20 questions • instant result • streaks" />
-        {quiz ? (
-          <div className="mt-6 space-y-5">
-            {quiz.questions.map((question, index) => (
-              <div key={question.id} className="rounded-[26px] border border-[var(--line)] p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]">Question {index + 1}</p>
-                <h3 className="mt-3 text-lg font-semibold text-[var(--ink)]">{question.prompt}</h3>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {question.options.map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => setAnswers((current) => ({ ...current, [question.id]: option }))}
-                      className={cn(
-                        'rounded-[20px] border px-4 py-4 text-left text-sm transition',
-                        answers[question.id] === option
-                          ? 'border-[var(--accent-rust)] bg-[var(--accent-cream)]'
-                          : 'border-[var(--line)] bg-white hover:border-[var(--accent-rust)]/40',
-                      )}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-                {result?.review.find((entry) => entry.questionId === question.id) && (
-                  <QuizReviewCard
-                    reviewItem={result.review.find((entry) => entry.questionId === question.id)!}
-                    questionIndex={index}
-                    open={Boolean(openQuizSolutions[question.id])}
-                    onToggle={() => setOpenQuizSolutions((current) => ({
-                      ...current,
-                      [question.id]: !current[question.id],
-                    }))}
-                  />
-                )}
-              </div>
-            ))}
-
-            <button
-              onClick={() => void submitQuiz()}
-              data-testid="quiz-submit"
-              disabled={submitting}
-              className="flex items-center gap-2 rounded-2xl bg-[var(--accent-rust)] px-5 py-3 font-semibold text-white"
-            >
-              {submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
-              Submit daily quiz
-            </button>
-            {result && (
-              <div className="rounded-[24px] bg-[var(--success-soft)] p-5 text-[var(--success)]">
-                You scored {result.score}/{result.total}. Your streak and leaderboard are updated on the backend.
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="mt-6 text-sm text-[var(--ink-soft)]">No daily quiz is scheduled right now.</p>
-        )}
-      </section>
-
-      <aside className="space-y-6">
-        <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
-          <SectionHeader title="Streak & rank" caption="Engagement loop" />
-          <div className="mt-6 grid gap-4">
-            <MetricCard title="Attempted" value={`${attemptedCount}/${quiz?.questions.length || 0}`} hint="Live progress inside today's quiz" icon={ClipboardCheck} />
-            <MetricCard title="Current streak" value={`${overview.dailyQuiz?.streak || 0} days`} hint="Attempt before midnight to extend it" icon={Flame} />
-            <MetricCard title="Leaderboard" value={`${overview.dailyQuiz?.leaderboard.length || 0} visible`} hint="Daily and weekly style positioning" icon={Trophy} />
-            {result && <MetricCard title="Latest score" value={`${result.score}/${result.total}`} hint="Solutions unlock below each question" icon={Sparkles} />}
-          </div>
-        </div>
-
-        <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
-          <SectionHeader title="Today’s leaderboard" caption="Top performers" />
-          <div className="mt-6 space-y-3">
-            {(overview.dailyQuiz?.leaderboard || []).map((entry, index) => (
-              <div key={`${entry.userId}-${entry.submittedAt}`} className="flex items-center justify-between rounded-[20px] bg-[var(--accent-cream)] px-4 py-4">
-                <div>
-                  <p className="text-sm font-semibold text-[var(--ink)]">Rank #{index + 1}</p>
-                  <p className="text-xs text-[var(--ink-soft)]">{entry.name || entry.userId}</p>
-                </div>
-                <p className="text-lg font-semibold text-[var(--accent-rust)]">{entry.score}/{entry.total}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
-          <SectionHeader title="Weekly leaderboard" caption="Seven-day engagement ranking" />
-          <div className="mt-6 space-y-3">
-            {(overview.dailyQuiz?.weeklyLeaderboard || []).map((entry, index) => (
-              <div key={`${entry.userId}-${entry.submittedAt}-weekly`} className="flex items-center justify-between rounded-[20px] bg-[var(--accent-cream)] px-4 py-4">
-                <div>
-                  <p className="text-sm font-semibold text-[var(--ink)]">Rank #{index + 1}</p>
-                  <p className="text-xs text-[var(--ink-soft)]">{entry.name || entry.userId} • {entry.attempts || 1} attempts</p>
-                </div>
-                <p className="text-lg font-semibold text-[var(--accent-rust)]">{entry.score}/{entry.total}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </aside>
-    </div>
-  );
-};
-
 const AnalyticsTab = ({ overview }: { overview: PlatformOverview }) => {
   const { user } = useAuth();
   const [aiMessage, setAiMessage] = useState('');
@@ -5499,9 +6161,9 @@ const AnalyticsTab = ({ overview }: { overview: PlatformOverview }) => {
       <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.07)]">
         <SectionHeader title="Performance analytics" caption="Accuracy, speed, topic health" />
         <div className="mt-6 grid gap-4">
-          <MetricCard title="Accuracy" value={`${overview.analytics.accuracy}%`} hint="Derived from quiz + mock test results" icon={Target} />
+          <MetricCard title="Accuracy" value={`${overview.analytics.accuracy}%`} hint="Derived from CBT and mock test results" icon={Target} />
           <MetricCard title="Speed" value={`${overview.analytics.speed}x`} hint="Tracks pace for mock environments" icon={Gauge} />
-          <MetricCard title="Attempts" value={`${overview.analytics.attempts}`} hint="Quiz and test participation count" icon={ClipboardCheck} />
+          <MetricCard title="Attempts" value={`${overview.analytics.attempts}`} hint="CBT and mock test participation count" icon={ClipboardCheck} />
         </div>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <div className="rounded-[24px] bg-[var(--accent-cream)] p-4">
@@ -5614,24 +6276,31 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     validityDays: 183,
     level: 'Full Course',
   });
-  const [mockTestForm, setMockTestForm] = useState({
+  const [cbtForm, setCbtForm] = useState({
     title: '',
-    category: 'SSC JE',
-    type: 'sectional',
+    category: 'CBT',
+    type: 'cbt',
     durationMinutes: 60,
     negativeMarking: 0.25,
     topic: '',
-    questionsJson: '',
+    courseId: '',
+    moduleId: '',
+    chapterId: '',
+    lessonId: '',
   });
-  const [quizForm, setQuizForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    prompt: '',
-    options: '',
-    answer: '',
-    explanation: '',
+  const [fullMockTestForm, setFullMockTestForm] = useState({
+    title: '',
+    category: 'Full Mock Test',
+    type: 'full-test',
+    durationMinutes: 60,
+    negativeMarking: 0.25,
     topic: '',
-    questionsJson: '',
+    courseId: '',
   });
+  const [cbtQuestions, setCbtQuestions] = useState<EditableAssessmentQuestion[]>(() => [createEditableAssessmentQuestion()]);
+  const [fullMockQuestions, setFullMockQuestions] = useState<EditableAssessmentQuestion[]>(() => [createEditableAssessmentQuestion()]);
+  const [cbtBuilderStep, setCbtBuilderStep] = useState(0);
+  const [fullMockBuilderStep, setFullMockBuilderStep] = useState(0);
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const aiProviderOptions = overview.ai.generation?.providers || [
@@ -5639,9 +6308,9 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     { id: 'mock', label: 'Local Fallback', available: true, mode: 'fallback', description: 'Generate local draft content without an external API.' },
   ];
   const defaultAiProvider = overview.ai.generation?.defaultProvider || 'auto';
-  const [generatingMock, setGeneratingMock] = useState(false);
-  const [generatingQuiz, setGeneratingQuiz] = useState(false);
-  const [mockAiForm, setMockAiForm] = useState({
+  const [generatingCbt, setGeneratingCbt] = useState(false);
+  const [generatingFullMock, setGeneratingFullMock] = useState(false);
+  const [cbtAiForm, setCbtAiForm] = useState({
     provider: defaultAiProvider,
     subject: '',
     topic: '',
@@ -5650,14 +6319,64 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     durationMinutes: 60,
     instructions: '',
   });
-  const [quizAiForm, setQuizAiForm] = useState({
+  const [fullMockAiForm, setFullMockAiForm] = useState({
     provider: defaultAiProvider,
     subject: '',
     topic: '',
     difficulty: 'medium',
-    questionCount: 5,
+    questionCount: 20,
+    durationMinutes: 60,
     instructions: '',
   });
+  const [editingCbtKey, setEditingCbtKey] = useState<string | null>(null);
+  const [editingFullMockId, setEditingFullMockId] = useState<string | null>(null);
+  const selectedCbtCourse = overview.courses.find((course) => course._id === cbtForm.courseId) || null;
+  const selectedCbtModule = selectedCbtCourse?.modules?.find((module) => module.id === cbtForm.moduleId) || null;
+  const selectedCbtChapter = selectedCbtModule?.chapters?.find((chapter) => chapter.id === cbtForm.chapterId) || null;
+  const selectedCbtLessons = selectedCbtChapter?.lessons || selectedCbtModule?.lessons || [];
+  const selectedFullMockCourse = overview.courses.find((course) => course._id === fullMockTestForm.courseId) || null;
+  const existingLessonCbts = useMemo(() => (
+    overview.courses.flatMap((course) =>
+      (course.modules || []).flatMap((module) => ([
+        ...(module.lessons || [])
+          .filter((lesson) => lesson.cbt?.questions?.length)
+          .map((lesson) => ({
+            key: `${course._id}:${lesson.id}`,
+            courseId: course._id,
+            courseTitle: course.title,
+            moduleId: module.id,
+            moduleTitle: module.title,
+            chapterId: '',
+            chapterTitle: null as string | null,
+            lessonId: lesson.id,
+            lessonTitle: lesson.title,
+            cbt: lesson.cbt!,
+          })),
+        ...((module.chapters || []).flatMap((chapter) =>
+          (chapter.lessons || [])
+            .filter((lesson) => lesson.cbt?.questions?.length)
+            .map((lesson) => ({
+              key: `${course._id}:${lesson.id}`,
+              courseId: course._id,
+              courseTitle: course.title,
+              moduleId: module.id,
+              moduleTitle: module.title,
+              chapterId: chapter.id,
+              chapterTitle: chapter.title,
+              lessonId: lesson.id,
+              lessonTitle: lesson.title,
+              cbt: lesson.cbt!,
+            })))),
+      ]))
+    )
+  ), [overview.courses]);
+  const existingFullMockTests = useMemo(
+    () => overview.testSeries.filter((test) => {
+      const normalizedType = String(test.type || '').toLowerCase();
+      return normalizedType.includes('full') || normalizedType.includes('mock');
+    }),
+    [overview.testSeries],
+  );
 
   const createCourse = async () => {
     setBusy(true);
@@ -5665,7 +6384,7 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
       await EduService.createCourse({
         ...courseForm,
         modules: [],
-        thumbnailUrl: 'https://picsum.photos/seed/new-course/900/600',
+        thumbnailUrl: '',
       });
       setAdminMessage('Course created through the backend API.');
       await onRefresh();
@@ -5686,194 +6405,620 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     }
   };
 
-  const createMockTest = async () => {
-    setBusy(true);
-    try {
-      const questions = JSON.parse(mockTestForm.questionsJson || '[]');
-      if (!Array.isArray(questions) || questions.length === 0) {
-        throw new Error('Add real mock questions in JSON format before creating the test.');
+  const parseAssessmentQuestions = (questions: EditableAssessmentQuestion[]) => {
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new Error('Add at least one real question before saving.');
+    }
+
+    return questions.map((question, index) => {
+      const options = Array.isArray(question?.options)
+        ? question.options.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+        : [];
+      const correctOption = Number(question?.correctOption);
+      const marks = Number(question?.marks || 1);
+      const questionText = String(question?.questionText || '').trim();
+      const topic = String(question?.topic || '').trim();
+
+      if (!questionText || options.length < 2 || Number.isNaN(correctOption) || correctOption < 0 || correctOption >= options.length || !topic) {
+        throw new Error(`Question ${index + 1} must include questionText, at least two options, a valid correctOption index, and a topic.`);
       }
 
-      const sectionMap = questions.reduce((accumulator, question) => {
-        const sectionName = String(question.topic || mockTestForm.topic || 'General').trim() || 'General';
-        accumulator.set(sectionName, (accumulator.get(sectionName) || 0) + 1);
-        return accumulator;
-      }, new Map<string, number>());
+      return {
+        id: String(question?.id || `question_${Date.now()}_${index + 1}`),
+        questionText,
+        options,
+        correctOption,
+        explanation: String(question?.explanation || '').trim(),
+        marks: Number.isFinite(marks) && marks > 0 ? marks : 1,
+        topic,
+      };
+    });
+  };
 
-      await EduService.createMockTest({
-        title: mockTestForm.title,
-        description: `Admin-created ${mockTestForm.type} test for ${mockTestForm.topic || 'selected topics'}`,
-        category: mockTestForm.category,
-        type: mockTestForm.type,
-        durationMinutes: mockTestForm.durationMinutes,
-        negativeMarking: mockTestForm.negativeMarking,
-        totalMarks: questions.reduce((sum, question) => sum + Number(question.marks || 1), 0),
-        sectionBreakup: Array.from(sectionMap.entries()).map(([name, questionCount]) => ({ name, questions: questionCount })),
+  const clampBuilderStep = (value: number) => Math.max(0, Math.min(builderSteps.length - 1, value));
+
+  const resetCbtForm = () => {
+    setCbtForm({
+      title: '',
+      category: 'CBT',
+      type: 'cbt',
+      durationMinutes: 60,
+      negativeMarking: 0.25,
+      topic: '',
+      courseId: '',
+      moduleId: '',
+      chapterId: '',
+      lessonId: '',
+    });
+    setCbtQuestions([createEditableAssessmentQuestion()]);
+    setCbtBuilderStep(0);
+    setEditingCbtKey(null);
+  };
+
+  const resetFullMockForm = () => {
+    setFullMockTestForm({
+      title: '',
+      category: 'Full Mock Test',
+      type: 'full-test',
+      durationMinutes: 60,
+      negativeMarking: 0.25,
+      topic: '',
+      courseId: '',
+    });
+    setFullMockQuestions([createEditableAssessmentQuestion()]);
+    setFullMockBuilderStep(0);
+    setEditingFullMockId(null);
+  };
+
+  const createLessonCbt = async () => {
+    setBusy(true);
+    try {
+      const questions = parseAssessmentQuestions(cbtQuestions);
+
+      if (!cbtForm.courseId || !cbtForm.moduleId || !cbtForm.lessonId) {
+        throw new Error('Select the course, subject, chapter if needed, and lesson where this CBT should appear.');
+      }
+
+      await EduService.attachLessonCbt(cbtForm.courseId, cbtForm.moduleId, cbtForm.lessonId, {
+        chapterId: cbtForm.chapterId || null,
+        title: cbtForm.title,
+        durationMinutes: cbtForm.durationMinutes,
+        negativeMarking: cbtForm.negativeMarking,
         questions,
       });
-      setAdminMessage('Mock test created through the secured admin flow.');
+      setAdminMessage(editingCbtKey ? 'Lesson CBT updated successfully.' : 'Lesson CBT attached to the selected course lesson.');
       await onRefresh();
-      setMockTestForm({
-        title: '',
-        category: 'SSC JE',
-        type: 'sectional',
-        durationMinutes: 60,
-        negativeMarking: 0.25,
-        topic: '',
-        questionsJson: '',
-      });
+      resetCbtForm();
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : 'Unable to create mock test.');
+      setAdminMessage(error instanceof Error ? error.message : 'Unable to attach lesson CBT.');
     } finally {
       setBusy(false);
     }
   };
 
-  const createQuiz = async () => {
+  const createFullLengthMockTest = async () => {
     setBusy(true);
     try {
-      let questions = [];
-      if (quizForm.questionsJson.trim()) {
-        const parsed = JSON.parse(quizForm.questionsJson);
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          throw new Error('Questions JSON must be a non-empty array.');
-        }
+      const questions = parseAssessmentQuestions(fullMockQuestions);
+      const sectionMap = new Map<string, number>();
+      let totalMarks = 0;
+      questions.forEach((question) => {
+        sectionMap.set(question.topic, (sectionMap.get(question.topic) || 0) + 1);
+        totalMarks += Number(question.marks || 0);
+      });
 
-        questions = parsed.map((question, index) => {
-          const options = Array.isArray(question.options)
-            ? question.options.map((item: string) => String(item || '').trim()).filter(Boolean)
-            : [];
+      const payload = {
+        title: fullMockTestForm.title,
+        description: fullMockTestForm.topic ? `${fullMockTestForm.topic} full-length mock test` : 'Full-length mock test',
+        category: fullMockTestForm.category,
+        course: fullMockTestForm.courseId || undefined,
+        type: 'full-test',
+        durationMinutes: fullMockTestForm.durationMinutes,
+        negativeMarking: fullMockTestForm.negativeMarking,
+        totalMarks,
+        sectionBreakup: Array.from(sectionMap.entries()).map(([name, count]) => ({ name, questions: count })),
+        questions,
+      };
 
-          if (!String(question.prompt || '').trim() || options.length < 2 || !String(question.answer || '').trim() || !String(question.topic || '').trim()) {
-            throw new Error(`Quiz question ${index + 1} is missing prompt, options, answer, or topic.`);
-          }
-
-          return {
-            id: String(question.id || `quiz_${Date.now()}_${index + 1}`),
-            prompt: String(question.prompt).trim(),
-            options,
-            answer: String(question.answer).trim(),
-            explanation: String(question.explanation || '').trim(),
-            topic: String(question.topic).trim(),
-          };
-        });
+      if (editingFullMockId) {
+        await EduService.updateMockTest(editingFullMockId, payload);
       } else {
-        const options = quizForm.options.split(',').map((item) => item.trim()).filter(Boolean);
-        if (!quizForm.prompt.trim() || options.length < 2 || !quizForm.answer.trim() || !quizForm.topic.trim()) {
-          throw new Error('Enter a real quiz question, at least two options, the correct answer, and a topic.');
-        }
-
-        questions = [
-          {
-            id: `quiz_${Date.now()}`,
-            prompt: quizForm.prompt,
-            options,
-            answer: quizForm.answer,
-            explanation: quizForm.explanation,
-            topic: quizForm.topic,
-          },
-        ];
+        await EduService.createMockTest(payload);
       }
 
-      await EduService.createQuiz({
-        date: quizForm.date,
-        questions,
-      });
-      setAdminMessage('Daily quiz created through the secured admin flow.');
+      setAdminMessage(editingFullMockId ? 'Full-length mock test updated successfully.' : 'Full-length mock test created successfully.');
       await onRefresh();
-      setQuizForm({
-        date: new Date().toISOString().slice(0, 10),
-        prompt: '',
-        options: '',
-        answer: '',
-        explanation: '',
-        topic: '',
-        questionsJson: '',
-      });
+      resetFullMockForm();
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : 'Unable to create daily quiz.');
+      setAdminMessage(error instanceof Error ? error.message : 'Unable to create full-length mock test.');
     } finally {
       setBusy(false);
     }
   };
 
-  const generateMockTestDraft = async () => {
-    setGeneratingMock(true);
+  const loadCbtForEdit = (entry: (typeof existingLessonCbts)[number]) => {
+    setEditingCbtKey(entry.key);
+    setCbtForm({
+      title: entry.cbt.title || `${entry.lessonTitle} CBT`,
+      category: 'CBT',
+      type: 'cbt',
+      durationMinutes: entry.cbt.durationMinutes || 60,
+      negativeMarking: entry.cbt.negativeMarking ?? 0.25,
+      topic: entry.cbt.questions?.[0]?.topic || '',
+      courseId: entry.courseId,
+      moduleId: entry.moduleId,
+      chapterId: entry.chapterId || '',
+      lessonId: entry.lessonId,
+    });
+    setCbtQuestions(toEditableAssessmentQuestions(entry.cbt.questions || []));
+    setCbtBuilderStep(builderSteps.length - 1);
+  };
+
+  const deleteCbt = async (entry: (typeof existingLessonCbts)[number]) => {
+    setBusy(true);
+    try {
+      await EduService.deleteLessonCbt(entry.courseId, entry.moduleId, entry.lessonId, {
+        chapterId: entry.chapterId || null,
+      });
+      setAdminMessage('Lesson CBT deleted successfully.');
+      await onRefresh();
+      if (editingCbtKey === entry.key) {
+        resetCbtForm();
+      }
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : 'Unable to delete lesson CBT.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadFullMockForEdit = (test: MockTest) => {
+    setEditingFullMockId(test._id);
+    setFullMockTestForm({
+      title: test.title,
+      category: test.category || 'Full Mock Test',
+      type: 'full-test',
+      durationMinutes: test.durationMinutes || 60,
+      negativeMarking: test.negativeMarking ?? 0.25,
+      topic: test.sectionBreakup?.[0]?.name || '',
+      courseId: test.course || '',
+    });
+    setFullMockQuestions(toEditableAssessmentQuestions(test.questions || []));
+    setFullMockBuilderStep(builderSteps.length - 1);
+  };
+
+  const deleteFullMock = async (testId: string) => {
+    setBusy(true);
+    try {
+      await EduService.deleteMockTest(testId);
+      setAdminMessage('Full-length mock test deleted successfully.');
+      await onRefresh();
+      if (editingFullMockId === testId) {
+        resetFullMockForm();
+      }
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : 'Unable to delete full-length mock test.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const generateCbtDraft = async () => {
+    setGeneratingCbt(true);
     setAdminMessage(null);
     try {
       const generated = await EduService.generateAssessmentDraft({
-        provider: mockAiForm.provider,
+        provider: cbtAiForm.provider,
         contentType: 'mock-test',
-        exam: mockTestForm.category,
-        subject: mockAiForm.subject,
-        topic: mockAiForm.topic || mockTestForm.topic,
-        title: mockTestForm.title,
-        type: mockTestForm.type,
-        difficulty: mockAiForm.difficulty,
-        questionCount: mockAiForm.questionCount,
-        durationMinutes: mockAiForm.durationMinutes,
-        negativeMarking: mockTestForm.negativeMarking,
-        instructions: mockAiForm.instructions,
+        exam: cbtForm.category,
+        subject: cbtAiForm.subject,
+        topic: cbtAiForm.topic || cbtForm.topic,
+        title: cbtForm.title,
+        type: cbtForm.type,
+        difficulty: cbtAiForm.difficulty,
+        questionCount: cbtAiForm.questionCount,
+        durationMinutes: cbtAiForm.durationMinutes,
+        negativeMarking: cbtForm.negativeMarking,
+        instructions: cbtAiForm.instructions,
       });
 
       if (!generated.mockTest) {
-        throw new Error('Mock test draft was not returned by the AI generator.');
+        throw new Error('CBT draft was not returned by the AI generator.');
       }
 
-      setMockTestForm((current) => ({
+      setCbtForm((current) => ({
         ...current,
         title: generated.mockTest?.title || current.title,
-        category: generated.mockTest?.category || current.category,
-        type: generated.mockTest?.type || current.type,
+        category: current.category,
+        type: current.type,
         durationMinutes: generated.mockTest?.durationMinutes || current.durationMinutes,
         negativeMarking: generated.mockTest?.negativeMarking ?? current.negativeMarking,
-        topic: generated.mockTest?.sectionBreakup?.[0]?.name || mockAiForm.topic || current.topic,
-        questionsJson: JSON.stringify(generated.mockTest.questions, null, 2),
+        topic: generated.mockTest?.sectionBreakup?.[0]?.name || cbtAiForm.topic || current.topic,
       }));
-      setAdminMessage(`${generated.message} The mock test draft is loaded below for review.`);
+      setCbtQuestions(toEditableAssessmentQuestions(generated.mockTest.questions || []));
+      setCbtBuilderStep(2);
+      setAdminMessage(`${generated.message} The CBT draft is loaded below for review.`);
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : 'Unable to generate mock test draft.');
+      setAdminMessage(error instanceof Error ? error.message : 'Unable to generate CBT draft.');
     } finally {
-      setGeneratingMock(false);
+      setGeneratingCbt(false);
     }
   };
 
-  const generateDailyQuizDraft = async () => {
-    setGeneratingQuiz(true);
+  const generateFullMockTestDraft = async () => {
+    setGeneratingFullMock(true);
     setAdminMessage(null);
     try {
       const generated = await EduService.generateAssessmentDraft({
-        provider: quizAiForm.provider,
-        contentType: 'daily-quiz',
-        exam: mockTestForm.category,
-        subject: quizAiForm.subject,
-        topic: quizAiForm.topic || quizForm.topic,
-        difficulty: quizAiForm.difficulty,
-        questionCount: quizAiForm.questionCount,
-        quizDate: quizForm.date,
-        instructions: quizAiForm.instructions,
+        provider: fullMockAiForm.provider,
+        contentType: 'mock-test',
+        exam: fullMockTestForm.category,
+        subject: fullMockAiForm.subject,
+        topic: fullMockAiForm.topic || fullMockTestForm.topic,
+        title: fullMockTestForm.title,
+        type: fullMockTestForm.type,
+        difficulty: fullMockAiForm.difficulty,
+        questionCount: fullMockAiForm.questionCount,
+        durationMinutes: fullMockAiForm.durationMinutes,
+        negativeMarking: fullMockTestForm.negativeMarking,
+        instructions: fullMockAiForm.instructions,
       });
 
-      if (!generated.dailyQuiz) {
-        throw new Error('Daily quiz draft was not returned by the AI generator.');
+      if (!generated.mockTest) {
+        throw new Error('Full-length mock test draft was not returned by the AI generator.');
       }
 
-      const firstQuestion = generated.dailyQuiz.questions[0];
-      setQuizForm((current) => ({
+      setFullMockTestForm((current) => ({
         ...current,
-        date: generated.dailyQuiz?.date || current.date,
-        prompt: firstQuestion?.prompt || '',
-        options: firstQuestion?.options?.join(', ') || '',
-        answer: firstQuestion?.answer || '',
-        explanation: firstQuestion?.explanation || '',
-        topic: firstQuestion?.topic || quizAiForm.topic || current.topic,
-        questionsJson: JSON.stringify(generated.dailyQuiz.questions, null, 2),
+        title: generated.mockTest?.title || current.title,
+        category: generated.mockTest?.category || current.category,
+        type: 'full-test',
+        durationMinutes: generated.mockTest?.durationMinutes || current.durationMinutes,
+        negativeMarking: generated.mockTest?.negativeMarking ?? current.negativeMarking,
+        topic: generated.mockTest?.sectionBreakup?.[0]?.name || fullMockAiForm.topic || current.topic,
       }));
-      setAdminMessage(`${generated.message} The daily quiz draft is loaded below for review.`);
+      setFullMockQuestions(toEditableAssessmentQuestions(generated.mockTest.questions || []));
+      setFullMockBuilderStep(2);
+      setAdminMessage(`${generated.message} The full-length mock test draft is loaded below for review.`);
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : 'Unable to generate daily quiz draft.');
+      setAdminMessage(error instanceof Error ? error.message : 'Unable to generate full-length mock test draft.');
     } finally {
-      setGeneratingQuiz(false);
+      setGeneratingFullMock(false);
+    }
+  };
+
+  const cbtReviewPath = [
+    selectedCbtCourse?.title,
+    selectedCbtModule?.title,
+    selectedCbtChapter?.title,
+    selectedCbtLessons.find((lesson) => lesson.id === cbtForm.lessonId)?.title,
+  ].filter(Boolean).join(' • ');
+
+  const fullMockReviewPath = selectedFullMockCourse?.title || fullMockTestForm.category || 'Standalone test series';
+
+  const renderBuilderSectionCard = ({
+    title,
+    subtitle,
+    children,
+  }: {
+    title: string;
+    subtitle: string;
+    children: React.ReactNode;
+  }) => (
+    <div className="rounded-[24px] border border-[var(--line)] bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+      <p className="text-lg font-semibold text-[var(--ink)]">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">{subtitle}</p>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        {children}
+      </div>
+    </div>
+  );
+
+  const renderBuilderFooter = ({
+    step,
+    onStepChange,
+    onReset,
+    onSubmit,
+    submitLabel,
+    cancelEditLabel,
+    showCancelEdit,
+  }: {
+    step: number;
+    onStepChange: (value: number) => void;
+    onReset: () => void;
+    onSubmit: () => void;
+    submitLabel: string;
+    cancelEditLabel: string;
+    showCancelEdit: boolean;
+  }) => (
+    <div className="flex flex-col gap-3 rounded-[24px] border border-[var(--line)] bg-[var(--accent-cream)] p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-sm text-[var(--ink-soft)]">
+        Step {step + 1} of {builderSteps.length}: <span className="font-semibold text-[var(--ink)]">{builderSteps[step]}</span>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {showCancelEdit && (
+          <button onClick={onReset} disabled={busy} className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+            {cancelEditLabel}
+          </button>
+        )}
+        {step > 0 && (
+          <button
+            type="button"
+            onClick={() => onStepChange(step - 1)}
+            className="inline-flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </button>
+        )}
+        {step < builderSteps.length - 1 ? (
+          <button
+            type="button"
+            onClick={() => onStepChange(step + 1)}
+            className="inline-flex items-center gap-2 rounded-2xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white"
+          >
+            Next Step
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={busy}
+            className="rounded-2xl bg-[var(--ink)] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {submitLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCbtBuilderContent = () => {
+    switch (cbtBuilderStep) {
+      case 0:
+        return renderBuilderSectionCard({
+          title: 'Basic CBT information',
+          subtitle: 'Set the assessment identity first so the preview and AI draft stay aligned.',
+          children: (
+            <>
+              <input value={cbtForm.title} onChange={(event) => setCbtForm((current) => ({ ...current, title: event.target.value }))} placeholder="CBT title" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={cbtForm.topic} onChange={(event) => setCbtForm((current) => ({ ...current, topic: event.target.value }))} placeholder="Topic / section" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={cbtForm.category} onChange={(event) => setCbtForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={cbtForm.type} disabled className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none opacity-70" />
+              <input type="number" value={cbtForm.durationMinutes} onChange={(event) => setCbtForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="Duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input type="number" step="0.01" value={cbtForm.negativeMarking} onChange={(event) => setCbtForm((current) => ({ ...current, negativeMarking: Number(event.target.value) }))} placeholder="Negative marking" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+            </>
+          ),
+        });
+      case 1:
+        return renderBuilderSectionCard({
+          title: 'Attach CBT to the lesson path',
+          subtitle: 'Choose the exact course, subject, optional chapter, and lesson where this CBT should appear.',
+          children: (
+            <>
+              <select
+                value={cbtForm.courseId}
+                onChange={(event) => setCbtForm((current) => ({ ...current, courseId: event.target.value, moduleId: '', chapterId: '', lessonId: '' }))}
+                className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+              >
+                <option value="">Select course</option>
+                {overview.courses.map((course) => <option key={course._id} value={course._id}>{course.title}</option>)}
+              </select>
+              <select
+                value={cbtForm.moduleId}
+                onChange={(event) => setCbtForm((current) => ({ ...current, moduleId: event.target.value, chapterId: '', lessonId: '' }))}
+                disabled={!selectedCbtCourse}
+                className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none disabled:opacity-60"
+              >
+                <option value="">Select subject</option>
+                {(selectedCbtCourse?.modules || []).map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}
+              </select>
+              <select
+                value={cbtForm.chapterId}
+                onChange={(event) => setCbtForm((current) => ({ ...current, chapterId: event.target.value, lessonId: '' }))}
+                disabled={!selectedCbtModule}
+                className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none disabled:opacity-60"
+              >
+                <option value="">Direct subject lessons</option>
+                {(selectedCbtModule?.chapters || []).map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
+              </select>
+              <select
+                value={cbtForm.lessonId}
+                onChange={(event) => setCbtForm((current) => ({ ...current, lessonId: event.target.value }))}
+                disabled={!selectedCbtModule}
+                className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none disabled:opacity-60"
+              >
+                <option value="">Select lesson</option>
+                {selectedCbtLessons.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}
+              </select>
+            </>
+          ),
+        });
+      case 2:
+        return (
+          <div className="space-y-5">
+            {renderBuilderSectionCard({
+              title: 'Optional AI draft',
+              subtitle: 'Generate a first pass if you want a head start, then keep editing manually below.',
+              children: (
+                <>
+                  <select
+                    value={cbtAiForm.provider}
+                    onChange={(event) => setCbtAiForm((current) => ({ ...current, provider: event.target.value }))}
+                    className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+                  >
+                    {aiProviderOptions.map((provider) => (
+                      <option key={provider.id} value={provider.id} disabled={!provider.available && provider.id !== 'auto'}>
+                        {provider.label} {provider.available ? '' : '(Not configured)'}
+                      </option>
+                    ))}
+                  </select>
+                  <input value={cbtAiForm.subject} onChange={(event) => setCbtAiForm((current) => ({ ...current, subject: event.target.value }))} placeholder="AI subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <input value={cbtAiForm.topic} onChange={(event) => setCbtAiForm((current) => ({ ...current, topic: event.target.value }))} placeholder="AI topic focus" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <select value={cbtAiForm.difficulty} onChange={(event) => setCbtAiForm((current) => ({ ...current, difficulty: event.target.value }))} className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none">
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                  <input type="number" value={cbtAiForm.questionCount} onChange={(event) => setCbtAiForm((current) => ({ ...current, questionCount: Number(event.target.value) }))} placeholder="AI question count" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <input type="number" value={cbtAiForm.durationMinutes} onChange={(event) => setCbtAiForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="AI duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <textarea
+                    value={cbtAiForm.instructions}
+                    onChange={(event) => setCbtAiForm((current) => ({ ...current, instructions: event.target.value }))}
+                    placeholder="Optional AI instructions: exam style, chapter mix, calculation-heavy, difficulty balance."
+                    className="md:col-span-2 h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+                  />
+                  <div className="md:col-span-2">
+                    <button onClick={() => void generateCbtDraft()} disabled={generatingCbt} className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-60">
+                      {generatingCbt ? 'Generating draft...' : 'Generate AI draft'}
+                    </button>
+                  </div>
+                </>
+              ),
+            })}
+            <AssessmentQuestionBuilder
+              title="Manual CBT Builder"
+              caption="Create your own questions, options, answers, marks, and explanations without touching JSON."
+              questions={cbtQuestions}
+              onChange={setCbtQuestions}
+            />
+          </div>
+        );
+      case 3:
+      default:
+        return (
+          <div className="rounded-[24px] border border-[var(--line)] bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+            <p className="text-lg font-semibold text-[var(--ink)]">Review lesson targeting</p>
+            <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">Confirm where this CBT will show up in the student journey before publishing it.</p>
+            <div className="mt-5 grid gap-3">
+              {[
+                ['Course path', cbtReviewPath || '--'],
+                ['Question count', `${cbtQuestions.length}`],
+                ['Total marks', `${cbtQuestions.reduce((sum, question) => sum + Number(question.marks || 0), 0)}`],
+                ['Duration', `${cbtForm.durationMinutes || 0} min`],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between gap-3 rounded-[16px] border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-3">
+                  <span className="text-sm text-[var(--ink-soft)]">{label}</span>
+                  <span className="text-sm font-semibold text-[var(--ink)]">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+    }
+  };
+
+  const renderFullMockBuilderContent = () => {
+    switch (fullMockBuilderStep) {
+      case 0:
+        return renderBuilderSectionCard({
+          title: 'Basic mock test information',
+          subtitle: 'Set the full-length test identity, timing, and scoring before you move into questions.',
+          children: (
+            <>
+              <input value={fullMockTestForm.title} onChange={(event) => setFullMockTestForm((current) => ({ ...current, title: event.target.value }))} placeholder="Mock test title" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={fullMockTestForm.topic} onChange={(event) => setFullMockTestForm((current) => ({ ...current, topic: event.target.value }))} placeholder="Topic / section mix" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={fullMockTestForm.category} onChange={(event) => setFullMockTestForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input value={selectedFullMockCourse?.title || ''} readOnly placeholder="Linked course (optional)" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none opacity-70" />
+              <input type="number" value={fullMockTestForm.durationMinutes} onChange={(event) => setFullMockTestForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="Duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+              <input type="number" step="0.01" value={fullMockTestForm.negativeMarking} onChange={(event) => setFullMockTestForm((current) => ({ ...current, negativeMarking: Number(event.target.value) }))} placeholder="Negative marking" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+            </>
+          ),
+        });
+      case 1:
+        return renderBuilderSectionCard({
+          title: 'Decide where the mock lives',
+          subtitle: 'Keep it global or link it to a specific course so the surface area stays predictable.',
+          children: (
+            <>
+              <select
+                value={fullMockTestForm.courseId}
+                onChange={(event) => setFullMockTestForm((current) => ({ ...current, courseId: event.target.value }))}
+                className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+              >
+                <option value="">All courses / global mock</option>
+                {overview.courses.map((course) => <option key={course._id} value={course._id}>{course.title}</option>)}
+              </select>
+              <div className="rounded-[20px] border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 text-sm leading-6 text-[var(--ink-soft)]">
+                {selectedFullMockCourse
+                  ? `This mock will appear with ${selectedFullMockCourse.title}.`
+                  : 'This mock will stay global and appear in the main Mock Tests workspace.'}
+              </div>
+            </>
+          ),
+        });
+      case 2:
+        return (
+          <div className="space-y-5">
+            {renderBuilderSectionCard({
+              title: 'Optional AI draft',
+              subtitle: 'Use AI for a first draft, then tune the questions manually before publishing.',
+              children: (
+                <>
+                  <select
+                    value={fullMockAiForm.provider}
+                    onChange={(event) => setFullMockAiForm((current) => ({ ...current, provider: event.target.value }))}
+                    className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+                  >
+                    {aiProviderOptions.map((provider) => (
+                      <option key={provider.id} value={provider.id} disabled={!provider.available && provider.id !== 'auto'}>
+                        {provider.label} {provider.available ? '' : '(Not configured)'}
+                      </option>
+                    ))}
+                  </select>
+                  <input value={fullMockAiForm.subject} onChange={(event) => setFullMockAiForm((current) => ({ ...current, subject: event.target.value }))} placeholder="AI subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <input value={fullMockAiForm.topic} onChange={(event) => setFullMockAiForm((current) => ({ ...current, topic: event.target.value }))} placeholder="AI topic focus" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <select value={fullMockAiForm.difficulty} onChange={(event) => setFullMockAiForm((current) => ({ ...current, difficulty: event.target.value }))} className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none">
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                  <input type="number" value={fullMockAiForm.questionCount} onChange={(event) => setFullMockAiForm((current) => ({ ...current, questionCount: Number(event.target.value) }))} placeholder="AI question count" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <input type="number" value={fullMockAiForm.durationMinutes} onChange={(event) => setFullMockAiForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="AI duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
+                  <textarea
+                    value={fullMockAiForm.instructions}
+                    onChange={(event) => setFullMockAiForm((current) => ({ ...current, instructions: event.target.value }))}
+                    placeholder="Optional AI instructions: exam coverage, section balance, difficulty spread, time pressure."
+                    className="md:col-span-2 h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
+                  />
+                  <div className="md:col-span-2">
+                    <button onClick={() => void generateFullMockTestDraft()} disabled={generatingFullMock} className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-60">
+                      {generatingFullMock ? 'Generating draft...' : 'Generate AI draft'}
+                    </button>
+                  </div>
+                </>
+              ),
+            })}
+            <AssessmentQuestionBuilder
+              title="Manual Mock Test Builder"
+              caption="Build full-length mock tests question by question with a proper authoring UI."
+              questions={fullMockQuestions}
+              onChange={setFullMockQuestions}
+            />
+          </div>
+        );
+      case 3:
+      default:
+        return (
+          <div className="rounded-[24px] border border-[var(--line)] bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+            <p className="text-lg font-semibold text-[var(--ink)]">Review mock test placement</p>
+            <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">Confirm the audience, scale, and scoring before the test goes live.</p>
+            <div className="mt-5 grid gap-3">
+              {[
+                ['Visibility', fullMockReviewPath],
+                ['Question count', `${fullMockQuestions.length}`],
+                ['Total marks', `${fullMockQuestions.reduce((sum, question) => sum + Number(question.marks || 0), 0)}`],
+                ['Duration', `${fullMockTestForm.durationMinutes || 0} min`],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between gap-3 rounded-[16px] border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-3">
+                  <span className="text-sm text-[var(--ink-soft)]">{label}</span>
+                  <span className="text-sm font-semibold text-[var(--ink)]">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
     }
   };
 
@@ -5886,7 +7031,7 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     { id: 'overview', label: 'Overview', caption: 'Health and readiness', icon: LayoutDashboard },
     { id: 'courses', label: 'Courses', caption: 'Catalog and pricing', icon: BookOpen },
     { id: 'curriculum', label: 'Curriculum', caption: 'Subjects and video assets', icon: GraduationCap },
-    { id: 'assessments', label: 'Assessments', caption: 'Mocks and quizzes', icon: ClipboardCheck },
+    { id: 'assessments', label: 'Assessments', caption: 'CBT and mock tests', icon: ClipboardCheck },
     { id: 'security', label: 'Security', caption: 'Sessions and devices', icon: ShieldCheck },
   ];
 
@@ -5958,7 +7103,7 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
             <MetricCard title="Active users" value={`${overview.adminOverview?.activeUsers || 0}`} hint="Current registered learners" icon={UserCircle2} />
             <MetricCard title="Active sessions" value={`${overview.adminOverview?.activeSessions || 0}`} hint="Single-session protection" icon={ShieldCheck} />
             <MetricCard title="Revenue" value={currency.format(overview.adminOverview?.revenue || 0)} hint="Paid backend totals" icon={Wallet} />
-            <MetricCard title="Participation" value={`${overview.adminOverview?.testParticipation || 0}`} hint="Quiz plus mock submissions" icon={ClipboardCheck} />
+            <MetricCard title="Participation" value={`${overview.adminOverview?.testParticipation || 0}`} hint="CBT and mock test submissions" icon={ClipboardCheck} />
             <MetricCard title="Capacity target" value={overview.adminOverview?.concurrentCapacityTarget || '10K'} hint="Target concurrency" icon={Gauge} />
           </div>
 
@@ -6085,107 +7230,168 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
 
       {activeAdminSection === 'assessments' && (
         <div className="space-y-6">
+          <BuilderFrame
+            eyebrow="CBT Creation"
+            title="Lesson CBT Builder"
+            description="Build lesson-linked CBTs in a guided flow. The admin can fill the basics, target the exact lesson path, write questions manually, or let AI draft and then review it."
+            actions={(
+              <div className="flex flex-wrap gap-3">
+                <button onClick={resetCbtForm} disabled={busy} className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-60">
+                  New CBT
+                </button>
+                <div className="rounded-2xl bg-[var(--accent-cream)] px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+                  {builderSteps[cbtBuilderStep]}
+                </div>
+              </div>
+            )}
+            activeStep={cbtBuilderStep}
+            onStepSelect={(index) => setCbtBuilderStep(clampBuilderStep(index))}
+          >
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_340px]">
+              <div className="space-y-5">
+                {renderCbtBuilderContent()}
+                {renderBuilderFooter({
+                  step: cbtBuilderStep,
+                  onStepChange: (value) => setCbtBuilderStep(clampBuilderStep(value)),
+                  onReset: resetCbtForm,
+                  onSubmit: () => void createLessonCbt(),
+                  submitLabel: editingCbtKey ? 'Update lesson CBT' : 'Publish lesson CBT',
+                  cancelEditLabel: 'Cancel edit',
+                  showCancelEdit: Boolean(editingCbtKey),
+                })}
+              </div>
+              <div className="space-y-4">
+                <AssessmentPreviewCard
+                  typeLabel="CBT"
+                  accent="green"
+                  title={cbtForm.title}
+                  subtitle={cbtReviewPath}
+                  questionCount={cbtQuestions.length}
+                  totalMarks={cbtQuestions.reduce((sum, question) => sum + Number(question.marks || 0), 0)}
+                  durationMinutes={cbtForm.durationMinutes}
+                  negativeMarking={cbtForm.negativeMarking}
+                  topic={cbtForm.topic}
+                />
+                <div className="rounded-[24px] border border-[var(--line)] bg-[var(--accent-cream)] p-4 text-sm leading-7 text-[var(--ink-soft)]">
+                  This builder now behaves as a guided sequence, so admins can focus on one decision at a time and still keep the live preview in view.
+                </div>
+              </div>
+            </div>
+          </BuilderFrame>
+
+          <BuilderFrame
+            eyebrow="Mock Test Creation"
+            title="Full-Length Mock Builder"
+            description="Create full mock tests with the same guided structure, but keep them standalone so they appear in the Mock Tests workspace."
+            actions={(
+              <div className="flex flex-wrap gap-3">
+                <button onClick={resetFullMockForm} disabled={busy} className="rounded-2xl border border-[var(--line)] bg-white px-5 py-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-60">
+                  New Mock Test
+                </button>
+                <div className="rounded-2xl bg-[var(--accent-cream)] px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+                  {builderSteps[fullMockBuilderStep]}
+                </div>
+              </div>
+            )}
+            activeStep={fullMockBuilderStep}
+            onStepSelect={(index) => setFullMockBuilderStep(clampBuilderStep(index))}
+          >
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_340px]">
+              <div className="space-y-5">
+                {renderFullMockBuilderContent()}
+                {renderBuilderFooter({
+                  step: fullMockBuilderStep,
+                  onStepChange: (value) => setFullMockBuilderStep(clampBuilderStep(value)),
+                  onReset: resetFullMockForm,
+                  onSubmit: () => void createFullLengthMockTest(),
+                  submitLabel: editingFullMockId ? 'Update full-length mock test' : 'Publish full-length mock test',
+                  cancelEditLabel: 'Cancel edit',
+                  showCancelEdit: Boolean(editingFullMockId),
+                })}
+              </div>
+              <div className="space-y-4">
+                <AssessmentPreviewCard
+                  typeLabel="Full Mock Test"
+                  accent="blue"
+                  title={fullMockTestForm.title}
+                  subtitle={fullMockReviewPath}
+                  questionCount={fullMockQuestions.length}
+                  totalMarks={fullMockQuestions.reduce((sum, question) => sum + Number(question.marks || 0), 0)}
+                  durationMinutes={fullMockTestForm.durationMinutes}
+                  negativeMarking={fullMockTestForm.negativeMarking}
+                  topic={fullMockTestForm.topic}
+                />
+                <div className="rounded-[24px] border border-[var(--line)] bg-[var(--accent-cream)] p-4 text-sm leading-7 text-[var(--ink-soft)]">
+                  Full mocks stay separate from lesson CBTs, so the admin can understand where the test will surface before publishing it.
+                </div>
+              </div>
+            </div>
+          </BuilderFrame>
+
           <div className="grid gap-6 xl:grid-cols-2">
             <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-              <SectionHeader title="Create mock test" caption="Sectional, topic-wise, or full-length" />
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <select
-                  value={mockAiForm.provider}
-                  onChange={(event) => setMockAiForm((current) => ({ ...current, provider: event.target.value }))}
-                  className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
-                >
-                  {aiProviderOptions.map((provider) => (
-                    <option key={provider.id} value={provider.id} disabled={!provider.available && provider.id !== 'auto'}>
-                      {provider.label} {provider.available ? '' : '(Not configured)'}
-                    </option>
-                  ))}
-                </select>
-                <input value={mockAiForm.subject} onChange={(event) => setMockAiForm((current) => ({ ...current, subject: event.target.value }))} placeholder="AI subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input value={mockAiForm.topic} onChange={(event) => setMockAiForm((current) => ({ ...current, topic: event.target.value }))} placeholder="AI topic focus" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <select value={mockAiForm.difficulty} onChange={(event) => setMockAiForm((current) => ({ ...current, difficulty: event.target.value }))} className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none">
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
-                <input type="number" value={mockAiForm.questionCount} onChange={(event) => setMockAiForm((current) => ({ ...current, questionCount: Number(event.target.value) }))} placeholder="AI question count" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input type="number" value={mockAiForm.durationMinutes} onChange={(event) => setMockAiForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="AI duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <textarea
-                  value={mockAiForm.instructions}
-                  onChange={(event) => setMockAiForm((current) => ({ ...current, instructions: event.target.value }))}
-                  placeholder="Optional AI instructions: chapter mix, exam style, calculation-heavy, etc."
-                  className="md:col-span-2 h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
-                />
-                <div className="md:col-span-2 flex flex-wrap gap-3">
-                  <button onClick={() => void generateMockTestDraft()} disabled={generatingMock} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white disabled:opacity-60">
-                    {generatingMock ? 'Generating mock draft...' : 'Generate with AI'}
-                  </button>
-                  <span className="self-center text-sm text-[var(--ink-soft)]">AI fills the JSON draft below. You can edit it before saving.</span>
-                </div>
-                <input value={mockTestForm.title} onChange={(event) => setMockTestForm((current) => ({ ...current, title: event.target.value }))} placeholder="Mock test title" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input value={mockTestForm.topic} onChange={(event) => setMockTestForm((current) => ({ ...current, topic: event.target.value }))} placeholder="Topic / section" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input value={mockTestForm.category} onChange={(event) => setMockTestForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input value={mockTestForm.type} onChange={(event) => setMockTestForm((current) => ({ ...current, type: event.target.value }))} placeholder="Type" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input type="number" value={mockTestForm.durationMinutes} onChange={(event) => setMockTestForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} placeholder="Duration" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input type="number" step="0.01" value={mockTestForm.negativeMarking} onChange={(event) => setMockTestForm((current) => ({ ...current, negativeMarking: Number(event.target.value) }))} placeholder="Negative marking" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <textarea
-                  value={mockTestForm.questionsJson}
-                  onChange={(event) => setMockTestForm((current) => ({ ...current, questionsJson: event.target.value }))}
-                  placeholder='Questions JSON: [{"id":"q1","questionText":"...","options":["A","B","C","D"],"correctOption":1,"explanation":"...","marks":1,"topic":"Network Theory"}]'
-                  className="md:col-span-2 h-36 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
-                />
-                <div className="md:col-span-2">
-                  <button onClick={() => void createMockTest()} disabled={busy} className="rounded-2xl bg-[var(--ink)] px-5 py-4 font-semibold text-white">
-                    Create mock test
-                  </button>
-                </div>
+              <SectionHeader title="Manage lesson CBTs" caption="Edit or delete attached CBT assessments" />
+              <div className="mt-6 space-y-3">
+                {existingLessonCbts.length > 0 ? existingLessonCbts.map((entry) => (
+                  <div key={entry.key} className="rounded-[22px] border border-[var(--line)] bg-white p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--ink)]">{entry.cbt.title || `${entry.lessonTitle} CBT`}</p>
+                        <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                          {entry.courseTitle} • {entry.moduleTitle}{entry.chapterTitle ? ` • ${entry.chapterTitle}` : ''} • {entry.lessonTitle}
+                        </p>
+                        <p className="mt-2 text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+                          {entry.cbt.questions.length} questions • {entry.cbt.durationMinutes} min • negative {entry.cbt.negativeMarking}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => loadCbtForEdit(entry)} disabled={busy} className="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)]">
+                          Edit
+                        </button>
+                        <button onClick={() => void deleteCbt(entry)} disabled={busy} className="rounded-2xl bg-[var(--danger)] px-4 py-2 text-sm font-semibold text-white">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="rounded-[22px] border border-dashed border-[var(--line)] p-5 text-sm text-[var(--ink-soft)]">
+                    No lesson CBTs are attached yet.
+                  </div>
+                )}
               </div>
             </section>
 
             <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-              <SectionHeader title="Create daily quiz" caption="Engagement + streak engine" />
-              <div className="mt-6 grid gap-4">
-                <input value={quizForm.date} onChange={(event) => setQuizForm((current) => ({ ...current, date: event.target.value }))} type="date" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <select
-                  value={quizAiForm.provider}
-                  onChange={(event) => setQuizAiForm((current) => ({ ...current, provider: event.target.value }))}
-                  className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none"
-                >
-                  {aiProviderOptions.map((provider) => (
-                    <option key={provider.id} value={provider.id} disabled={!provider.available && provider.id !== 'auto'}>
-                      {provider.label} {provider.available ? '' : '(Not configured)'}
-                    </option>
-                  ))}
-                </select>
-                <input value={quizAiForm.subject} onChange={(event) => setQuizAiForm((current) => ({ ...current, subject: event.target.value }))} placeholder="AI subject" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input value={quizAiForm.topic} onChange={(event) => setQuizAiForm((current) => ({ ...current, topic: event.target.value }))} placeholder="AI topic focus" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <div className="grid gap-4 md:grid-cols-2">
-                  <select value={quizAiForm.difficulty} onChange={(event) => setQuizAiForm((current) => ({ ...current, difficulty: event.target.value }))} className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none">
-                    <option value="easy">Easy</option>
-                    <option value="medium">Medium</option>
-                    <option value="hard">Hard</option>
-                  </select>
-                  <input type="number" value={quizAiForm.questionCount} onChange={(event) => setQuizAiForm((current) => ({ ...current, questionCount: Number(event.target.value) }))} placeholder="AI question count" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                </div>
-                <textarea value={quizAiForm.instructions} onChange={(event) => setQuizAiForm((current) => ({ ...current, instructions: event.target.value }))} placeholder="Optional AI instructions: quick recall, mixed topics, one-liners, etc." className="h-24 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <div className="flex flex-wrap gap-3">
-                  <button onClick={() => void generateDailyQuizDraft()} disabled={generatingQuiz} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white disabled:opacity-60">
-                    {generatingQuiz ? 'Generating quiz draft...' : 'Generate with AI'}
-                  </button>
-                  <span className="self-center text-sm text-[var(--ink-soft)]">AI can prepare a multi-question quiz. Review the JSON before saving.</span>
-                </div>
-                <input value={quizForm.prompt} onChange={(event) => setQuizForm((current) => ({ ...current, prompt: event.target.value }))} placeholder="Quiz question" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <input value={quizForm.options} onChange={(event) => setQuizForm((current) => ({ ...current, options: event.target.value }))} placeholder="Comma-separated options" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <div className="grid gap-4 md:grid-cols-2">
-                  <input value={quizForm.answer} onChange={(event) => setQuizForm((current) => ({ ...current, answer: event.target.value }))} placeholder="Correct answer" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                  <input value={quizForm.topic} onChange={(event) => setQuizForm((current) => ({ ...current, topic: event.target.value }))} placeholder="Topic" className="rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                </div>
-                <textarea value={quizForm.explanation} onChange={(event) => setQuizForm((current) => ({ ...current, explanation: event.target.value }))} placeholder="Explanation" className="h-28 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <textarea value={quizForm.questionsJson} onChange={(event) => setQuizForm((current) => ({ ...current, questionsJson: event.target.value }))} placeholder='Questions JSON (optional for multi-question quiz): [{"prompt":"...","options":["A","B","C","D"],"answer":"A","explanation":"...","topic":"..."}]' className="h-36 rounded-2xl border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-4 outline-none" />
-                <div>
-                  <button onClick={() => void createQuiz()} disabled={busy} className="rounded-2xl bg-[var(--accent-rust)] px-5 py-4 font-semibold text-white">
-                    Create daily quiz
-                  </button>
-                </div>
+              <SectionHeader title="Manage full-length mock tests" caption="Edit or delete published mock tests" />
+              <div className="mt-6 space-y-3">
+                {existingFullMockTests.length > 0 ? existingFullMockTests.map((test) => (
+                  <div key={test._id} className="rounded-[22px] border border-[var(--line)] bg-white p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--ink)]">{test.title}</p>
+                        <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                          {test.category} • {test.questions.length} questions • {test.durationMinutes} min
+                        </p>
+                        <p className="mt-2 text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+                          {test.course || 'Global mock'} • negative {test.negativeMarking}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => loadFullMockForEdit(test)} disabled={busy} className="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)]">
+                          Edit
+                        </button>
+                        <button onClick={() => void deleteFullMock(test._id)} disabled={busy} className="rounded-2xl bg-[var(--danger)] px-4 py-2 text-sm font-semibold text-white">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="rounded-[22px] border border-dashed border-[var(--line)] p-5 text-sm text-[var(--ink-soft)]">
+                    No full-length mock tests are published yet.
+                  </div>
+                )}
               </div>
             </section>
           </div>

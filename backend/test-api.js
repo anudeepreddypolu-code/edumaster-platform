@@ -6,7 +6,6 @@ const now = Date.now();
 const today = new Date().toISOString().slice(0, 10);
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@edumaster.local';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@123';
-const ENABLE_DEV_SEED_ROUTES = ['1', 'true', 'yes', 'on'].includes(String(process.env.ENABLE_DEV_SEED_ROUTES || '').toLowerCase());
 
 const request = async (method, path, body, token) => {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -308,12 +307,6 @@ const testEndpoints = async () => {
         message: 'Create a 7-day plan for SSC JE revision',
       }, studentToken),
     );
-
-    if (ENABLE_DEV_SEED_ROUTES) {
-      await runStep('POST /admin/seed-sample-data', () =>
-        request('POST', '/admin/seed-sample-data', {}, adminToken),
-      );
-    }
 
     await runStep('POST /auth/logout', () => request('POST', '/auth/logout', {}, studentToken));
 

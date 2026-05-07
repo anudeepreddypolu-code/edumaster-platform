@@ -1,0 +1,18 @@
+{
+  "captures": [
+    {
+      "stepId": "login-admin",
+      "label": "login-admin",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-16-22-689Z/screenshots/login-admin-login-admin.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-06T12-16-22-689Z/sources/login-admin-login-admin.html",
+      "timestamp": "2026-05-06T12:16:30.048Z",
+      "notes": [
+        "Admin login completed."
+      ]
+    }
+  ],
+  "failures": [],
+  "error": "Live class did not appear after create submit. Waiting failed: 60000ms exceeded Visible text: VARONENGLISH\n\nCompetitive exam platform\n\nCURRENT LEARNER\n\nAbuw Singh\n\nBeginner\n\nRecent\n\n9\n\nSnapshots\n\n265\n\nOverview\nAll Courses\nLive Classes\nMock Tests\nRevision\nAnalytics\nAdmin\n\nNEXT BEST MOVE\n\nResume Circuits & Network Reduction Essentials before opening something new.\n\nResume now\nSign out\n⌘ K\n0\nEA\n\nEduMaster Admin\n\nTeacher\n\nSelect the live class date and time.\nLive Classes\n\nNo live classes are available yet.\n\nCreate Live Class\nCreate Live Class\n\nFill in the details below to schedule your live class.\n\nSave as Draft\nNext Step\n1\nClass Info\n2\nSchedule\n3\nDetails\n4\nSettings\n5\nReview & Publish\nReview & Publish\n\nGuide the admin through one clear stage at a time.\n\nBASIC INFO\n\nTitle: QA Live Automation 2026-05-06T12-16-22-692Z\n\nSubject: Physics\n\nTeacher: QA Live Teacher\n\nLanguage: English\n\nSCHEDULE & SETTINGS\n\nDate: Pending\n\nStart: Pending\n\nDuration: 90 min\n\nMax students: 500\n\nReady to publish\n\nReview the preview and publish this live class for students.\n\nBack\nCancel\nPublish Live Class\n\nLive Class Preview\n\nReal student-facing summary\n\nLIVE\nF = 1\n4πε₀ q₁q₂\nr²\nLIVE NOW\nQA Live Automation 2026-05-06T12-16-22-692Z\n\nClass description will appear here for students.\n\nPhysics\n\nQL\n\nQA Live Teacher\n"
+}

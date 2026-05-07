@@ -3,7 +3,7 @@ import puppeteer from '../qa-automation/node_modules/puppeteer-core/lib/esm/pupp
 const baseUrl = process.env.QA_BASE_URL || 'http://127.0.0.1:3300';
 const chromeExecutable = process.env.QA_CHROME_EXECUTABLE || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const userDataDir = process.env.QA_CHROME_USER_DATA_DIR || `/private/tmp/edumaster-live-mobile-student-capture-${Date.now()}`;
-const email = process.env.QA_LOGIN_EMAIL || 'student@edumaster.local';
+const email = process.env.QA_LOGIN_EMAIL || '';
 const password = process.env.QA_LOGIN_PASSWORD || 'Student@123';
 const emailSelector = '[data-testid="auth-login-email"], input[type="email"], input[name="email"]';
 const passwordSelector = '[data-testid="auth-login-password"], input[type="password"], input[name="password"]';
@@ -205,10 +205,10 @@ const ensureLogin = async (page) => {
   await sleep(1600);
 };
 
-const openLiveList = async (page, seededToken) => {
+const openLiveList = async (page, authToken) => {
   log('open live list');
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await warmAuthenticatedOrigin(page, seededToken);
+    await warmAuthenticatedOrigin(page, authToken);
     await page.goto(liveReferenceUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await ensureLogin(page);
 
@@ -380,7 +380,7 @@ const browser = await puppeteer.launch({
 });
 
 try {
-  const seededToken = await loginByApi();
+  const authToken = await loginByApi();
   const page = await browser.newPage();
   await page.setViewport(mobileViewport);
   await page.evaluateOnNewDocument((token, storageKey) => {
@@ -389,11 +389,11 @@ try {
     if (token) {
       window.localStorage.setItem(storageKey, token);
     }
-  }, seededToken, tokenStorageKey);
+  }, authToken, tokenStorageKey);
   page.on('pageerror', (error) => log('pageerror', error.message));
   page.on('requestfailed', (request) => log('requestfailed', request.url(), request.failure()?.errorText || ''));
 
-  await openLiveList(page, seededToken);
+  await openLiveList(page, authToken);
   const listPath = '/private/tmp/live-mobile-list-current.png';
   const detailPath = '/private/tmp/live-mobile-detail-current.png';
   const roomPath = '/private/tmp/live-mobile-room-current.png';
