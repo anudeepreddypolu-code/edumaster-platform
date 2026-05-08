@@ -1,0 +1,23 @@
+{
+  "captures": [
+    {
+      "stepId": "overview-dashboard",
+      "label": "overview-dashboard-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T12-39-58-812Z/screenshots/overview-dashboard-overview-dashboard-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T12-39-58-812Z/sources/overview-dashboard-overview-dashboard-desktop.html",
+      "timestamp": "2026-05-07T12:40:08.943Z"
+    },
+    {
+      "stepId": "overview-dashboard",
+      "label": "overview-dashboard-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T12-39-58-812Z/screenshots/overview-dashboard-overview-dashboard-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T12-39-58-812Z/sources/overview-dashboard-overview-dashboard-mobile.html",
+      "timestamp": "2026-05-07T12:40:13.348Z"
+    }
+  ],
+  "failures": []
+}

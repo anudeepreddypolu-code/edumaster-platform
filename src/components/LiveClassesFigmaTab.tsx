@@ -25,6 +25,7 @@ import {
   Settings,
   ImageIcon,
   Loader2,
+  Maximize2,
   UserRound,
   Users,
   Upload,
@@ -390,17 +391,7 @@ const quickActionCards = [
   { id: 'notifications', title: 'Notifications', subtitle: 'Stay updated', accent: 'bg-[#fff7e8] text-[#f4ab24]', icon: Bell },
 ] as const;
 
-const MobileStatusBar = () => (
-  <div className="flex items-center justify-between text-[12px] font-semibold text-[#101828]">
-    <span>9:41</span>
-    <div className="flex items-center gap-[5px]">
-      <span className="h-[7px] w-[5px] rounded-[2px] bg-[#101828]" />
-      <span className="h-[9px] w-[5px] rounded-[2px] bg-[#101828]" />
-      <span className="h-[11px] w-[5px] rounded-[2px] bg-[#101828]" />
-      <span className="ml-[4px] h-[10px] w-[20px] rounded-[3px] border border-[#101828]" />
-    </div>
-  </div>
-);
+const MobileStatusBar = () => null;
 
 const classInfoRows = [
   { label: 'Topics to be covered', value: '5 Topics', icon: CalendarDays, tone: 'bg-[#eef4ff] text-[#2b63df]' },
@@ -1018,6 +1009,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   const remindersSectionRef = useRef<HTMLDivElement | null>(null);
   const mobileDetailContentRef = useRef<HTMLDivElement | null>(null);
   const desktopDetailContentRef = useRef<HTMLDivElement | null>(null);
+  const mobileRoomStageRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     viewRef.current = view;
@@ -3769,6 +3761,19 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   const createFieldClassName = 'h-[46px] w-full rounded-[12px] border border-[#dbe4f4] bg-white px-4 text-[14px] text-[#162340] outline-none transition focus:border-[#4f46e5] focus:ring-2 focus:ring-[#dcd8ff]';
   const createTextAreaClassName = 'w-full rounded-[12px] border border-[#dbe4f4] bg-white px-4 py-3 text-[14px] text-[#162340] outline-none transition focus:border-[#4f46e5] focus:ring-2 focus:ring-[#dcd8ff]';
 
+  const toggleLiveRoomFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await (mobileRoomStageRef.current || document.documentElement).requestFullscreen();
+    } catch (fullscreenError) {
+      setUiNotice('Fullscreen is not available on this device. Rotate your phone for a larger live class view.');
+    }
+  };
+
   const updateCreateFormDateTime = (patch: { date?: string; time?: string; endTime?: string }) => {
     const nextDate = patch.date ?? createStartDate ?? '';
     const nextTime = patch.time ?? createStartClock ?? '';
@@ -4287,27 +4292,27 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         <div
           data-testid="live-classes-page"
           className={cn(
-            'min-h-[100dvh] bg-[#f4f7ff] pb-[96px] grid gap-4 xl:grid-cols-[minmax(0,1.72fr)_328px]',
+            'mobile-safe-screen grid min-h-[100dvh] gap-4 overflow-x-hidden bg-[#f4f7ff] pb-[96px] xl:grid-cols-[minmax(0,1.72fr)_328px]',
             isReferenceMode && 'relative -mx-4 bg-white px-4 pt-2 sm:mx-0 sm:px-0 sm:pt-0',
           )}
         >
-          <section className={cn('space-y-[16px] px-[14px] pb-[8px] pt-[8px] sm:px-0 sm:pt-0', isReferenceMode && 'px-[14px] pt-[8px]')}>
+          <section className={cn('mobile-safe-content mx-auto space-y-[12px] pb-[8px] pt-[10px] sm:max-w-none sm:px-0 sm:pt-0', isReferenceMode && 'pt-[10px]')}>
             {isReferenceMode && (
               <div className="md:hidden">
                 <MobileStatusBar />
               </div>
             )}
-            <div data-testid="live-hero-card" className={cn('rounded-[22px] border border-[#dfe7f5] bg-white p-[14px] shadow-[0_8px_18px_rgba(28,41,61,0.05)] md:rounded-[24px] md:p-5', isReferenceMode && 'rounded-none border-0 bg-transparent p-0 shadow-none')}>
-              <div className={cn('mb-5 flex items-center justify-between md:hidden', isReferenceMode && 'mt-[12px]')}>
-                <button type="button" onClick={() => setUtilityPanel('menu')} className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
-                  <Menu className="h-[20px] w-[20px]" />
+            <div data-testid="live-hero-card" className={cn('rounded-[18px] border border-[#dfe7f5] bg-white p-[12px] shadow-[0_8px_18px_rgba(28,41,61,0.05)] md:rounded-[24px] md:p-5', isReferenceMode && 'rounded-none border-0 bg-transparent p-0 shadow-none')}>
+              <div className={cn('mb-4 flex items-center justify-between md:hidden', isReferenceMode && 'mt-[8px]')}>
+                <button type="button" onClick={() => setUtilityPanel('menu')} className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
+                  <Menu className="h-[18px] w-[18px]" />
                 </button>
-                <button type="button" onClick={() => setUtilityPanel('schedule')} className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
-                  <CalendarDays className="h-[20px] w-[20px]" />
+                <button type="button" onClick={() => setUtilityPanel('schedule')} className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
+                  <CalendarDays className="h-[18px] w-[18px]" />
                 </button>
               </div>
               <div className="md:hidden">
-                <h2 className="text-[20px] font-semibold leading-none tracking-[-0.03em] text-[#1f2d4e]">Live Classes</h2>
+                <h2 className="text-[18px] font-semibold leading-none tracking-[-0.02em] text-[#1f2d4e]">Live Classes</h2>
               </div>
               <div className="flex items-start justify-between gap-4">
                 <div className="hidden md:block">
@@ -4333,28 +4338,28 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   data-testid="live-featured-card"
                   onClick={() => mobileFeaturedDisplay.liveClassId ? void openLiveClass(mobileFeaturedDisplay.liveClassId) : undefined}
                   className={cn(
-                    'mt-[18px] grid w-full gap-[10px] rounded-[24px] border border-[#dfe7f5] bg-[#eef4ff] px-[16px] py-[16px] text-left shadow-[0_14px_30px_rgba(28,41,61,0.08)] md:grid-cols-[1fr_320px] md:gap-4 md:rounded-[20px] md:p-5',
-                    isReferenceMode ? 'grid-cols-[minmax(0,1fr)_194px] gap-[10px] px-[18px] py-[16px]' : 'grid-cols-[minmax(0,1fr)_138px]',
+                    'mt-[14px] grid w-full gap-[10px] rounded-[18px] border border-[#dfe7f5] bg-[#eef4ff] px-[12px] py-[12px] text-left shadow-[0_12px_24px_rgba(28,41,61,0.07)] md:grid-cols-[1fr_320px] md:gap-4 md:rounded-[20px] md:p-5',
+                    isReferenceMode ? 'grid-cols-[minmax(0,1fr)_136px] gap-[8px]' : 'grid-cols-[minmax(0,1fr)_120px]',
                   )}
                 >
                   <div className="min-w-0">
-                    <span className={cn('inline-flex items-center gap-[6px] rounded-full px-[12px] py-[6px] text-[11px] font-semibold uppercase tracking-[0.12em]', mobileFeaturedDisplay.status === 'live' ? 'bg-[#fff0f0] text-[#d23b3b]' : getStatusTone(mobileFeaturedDisplay.status || 'scheduled'))}>
+                    <span className={cn('inline-flex items-center gap-[5px] rounded-full px-[9px] py-[5px] text-[10px] font-semibold uppercase tracking-[0.08em]', mobileFeaturedDisplay.status === 'live' ? 'bg-[#fff0f0] text-[#d23b3b]' : getStatusTone(mobileFeaturedDisplay.status || 'scheduled'))}>
                       {mobileFeaturedDisplay.badge}
                     </span>
-                    <h3 className={cn('mt-[12px] line-clamp-3 leading-[1.16] tracking-[-0.02em] text-[#1a2f57] md:text-[1.95rem]', isReferenceMode ? 'max-w-[158px] text-[18px] font-semibold md:max-w-[320px] md:text-[18px]' : 'max-w-[164px] text-[18px] font-semibold')}>
+                    <h3 className={cn('mt-[9px] line-clamp-2 leading-[1.16] tracking-[-0.01em] text-[#1a2f57] md:text-[1.95rem]', isReferenceMode ? 'text-[16px] font-semibold md:max-w-[320px] md:text-[18px]' : 'text-[16px] font-semibold')}>
                       {mobileFeaturedDisplay.title}
                     </h3>
-                    <p className={cn('mt-[7px] line-clamp-2 leading-[1.35] text-[#5b6f93] md:text-[14px]', isReferenceMode ? 'max-w-[160px] text-[13px] md:max-w-[320px]' : 'max-w-[162px] text-[13px]')}>{mobileFeaturedDisplay.subtitle}</p>
-                    <p className="mt-[6px] text-[12px] text-[#7283a0] md:text-[13px]">{mobileFeaturedDisplay.meta}</p>
-                    <div className="mt-[10px] flex items-center gap-[10px] text-[#4b6288]">
+                    <p className={cn('mt-[6px] line-clamp-2 leading-[1.35] text-[#5b6f93] md:text-[14px]', isReferenceMode ? 'text-[12px] md:max-w-[320px]' : 'text-[12px]')}>{mobileFeaturedDisplay.subtitle}</p>
+                    <p className="mt-[5px] text-[11px] text-[#7283a0] md:text-[13px]">{mobileFeaturedDisplay.meta}</p>
+                    <div className="mt-[8px] flex items-center gap-[8px] text-[#4b6288]">
                       {isReferenceMode ? <ReferenceTeacherAvatar size="sm" /> : <TeacherAvatar name={mobileFeaturedDisplay.teacher} photoUrl={mobileFeaturedDisplay.teacherAvatarUrl} size="sm" />}
                       <div className="min-w-0">
                         <p className={cn('truncate font-semibold text-[#1f2d4e] md:text-[15px]', isReferenceMode ? 'text-[13px]' : 'text-[13px]')}>{mobileFeaturedDisplay.teacher}</p>
                         <p className="truncate text-[12px] text-[#6d7c93] md:text-[13px]">{mobileFeaturedDisplay.audience}</p>
                       </div>
                     </div>
-                    <div className={cn('mt-[13px]', isReferenceMode && 'mt-[14px]')}>
-                      <div className={cn('inline-flex h-[40px] min-w-[148px] items-center justify-between rounded-[12px] bg-[#2f6fe4] px-[16px] text-[14px] font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.22)]', isReferenceMode ? 'w-[154px] max-w-full whitespace-nowrap' : 'w-[152px] gap-2')}>
+                    <div className={cn('mt-[10px]', isReferenceMode && 'mt-[10px]')}>
+                      <div className={cn('inline-flex h-[36px] min-w-[132px] items-center justify-between rounded-[11px] bg-[#1f6ff2] px-[13px] text-[13px] font-semibold text-white shadow-[0_10px_20px_rgba(31,111,242,0.2)]', isReferenceMode ? 'w-[138px] max-w-full whitespace-nowrap' : 'w-[138px] gap-2')}>
                         <span className="md:hidden">
                           {mobileFeaturedDisplay.buttonLabel}
                         </span>
@@ -4365,15 +4370,15 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                       </div>
                     </div>
                   </div>
-                  <div className={cn('overflow-hidden rounded-[18px] border border-[#d9e5ff] bg-white/78 p-1.5 shadow-[inset_0_0_0_1px_rgba(199,214,255,0.45)]', isReferenceMode ? 'flex h-[166px] items-center justify-center rounded-[16px] border-0 bg-transparent p-0 shadow-none' : 'self-center')}>
+                  <div className={cn('overflow-hidden rounded-[16px] border border-[#d9e5ff] bg-white/78 p-1 shadow-[inset_0_0_0_1px_rgba(199,214,255,0.45)]', isReferenceMode ? 'flex h-[116px] items-center justify-center rounded-[14px] border-0 bg-transparent p-0 shadow-none' : 'self-center')}>
                     {isReferenceMode ? (
-                      <div className="origin-center scale-[1.42] translate-x-[-4px] translate-y-[10px]">
+                      <div className="origin-center scale-[1.02] translate-y-[3px]">
                         <LiveBoardArtwork />
                       </div>
                     ) : mobileFeaturedDisplay.posterUrl ? (
-                      <img src={mobileFeaturedDisplay.posterUrl} alt={mobileFeaturedDisplay.title} className="h-[136px] w-full rounded-[16px] object-cover" />
+                      <img src={mobileFeaturedDisplay.posterUrl} alt={mobileFeaturedDisplay.title} className="h-[108px] w-full rounded-[14px] object-cover" />
                     ) : (
-                      <div className="flex h-[136px] w-full flex-col items-center justify-center rounded-[16px] border border-dashed border-[#d4dff7] bg-[#f7faff] px-3 text-center">
+                      <div className="flex h-[108px] w-full flex-col items-center justify-center rounded-[14px] border border-dashed border-[#d4dff7] bg-[#f7faff] px-3 text-center">
                         <div className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-white text-[#4b83f6] shadow-[0_8px_18px_rgba(75,131,246,0.12)]">
                           <ImageIcon className="h-5 w-5" />
                         </div>
@@ -4384,13 +4389,13 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                 </button>
               )}
 
-              <div className={cn('mt-[20px] grid grid-cols-4 gap-[8px]', isReferenceMode && 'mt-[20px] gap-[8px]')}>
+              <div className={cn('mt-[14px] grid grid-cols-4 gap-[7px]', isReferenceMode && 'mt-[14px] gap-[7px]')}>
                 {quickActionCards.map(({ id, title, subtitle, accent, icon: Icon }) => (
-                  <button key={title} data-testid={`live-quick-action-${id}`} type="button" onClick={() => handleQuickAction(id)} className={cn('flex min-h-[82px] flex-col items-center rounded-[18px] border border-[#e5ebf7] bg-white px-[8px] py-[9px] text-center shadow-[0_8px_18px_rgba(28,41,61,0.05)]', isReferenceMode && 'min-h-[82px]')}>
-                    <div className={cn('flex h-[40px] w-[40px] items-center justify-center rounded-[12px]', accent)}>
-                      <Icon className="h-[19px] w-[19px] text-current" />
+                  <button key={title} data-testid={`live-quick-action-${id}`} type="button" onClick={() => handleQuickAction(id)} className={cn('flex min-h-[68px] flex-col items-center rounded-[14px] border border-[#e5ebf7] bg-white px-[6px] py-[7px] text-center shadow-[0_6px_14px_rgba(28,41,61,0.04)]', isReferenceMode && 'min-h-[68px]')}>
+                    <div className={cn('flex h-[34px] w-[34px] items-center justify-center rounded-[10px]', accent)}>
+                      <Icon className="h-[16px] w-[16px] text-current" />
                     </div>
-                    <p className={cn('mt-[5px] text-[12px] font-semibold leading-[1.25] text-[#1f2d4e] md:text-[13px]', isReferenceMode && 'text-[12px]')}>{title}</p>
+                    <p className={cn('mt-[4px] text-[10.5px] font-semibold leading-[1.18] text-[#1f2d4e] md:text-[13px]', isReferenceMode && 'text-[10.5px]')}>{title}</p>
                     <p className="mt-1 hidden text-[12px] text-[#6b7b9a] md:block">{subtitle}</p>
                   </button>
                 ))}
@@ -4466,7 +4471,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                 <h3 className="text-[15px] font-semibold text-[#1f2d4e] md:text-[1.28rem]">Today&apos;s Live Classes</h3>
                 <button type="button" data-testid="live-view-schedule" onClick={() => setUtilityPanel('schedule')} className="text-[13px] font-semibold text-[#1765f5] md:text-[13px]">View Schedule</button>
               </div>
-              <div className="mt-[12px] space-y-[11px]">
+              <div className="mt-[10px] space-y-[8px]">
                 {mobileTodayCards.map((liveClass, index) => (
                   <button
                     key={`${liveClass.liveClassId || liveClass.title}-${index}`}
@@ -4474,29 +4479,29 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                     data-testid={`live-card-${liveClass.liveClassId || index}`}
                     onClick={() => liveClass.liveClassId ? void openLiveClass(liveClass.liveClassId) : undefined}
                     className={cn(
-                      'grid w-full grid-cols-[68px_minmax(0,1fr)_60px_10px] gap-[7px] rounded-[18px] border border-[#e5ebf7] bg-white px-[11px] py-[8px] text-left shadow-[0_8px_18px_rgba(28,41,61,0.05)] md:grid-cols-[92px_1fr_120px] md:rounded-[18px] md:p-4',
-                      isReferenceMode && 'grid-cols-[68px_minmax(0,1fr)_60px_10px]',
+                      'grid w-full grid-cols-[58px_minmax(0,1fr)_54px_10px] gap-[7px] rounded-[14px] border border-[#e5ebf7] bg-white px-[9px] py-[7px] text-left shadow-[0_6px_14px_rgba(28,41,61,0.045)] md:grid-cols-[92px_1fr_120px] md:rounded-[18px] md:p-4',
+                      isReferenceMode && 'grid-cols-[58px_minmax(0,1fr)_54px_10px]',
                       index >= 3 && 'hidden md:grid',
                     )}
                   >
-                    <div className={cn('flex flex-col items-center justify-center rounded-[14px] p-[7px] text-center font-semibold', getTopicColor(index), isReferenceMode && 'rounded-[14px]')}>
-                      <span className="text-[15px] font-semibold leading-none tracking-[-0.02em] text-current md:text-[1.35rem]">{liveClass.time}</span>
-                      <span className="mt-[3px] text-[10px] uppercase md:text-[0.92rem]">{liveClass.meridiem}</span>
+                    <div className={cn('flex flex-col items-center justify-center rounded-[12px] p-[6px] text-center font-semibold', getTopicColor(index), isReferenceMode && 'rounded-[12px]')}>
+                      <span className="text-[13px] font-semibold leading-none tracking-[-0.01em] text-current md:text-[1.35rem]">{liveClass.time}</span>
+                      <span className="mt-[3px] text-[9px] uppercase md:text-[0.92rem]">{liveClass.meridiem}</span>
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[11px] font-semibold text-[#38a15d]">{liveClass.topic}</p>
-                      <h4 className={cn('mt-[2px] line-clamp-2 text-[13.25px] font-semibold leading-[1.18] tracking-[-0.02em] text-[#1f2d4e] md:text-[1.08rem]', isReferenceMode && 'text-[13px]')}>{liveClass.title}</h4>
-                      <p className="mt-[3px] truncate text-[11.5px] text-[#7283a0]">{liveClass.meta}</p>
-                      <div className="mt-[5px] flex items-center gap-[7px] text-[11.5px] text-[#516786]">
+                      <p className="text-[10px] font-semibold text-[#38a15d]">{liveClass.topic}</p>
+                      <h4 className={cn('mt-[2px] line-clamp-2 text-[12.25px] font-semibold leading-[1.18] tracking-[-0.01em] text-[#1f2d4e] md:text-[1.08rem]', isReferenceMode && 'text-[12.25px]')}>{liveClass.title}</h4>
+                      <p className="mt-[2px] truncate text-[10.5px] text-[#7283a0]">{liveClass.meta}</p>
+                      <div className="mt-[4px] flex items-center gap-[6px] text-[10.5px] text-[#516786]">
                         {isReferenceMode ? <ReferenceTeacherAvatar size="sm" /> : <TeacherAvatar name={liveClass.teacher} photoUrl={liveClass.teacherAvatarUrl} size="sm" />}
                         <span className="truncate">{liveClass.teacher}</span>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end justify-center gap-[7px] pr-0.5">
-                      <span className={cn('rounded-full px-2 py-[5px] text-[9px] font-semibold uppercase', getStatusTone(liveClass.status || 'scheduled'))}>
+                    <div className="flex flex-col items-end justify-center gap-[6px] pr-0.5">
+                      <span className={cn('rounded-full px-[7px] py-[4px] text-[8.5px] font-semibold uppercase', getStatusTone(liveClass.status || 'scheduled'))}>
                         {liveClass.statusLabel}
                       </span>
-                      <span className="whitespace-nowrap text-[11.5px] text-[#5b7297] md:text-[13px]">{liveClass.attendees}</span>
+                      <span className="whitespace-nowrap text-[10.5px] text-[#5b7297] md:text-[13px]">{liveClass.attendees}</span>
                     </div>
                     <div className="flex items-center justify-end">
                       <ArrowRight className="h-4 w-4 text-[#7b8ead]" />
@@ -4515,7 +4520,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                 <button
                   type="button"
                   onClick={() => mobileTomorrowCard.liveClassId ? void openLiveClass(mobileTomorrowCard.liveClassId) : undefined}
-                  className={cn('mt-[12px] grid w-full grid-cols-[68px_minmax(0,1fr)_60px_10px] gap-[7px] rounded-[18px] border border-[#e5ebf7] bg-white px-[11px] py-[8px] text-left shadow-[0_8px_18px_rgba(28,41,61,0.05)] md:grid-cols-[92px_1fr_120px] md:rounded-[18px]', isReferenceMode && 'grid-cols-[68px_minmax(0,1fr)_60px_10px]')}
+                  className={cn('mt-[10px] grid w-full grid-cols-[58px_minmax(0,1fr)_54px_10px] gap-[7px] rounded-[14px] border border-[#e5ebf7] bg-white px-[9px] py-[7px] text-left shadow-[0_6px_14px_rgba(28,41,61,0.045)] md:grid-cols-[92px_1fr_120px] md:rounded-[18px]', isReferenceMode && 'grid-cols-[58px_minmax(0,1fr)_54px_10px]')}
                 >
                   <div className={cn('flex flex-col items-center justify-center rounded-[14px] bg-gradient-to-br p-[7px] text-center font-semibold', getTopicColor(mobileTomorrowCard.colorIndex), isReferenceMode && 'rounded-[14px]')}>
                     <span className="text-[15px] font-semibold leading-none tracking-[-0.02em]">{mobileTomorrowCard.time}</span>
@@ -4651,39 +4656,39 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         <div
           data-testid="live-class-detail-page"
           data-live-class-id={selectedLiveClass._id}
-          className={cn('space-y-4', isReferenceMode && 'relative -mx-4 bg-white px-4 pb-8 pt-2 sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0')}
+          className={cn('mobile-safe-screen min-h-[100dvh] space-y-3 overflow-x-hidden bg-[#f4f7ff] pb-[96px]', isReferenceMode && 'relative -mx-4 bg-white px-4 pt-2 sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0')}
         >
-          <div className="space-y-4 md:hidden">
+          <div className="mobile-safe-content mx-auto space-y-3 pt-[10px] md:hidden">
             {isReferenceMode && (
               <div className="px-[14px] pt-[10px]">
                 <MobileStatusBar />
               </div>
             )}
-            <div className="flex items-center justify-between px-[14px] pt-[8px]">
-              <button type="button" onClick={() => setView('list')} className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
-                <ArrowLeft className="h-[20px] w-[20px]" />
+            <div className="flex items-center justify-between">
+              <button type="button" onClick={() => setView('list')} className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
+                <ArrowLeft className="h-[18px] w-[18px]" />
               </button>
-              <h2 className="text-[20px] font-semibold leading-none tracking-[-0.03em] text-[#1f2d4e]">Live Class Details</h2>
-              <button type="button" onClick={() => void handleShareCurrentView()} className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
-                <Share2 className="h-[20px] w-[20px]" />
+              <h2 className="text-[18px] font-semibold leading-none tracking-[-0.02em] text-[#1f2d4e]">Live Class Details</h2>
+              <button type="button" onClick={() => void handleShareCurrentView()} className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
+                <Share2 className="h-[18px] w-[18px]" />
               </button>
             </div>
 
-            <div data-testid="live-class-detail-hero" className={cn('mx-[14px] overflow-hidden rounded-[22px] border border-[#1c2f53] bg-[linear-gradient(135deg,#0d1530_0%,#13254a_52%,#0d1630_100%)] px-[16px] py-[15px] text-white shadow-[0_18px_40px_rgba(9,16,32,0.18)]', isReferenceMode && 'rounded-[22px] shadow-[0_16px_34px_rgba(9,16,32,0.16)]')}>
-              <div className={cn('grid gap-3', isReferenceMode ? 'grid-cols-[minmax(0,1fr)_178px]' : 'grid-cols-[minmax(0,1fr)_154px]')}>
+            <div data-testid="live-class-detail-hero" className={cn('overflow-hidden rounded-[18px] border border-[#1c2f53] bg-[linear-gradient(135deg,#0d1530_0%,#13254a_52%,#0d1630_100%)] px-[13px] py-[13px] text-white shadow-[0_14px_30px_rgba(9,16,32,0.16)]', isReferenceMode && 'rounded-[18px] shadow-[0_14px_28px_rgba(9,16,32,0.15)]')}>
+              <div className={cn('grid gap-3', isReferenceMode ? 'grid-cols-[minmax(0,1fr)_132px]' : 'grid-cols-[minmax(0,1fr)_128px]')}>
                 <div className="min-w-0">
                   <span className={cn('inline-flex items-center rounded-[11px] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', detailStatus === 'live' ? 'bg-[#fff0f0] text-[#ff4b4b]' : getStatusTone(selectedLiveClass.status || 'scheduled'))}>
                     {detailDisplay.badge}
                   </span>
                   <h2
                     data-testid="live-selected-title"
-                    className={cn('mt-[14px] font-semibold leading-[1.14] tracking-[-0.02em] text-white', isReferenceMode ? 'max-w-[176px] text-[18px]' : 'text-[18px]')}
+                    className={cn('mt-[10px] font-semibold leading-[1.14] tracking-[-0.01em] text-white', isReferenceMode ? 'text-[16px]' : 'text-[16px]')}
                     style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
                   >
                     {detailDisplay.title}
                   </h2>
-                  <p className={cn('mt-[8px] text-[12.5px] font-medium leading-[1.38] text-white/88', isReferenceMode && 'max-w-[176px]')}>{detailDisplay.subtitle}</p>
-                  <p className="mt-[8px] text-[13px] text-white/64">{detailDisplay.meta}</p>
+                  <p className={cn('mt-[7px] line-clamp-2 text-[12px] font-medium leading-[1.35] text-white/88')}>{detailDisplay.subtitle}</p>
+                  <p className="mt-[7px] text-[12px] text-white/64">{detailDisplay.meta}</p>
 
                   <div className="mt-4 flex items-center gap-[9px]">
                     {isReferenceMode ? <ReferenceTeacherAvatar size="lg" online /> : <TeacherAvatar name={detailDisplay.teacher} photoUrl={selectedTeacherProfile.avatarUrl} size="lg" online />}
@@ -4698,9 +4703,9 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   <div className="absolute right-1 top-1 z-10 flex h-8 w-8 items-center justify-center rounded-[11px] bg-[#1c2740]/88 text-white shadow-[0_8px_18px_rgba(0,0,0,0.24)]">
                     <ArrowRight className="h-4 w-4 -rotate-45" />
                   </div>
-                  <div className={cn('overflow-hidden rounded-[20px]', isReferenceMode && 'rounded-[18px]')}>
+                  <div className={cn('overflow-hidden rounded-[16px]', isReferenceMode && 'rounded-[14px]')}>
                       {isReferenceMode ? (
-                        <div className="origin-top-left scale-[1.22] translate-x-[1px] translate-y-[10px]">
+                        <div className="origin-top-left scale-[0.96] translate-y-[2px]">
                           <LiveBoardArtwork dark />
                         </div>
                       ) : selectedLiveClass?.posterUrl ? (
@@ -4712,34 +4717,34 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-3 gap-2 border-t border-white/12 pt-4">
+              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/12 pt-3">
                 {[
                   { icon: Clock3, label: 'Started at', value: detailDisplay.startedAt },
                   { icon: CalendarDays, label: 'Duration', value: detailDisplay.duration },
                   { icon: Users, label: 'Students', value: detailDisplay.students },
                 ].map(({ icon: Icon, label, value }) => (
                   <div key={label} className="min-w-0 border-r border-white/12 pr-2 last:border-r-0 last:pr-0">
-                    <div className="mb-2 flex h-[36px] w-[36px] items-center justify-center rounded-full bg-white/8 text-white/88">
-                      <Icon className="h-[18px] w-[18px]" />
+                    <div className="mb-2 flex h-[30px] w-[30px] items-center justify-center rounded-full bg-white/8 text-white/88">
+                      <Icon className="h-[15px] w-[15px]" />
                     </div>
-                    <p className="text-[12px] text-white/56">{label}</p>
-                    <p className="mt-[6px] text-[14px] font-semibold text-white">{value}</p>
+                    <p className="text-[10.5px] text-white/56">{label}</p>
+                    <p className="mt-[5px] text-[12px] font-semibold text-white">{value}</p>
                   </div>
                 ))}
               </div>
 
-              <div className={cn('mt-[18px] grid grid-cols-[minmax(0,1fr)_168px] gap-[12px]', isReferenceMode && 'grid-cols-[minmax(0,1fr)_168px]')}>
+              <div className="mt-[14px] grid grid-cols-1 gap-[9px] min-[390px]:grid-cols-[minmax(0,1fr)_142px]">
                 <button
                   type="button"
                   data-testid="live-details-join-button"
                   disabled={busy || detailStatus !== 'live'}
                   onClick={() => void handleJoinLiveClass()}
-                  className="inline-flex h-[46px] items-center justify-center gap-[8px] whitespace-nowrap rounded-[14px] bg-[#2f6fe4] px-[14px] text-[14px] font-semibold text-white shadow-[0_14px_28px_rgba(47,111,228,0.22)] disabled:cursor-not-allowed disabled:opacity-55"
+                  className="inline-flex h-[42px] items-center justify-center gap-[8px] whitespace-nowrap rounded-[12px] bg-[#1f6ff2] px-[12px] text-[13px] font-semibold text-white shadow-[0_10px_20px_rgba(31,111,242,0.2)] disabled:cursor-not-allowed disabled:bg-[#9aa8bd] disabled:shadow-none"
                 >
                   {detailStatus === 'live' ? 'Enter Live Class' : 'Waiting to Start'}
                   <Video className="h-[18px] w-[18px]" />
                 </button>
-                <button type="button" onClick={() => void ensureMediaPermissions()} className="inline-flex h-[46px] items-center justify-center gap-[8px] whitespace-nowrap rounded-[14px] border border-white/14 bg-white/8 px-[10px] text-[13px] font-semibold text-white backdrop-blur">
+                <button type="button" onClick={() => void ensureMediaPermissions()} className="inline-flex h-[42px] items-center justify-center gap-[7px] whitespace-nowrap rounded-[12px] border border-white/14 bg-white/8 px-[10px] text-[12px] font-semibold text-white backdrop-blur">
                   <Settings className="h-[18px] w-[18px]" />
                   Test Audio/Video
                 </button>
@@ -4749,8 +4754,8 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
 
             {renderIngestSetupCard('mx-4')}
 
-            <div className="mx-[14px] rounded-[18px] border border-[#d9f0dc] bg-[linear-gradient(180deg,#f3fff6_0%,#edfdf0_100%)] px-[13px] py-[12px] text-[#1f9b57] shadow-[0_8px_18px_rgba(31,155,87,0.07)]">
-              <div className="grid grid-cols-[minmax(0,1fr)_114px] items-center gap-3">
+            <div className="rounded-[16px] border border-[#d9f0dc] bg-[linear-gradient(180deg,#f3fff6_0%,#edfdf0_100%)] px-[12px] py-[11px] text-[#1f9b57] shadow-[0_8px_18px_rgba(31,155,87,0.07)]">
+              <div className="grid grid-cols-1 items-center gap-3 min-[390px]:grid-cols-[minmax(0,1fr)_108px]">
                 <div className="flex min-w-0 items-start gap-3">
                 <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[12px] bg-white">
                   <BookOpen className="h-[18px] w-[18px]" />
@@ -4764,13 +4769,13 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   </p>
                 </div>
                 </div>
-                <button type="button" data-testid="live-detail-class-info" onClick={() => selectDetailTab('overview')} className="inline-flex h-[40px] w-full items-center justify-center whitespace-nowrap rounded-[12px] border border-[#b8ebc7] bg-white px-[10px] text-[13px] font-semibold text-[#1f9b57]">
+                <button type="button" data-testid="live-detail-class-info" onClick={() => selectDetailTab('overview')} className="inline-flex h-[38px] w-full items-center justify-center whitespace-nowrap rounded-[11px] border border-[#b8ebc7] bg-white px-[10px] text-[12px] font-semibold text-[#1f9b57]">
                   View Class Info
                 </button>
               </div>
             </div>
 
-            <div className="mx-[14px] rounded-[18px] border border-[#e5ebf7] bg-white p-0 shadow-[0_8px_18px_rgba(28,41,61,0.05)]">
+            <div className="rounded-[16px] border border-[#e5ebf7] bg-white p-0 shadow-[0_8px_18px_rgba(28,41,61,0.05)]">
               <div className="grid grid-cols-5 gap-1 border-b border-[#dde5f5] px-2 pt-[8px] text-center">
                 {[
                   { label: 'Overview', icon: BookOpen, key: 'overview' as const },
@@ -5184,20 +5189,10 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         >
           <div className="md:hidden">
             {isReferenceMode ? (
-              <div data-testid="live-room-reference-page" className="relative -mx-4 min-h-[100dvh] bg-[#0f172a] px-4 pb-[24px] pt-[10px] text-white">
-                <div className="px-[14px]">
-                  <div className="flex items-center justify-between text-[12px] font-semibold text-white">
-                    <span>9:41</span>
-                    <div className="flex items-center gap-[5px]">
-                      <span className="h-[7px] w-[5px] rounded-[2px] bg-white" />
-                      <span className="h-[9px] w-[5px] rounded-[2px] bg-white" />
-                      <span className="h-[11px] w-[5px] rounded-[2px] bg-white" />
-                      <span className="ml-[4px] h-[10px] w-[20px] rounded-[3px] border border-white" />
-                    </div>
-                  </div>
-                </div>
+              <div data-testid="live-room-reference-page" className="mobile-safe-screen relative min-h-[100dvh] overflow-x-hidden bg-[#0f172a] pb-[24px] text-white">
 
-                <div className="mt-[18px] flex items-start justify-between gap-3 px-[14px]">
+                <div className="mobile-safe-content mx-auto pt-[10px]">
+                <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
                     <button type="button" data-testid="live-room-back" onClick={() => setView('detail')} className="inline-flex h-[32px] w-[32px] items-center justify-center text-white">
                       <ArrowLeft className="h-[20px] w-[20px]" />
@@ -5222,26 +5217,32 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   </div>
                 </div>
 
-                <div className="mt-[12px] rounded-[22px] border border-white/8 bg-[#111827] p-[6px] shadow-[0_18px_32px_rgba(0,0,0,0.3)]">
+                <div ref={mobileRoomStageRef} className="mt-[12px] rounded-[18px] border border-white/8 bg-[#111827] p-[5px] shadow-[0_18px_32px_rgba(0,0,0,0.3)]">
                   <div className="relative overflow-hidden rounded-[16px]">
                     <div className="absolute left-[12px] top-[10px] z-10 rounded-[8px] bg-black/58 px-[10px] py-[6px] text-[10px] font-medium text-white shadow-[0_10px_18px_rgba(0,0,0,0.22)]">
                       {liveFigmaReference.room.presenter}
                     </div>
-                    <div className="absolute right-[10px] top-[10px] z-10 flex h-[28px] w-[28px] items-center justify-center rounded-[8px] bg-black/78 text-white">
-                      <ArrowRight className="h-[14px] w-[14px] -rotate-45" />
-                    </div>
+                    <button
+                      type="button"
+                      data-testid="live-room-maximize"
+                      onClick={() => void toggleLiveRoomFullscreen()}
+                      className="absolute right-[10px] top-[10px] z-10 flex h-[32px] w-[32px] items-center justify-center rounded-[9px] bg-black/78 text-white"
+                      aria-label="Maximize live class"
+                    >
+                      <Maximize2 className="h-[15px] w-[15px]" />
+                    </button>
                     <LiveRoomStageArtwork />
                   </div>
                 </div>
 
                 <div className="mt-[6px] grid grid-cols-4 gap-[5px]">
                   {liveFigmaReference.room.participants.map((participant) => (
-                    <div key={participant.name} className="overflow-hidden rounded-[12px] border border-white/8 bg-[#162034] shadow-[0_8px_18px_rgba(0,0,0,0.18)]">
-                      <div className="flex h-[62px] items-center justify-center bg-[linear-gradient(180deg,#28344d_0%,#141b2c_100%)]">
+                    <div key={participant.name} className="overflow-hidden rounded-[10px] border border-white/8 bg-[#162034] shadow-[0_6px_14px_rgba(0,0,0,0.16)]">
+                      <div className="flex h-[50px] items-center justify-center bg-[linear-gradient(180deg,#28344d_0%,#141b2c_100%)]">
                         {participant.kind === 'portrait' ? (
                           <ReferenceTeacherAvatar size="md" />
                         ) : (
-                          <div className={cn('flex h-[44px] w-[44px] items-center justify-center rounded-full text-[18px] font-semibold', participant.kind === 'count' ? 'bg-[#0d1524] text-white' : 'bg-[linear-gradient(180deg,#7248ff_0%,#5d39de_100%)] text-white')}>
+                          <div className={cn('flex h-[36px] w-[36px] items-center justify-center rounded-full text-[15px] font-semibold', participant.kind === 'count' ? 'bg-[#0d1524] text-white' : 'bg-[linear-gradient(180deg,#7248ff_0%,#5d39de_100%)] text-white')}>
                             {participant.name}
                           </div>
                         )}
@@ -5331,6 +5332,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                       </>
                     ) : roomPanelTab === 'notes' ? renderDetailNotes(true) : roomPanelTab === 'polls' ? renderDetailPolls(true) : renderDetailResources(true)}
                   </div>
+                </div>
                 </div>
 
                 <div className="mt-[9px] grid grid-cols-5 items-end gap-[4px] px-[2px]">

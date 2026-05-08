@@ -2457,22 +2457,13 @@ export const CourseFigmaTab = ({
       <div
         data-testid="course-figma-page"
         data-course-view="catalog"
-        className="min-h-[100dvh] bg-[#f4f7ff] pb-[76px]"
+        className="mobile-safe-screen min-h-[100dvh] overflow-x-hidden bg-[#f4f7ff] pb-[76px]"
       >
-        <div className="px-[12px] pb-[10px] pt-[10px]" style={uiFontStyle}>
-          <div className="flex items-center justify-between text-[12px] font-semibold text-[#101828]">
-            <span>9:41</span>
-            <div className="flex items-center gap-[5px]">
-              <span className="h-[7px] w-[5px] rounded-[2px] bg-[#101828]" />
-              <span className="h-[9px] w-[5px] rounded-[2px] bg-[#101828]" />
-              <span className="h-[11px] w-[5px] rounded-[2px] bg-[#101828]" />
-              <span className="ml-[4px] h-[10px] w-[20px] rounded-full border border-[#101828]" />
-            </div>
-          </div>
+        <div className="mobile-safe-content mx-auto pb-[10px] pt-[10px]" style={uiFontStyle}>
 
-          <header className="mt-[12px]">
+          <header>
             <div className="flex items-center justify-between gap-[12px]">
-              <h1 className="text-[20px] font-semibold leading-none tracking-[-0.03em] text-[#1c2844]">All Courses</h1>
+              <h1 className="text-[19px] font-semibold leading-none tracking-[-0.02em] text-[#1c2844]">All Courses</h1>
               <div className="flex items-center gap-[12px] text-[#1d3158]">
                 <Search className="h-[21px] w-[21px]" />
                 <button
@@ -2770,21 +2761,12 @@ export const CourseFigmaTab = ({
       <div
         data-testid="course-figma-page"
         data-course-view="course"
-        className="min-h-[100dvh] bg-[#f4f7ff] pb-[82px]"
+        className="mobile-safe-screen min-h-[100dvh] overflow-x-hidden bg-[#f4f7ff] pb-[82px]"
         style={uiFontStyle}
       >
-        <div className="px-[11px] pb-[8px] pt-[9px]">
-          <div className="flex items-center justify-between text-[12px] font-semibold text-[#101828]">
-            <span>9:41</span>
-            <div className="flex items-center gap-[5px]">
-              <span className="h-[7px] w-[5px] rounded-[2px] bg-[#101828]" />
-              <span className="h-[9px] w-[5px] rounded-[2px] bg-[#101828]" />
-              <span className="h-[11px] w-[5px] rounded-[2px] bg-[#101828]" />
-              <span className="ml-[4px] h-[10px] w-[20px] rounded-full border border-[#101828]" />
-            </div>
-          </div>
+        <div className="mobile-safe-content mx-auto pb-[8px] pt-[9px]">
 
-          <header className="mt-[10px]">
+          <header>
             <div className="flex items-center justify-between gap-[12px]">
               <button
                 type="button"
@@ -4603,19 +4585,11 @@ export const CourseFigmaTab = ({
       <div
         data-testid="course-figma-page"
         data-course-view="lesson"
-        className="h-[100dvh] overflow-y-auto bg-[linear-gradient(180deg,#f9fbff_0%,#eef3ff_100%)]"
+        className="mobile-safe-screen h-[100dvh] overflow-x-hidden overflow-y-auto bg-[linear-gradient(180deg,#f9fbff_0%,#eef3ff_100%)]"
       >
-        <div className="px-[13px] pt-[12px]">
-          <div className="flex items-center justify-between text-[12px] font-semibold text-[#111827]">
-            <span>9:41</span>
-            <div className="flex items-center gap-[5px] text-[#111827]">
-              <span className="h-[7px] w-[10px] rounded-[2px] bg-[#111827]" />
-              <span className="h-[7px] w-[7px] rounded-full border border-[#111827]" />
-              <span className="h-[7px] w-[20px] rounded-full border border-[#111827]" />
-            </div>
-          </div>
+        <div className="mobile-safe-content mx-auto pt-[12px]">
 
-          <div className="mt-[12px] flex items-center justify-between gap-[10px]">
+          <div className="flex items-center justify-between gap-[10px]">
             <button
               type="button"
               data-testid="course-back-to-lessons"
@@ -4850,31 +4824,22 @@ export const CourseFigmaTab = ({
         <div
           data-testid="course-figma-page"
           data-course-view="catalog"
-          className="min-h-[100dvh] bg-[#f4f7ff] pb-[92px]"
+          className="mobile-safe-screen min-h-[100dvh] overflow-x-hidden bg-[#f4f7ff] pb-[92px]"
         >
-          <div className="px-[12px] pb-[10px] pt-[10px]" style={uiFontStyle}>
-            <div className="flex items-center justify-between text-[12px] font-semibold text-[#101828]">
-              <span>9:41</span>
-              <div className="flex items-center gap-[5px]">
-                <span className="h-[7px] w-[5px] rounded-[2px] bg-[#101828]" />
-                <span className="h-[9px] w-[5px] rounded-[2px] bg-[#101828]" />
-                <span className="h-[11px] w-[5px] rounded-[2px] bg-[#101828]" />
-                <span className="ml-[4px] h-[10px] w-[20px] rounded-full border border-[#101828]" />
-              </div>
-            </div>
+          <div className="mobile-safe-content mx-auto pb-[10px] pt-[10px]" style={uiFontStyle}>
 
-            <header className="mt-[12px]">
+            <header>
               <div className="flex items-center justify-between gap-[12px]">
-                <h1 className="text-[20px] font-semibold leading-none text-[#1c2844]">All Courses</h1>
+                <h1 className="text-[18px] font-semibold leading-none text-[#1c2844]">All Courses</h1>
                 <div className="flex items-center gap-[12px] text-[#1d3158]">
-                  <Search className="h-[21px] w-[21px]" />
-                  <Bell className="h-[21px] w-[21px]" />
+                  <Search className="h-[19px] w-[19px]" />
+                  <Bell className="h-[19px] w-[19px]" />
                 </div>
               </div>
 
               <label
                 data-testid="course-catalog-search"
-                className="mt-[12px] flex h-[42px] items-center gap-[10px] rounded-[14px] border border-[#d9e3f2] bg-white px-[13px] text-[13px] text-[#7f8fb0] shadow-[0_8px_18px_rgba(28,41,61,0.04)]"
+                className="mt-[12px] flex h-[40px] min-w-0 items-center gap-[10px] rounded-[14px] border border-[#d9e3f2] bg-white px-[13px] text-[13px] text-[#7f8fb0] shadow-[0_8px_18px_rgba(28,41,61,0.04)]"
               >
                 <Search className="h-[17px] w-[17px]" />
                 <input
@@ -4887,14 +4852,14 @@ export const CourseFigmaTab = ({
 
             <section
               data-testid="course-catalog-empty"
-              className="mt-[16px] overflow-hidden rounded-[20px] border border-[#dce6f5] bg-white shadow-[0_12px_30px_rgba(28,41,61,0.07)]"
+              className="mt-[14px] overflow-hidden rounded-[18px] border border-[#dce6f5] bg-white shadow-[0_10px_24px_rgba(28,41,61,0.06)]"
             >
-              <div className="bg-[#eaf1ff] px-[16px] py-[18px]">
-                <div className="flex h-[58px] w-[58px] items-center justify-center rounded-[18px] bg-white text-[#2f6fe4] shadow-[0_10px_22px_rgba(47,111,228,0.16)]">
-                  <BookOpen className="h-[26px] w-[26px]" />
+              <div className="bg-[#eaf1ff] px-[14px] py-[15px]">
+                <div className="flex h-[48px] w-[48px] items-center justify-center rounded-[16px] bg-white text-[#2f6fe4] shadow-[0_8px_18px_rgba(47,111,228,0.14)]">
+                  <BookOpen className="h-[22px] w-[22px]" />
                 </div>
-                <h2 className="mt-[14px] text-[22px] font-semibold leading-[1.15] text-[#172033]">No courses available</h2>
-                <p className="mt-[8px] text-[13px] leading-[1.65] text-[#52637f]">
+                <h2 className="mt-[12px] text-[18px] font-semibold leading-[1.18] text-[#172033]">No courses available</h2>
+                <p className="mt-[7px] text-[12px] leading-[1.55] text-[#52637f]">
                   Published courses will appear here as soon as the catalog is ready.
                 </p>
               </div>
@@ -4905,9 +4870,9 @@ export const CourseFigmaTab = ({
                   ['0', 'Lessons'],
                   ['0', 'Tests'],
                 ].map(([value, label]) => (
-                  <div key={label} className="px-[8px] py-[12px]">
-                    <p className="text-[17px] font-semibold leading-none text-[#1f2d4e]">{value}</p>
-                    <p className="mt-[6px] text-[11px] font-medium text-[#71819c]">{label}</p>
+                  <div key={label} className="px-[8px] py-[10px]">
+                    <p className="text-[15px] font-semibold leading-none text-[#1f2d4e]">{value}</p>
+                    <p className="mt-[5px] text-[10px] font-medium text-[#71819c]">{label}</p>
                   </div>
                 ))}
               </div>

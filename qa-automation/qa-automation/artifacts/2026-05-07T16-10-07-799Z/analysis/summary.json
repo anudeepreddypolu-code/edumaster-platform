@@ -1,0 +1,260 @@
+{
+  "captures": [
+    {
+      "stepId": "launch",
+      "label": "app-launch",
+      "state": "loading",
+      "durationMs": 21580,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/launch-loading-app-launch.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/launch-loading-app-launch.xml",
+      "timestamp": "2026-05-07T16:10:56.618Z"
+    },
+    {
+      "stepId": "login-error",
+      "label": "invalid-login",
+      "state": "error",
+      "durationMs": 40388,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/login-error-error-invalid-login.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/login-error-error-invalid-login.xml",
+      "timestamp": "2026-05-07T16:11:39.194Z",
+      "notes": [
+        "Intentional invalid login to capture error state."
+      ]
+    },
+    {
+      "stepId": "login-success",
+      "label": "login-success",
+      "state": "success",
+      "durationMs": 42764,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/login-success-success-login-success.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/login-success-success-login-success.xml",
+      "timestamp": "2026-05-07T16:12:23.415Z"
+    },
+    {
+      "stepId": "dashboard",
+      "label": "Dashboard success",
+      "state": "ui",
+      "durationMs": 2523,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/dashboard-ui-dashboard-success.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/dashboard-ui-dashboard-success.xml",
+      "timestamp": "2026-05-07T16:12:27.766Z"
+    },
+    {
+      "stepId": "courses",
+      "label": "Courses screen",
+      "state": "ui",
+      "durationMs": 2718,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/courses-ui-courses-screen.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/courses-ui-courses-screen.xml",
+      "timestamp": "2026-05-07T16:12:33.822Z"
+    },
+    {
+      "stepId": "tests",
+      "label": "Mock tests screen",
+      "state": "ui",
+      "durationMs": 2546,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/tests-ui-mock-tests-screen.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/tests-ui-mock-tests-screen.xml",
+      "timestamp": "2026-05-07T16:12:38.607Z"
+    },
+    {
+      "stepId": "live",
+      "label": "Live classes screen",
+      "state": "ui",
+      "durationMs": 2622,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/live-ui-live-classes-screen.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/live-ui-live-classes-screen.xml",
+      "timestamp": "2026-05-07T16:12:44.829Z"
+    },
+    {
+      "stepId": "revision",
+      "label": "Revision screen",
+      "state": "ui",
+      "durationMs": 5512,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/revision-ui-revision-screen.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/revision-ui-revision-screen.xml",
+      "timestamp": "2026-05-07T16:12:54.940Z"
+    },
+    {
+      "stepId": "course-subjects",
+      "label": "course-subjects-view-failed",
+      "state": "error",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/course-subjects-error-course-subjects-view-failed.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/course-subjects-error-course-subjects-view-failed.xml",
+      "timestamp": "2026-05-07T16:13:09.740Z",
+      "notes": [
+        "No interactable selector found from: [data-testid=\"mobile-tab-courses\"], [data-testid=\"mobile-nav-courses\"], [data-testid=\"nav-courses\"]"
+      ]
+    },
+    {
+      "stepId": "course-player",
+      "label": "course-player-view-failed",
+      "state": "error",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/course-player-error-course-player-view-failed.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/course-player-error-course-player-view-failed.xml",
+      "timestamp": "2026-05-07T16:13:13.609Z",
+      "notes": [
+        "No interactable selector found from: [data-testid^=\"course-topic-\"], [data-testid=\"course-workspace-player\"], [data-testid^=\"course-lesson-\"]"
+      ]
+    },
+    {
+      "stepId": "course-sessions",
+      "label": "course-sessions-view-failed",
+      "state": "error",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/course-sessions-error-course-sessions-view-failed.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/course-sessions-error-course-sessions-view-failed.xml",
+      "timestamp": "2026-05-07T16:13:16.191Z",
+      "notes": [
+        "No interactable selector found from: [data-testid=\"course-open-session-archive\"], [data-testid=\"course-workspace-sessions\"]"
+      ]
+    },
+    {
+      "stepId": "test-instructions",
+      "label": "mock-test-instructions-failed",
+      "state": "error",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/test-instructions-error-mock-test-instructions-failed.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/test-instructions-error-mock-test-instructions-failed.xml",
+      "timestamp": "2026-05-07T16:13:18.369Z",
+      "notes": [
+        "No interactable selector found from: [data-testid=\"mobile-tab-tests\"], [data-testid=\"mobile-nav-tests\"], [data-testid=\"nav-tests\"]"
+      ]
+    },
+    {
+      "stepId": "search-missing",
+      "label": "search-unavailable",
+      "state": "error",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/search-missing-error-search-unavailable.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/sources/search-missing-error-search-unavailable.xml",
+      "timestamp": "2026-05-07T16:13:20.668Z",
+      "notes": [
+        "No interactable selector found from: [data-testid=\"mobile-tab-overview\"], [data-testid=\"mobile-nav-overview\"], [data-testid=\"nav-overview\"]"
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "stepId": "launch",
+      "title": "Slow screen transition",
+      "description": "App launch took 21580ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-05-07T16:10:56.906Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/launch-loading-app-launch.png"
+    },
+    {
+      "stepId": "login-error",
+      "title": "Slow screen transition",
+      "description": "Invalid login error state took 40388ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-05-07T16:11:39.564Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/login-error-error-invalid-login.png"
+    },
+    {
+      "stepId": "login-success",
+      "title": "Slow screen transition",
+      "description": "Login success took 42764ms which crossed the slow threshold.",
+      "severity": "medium",
+      "timestamp": "2026-05-07T16:12:23.517Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/login-success-success-login-success.png"
+    },
+    {
+      "stepId": "login-success",
+      "title": "Expected content missing",
+      "description": "Expected text was not found on the page: \"prep operating system\"",
+      "severity": "medium",
+      "timestamp": "2026-05-07T16:12:23.517Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/login-success-success-login-success.png"
+    },
+    {
+      "stepId": "dashboard",
+      "title": "Expected content missing",
+      "description": "Expected text was not found on the page: \"Continue learning\"",
+      "severity": "medium",
+      "timestamp": "2026-05-07T16:12:27.896Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/dashboard-ui-dashboard-success.png"
+    },
+    {
+      "stepId": "live",
+      "title": "Expected content missing",
+      "description": "Expected text was not found on the page: \"Live classes\"",
+      "severity": "medium",
+      "timestamp": "2026-05-07T16:12:45.111Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/live-ui-live-classes-screen.png"
+    },
+    {
+      "stepId": "course-subjects",
+      "title": "Deep feature step failed",
+      "description": "No interactable selector found from: [data-testid=\"mobile-tab-courses\"], [data-testid=\"mobile-nav-courses\"], [data-testid=\"nav-courses\"]",
+      "severity": "high",
+      "timestamp": "2026-05-07T16:13:09.740Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/course-subjects-error-course-subjects-view-failed.png"
+    },
+    {
+      "stepId": "course-player",
+      "title": "Deep feature step failed",
+      "description": "No interactable selector found from: [data-testid^=\"course-topic-\"], [data-testid=\"course-workspace-player\"], [data-testid^=\"course-lesson-\"]",
+      "severity": "high",
+      "timestamp": "2026-05-07T16:13:13.609Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/course-player-error-course-player-view-failed.png"
+    },
+    {
+      "stepId": "course-sessions",
+      "title": "Deep feature step failed",
+      "description": "No interactable selector found from: [data-testid=\"course-open-session-archive\"], [data-testid=\"course-workspace-sessions\"]",
+      "severity": "high",
+      "timestamp": "2026-05-07T16:13:16.191Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/course-sessions-error-course-sessions-view-failed.png"
+    },
+    {
+      "stepId": "test-instructions",
+      "title": "Deep feature step failed",
+      "description": "No interactable selector found from: [data-testid=\"mobile-tab-tests\"], [data-testid=\"mobile-nav-tests\"], [data-testid=\"nav-tests\"]",
+      "severity": "high",
+      "timestamp": "2026-05-07T16:13:18.369Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/test-instructions-error-mock-test-instructions-failed.png"
+    },
+    {
+      "stepId": "search-missing",
+      "title": "Search interaction failed",
+      "description": "No interactable selector found from: [data-testid=\"mobile-tab-overview\"], [data-testid=\"mobile-nav-overview\"], [data-testid=\"nav-overview\"]",
+      "severity": "medium",
+      "timestamp": "2026-05-07T16:13:20.668Z",
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/screenshots/search-missing-error-search-unavailable.png"
+    }
+  ],
+  "findings": [
+    {
+      "category": "navigation",
+      "severity": "medium",
+      "title": "High feature density across primary navigation",
+      "evidence": "The app exposes many top-level destinations, which can increase cognitive load on smaller Android devices.",
+      "recommendation": "Keep bottom navigation focused on 4-5 destinations and move secondary tools like revision and analytics into contextual entry points or a \"More\" surface."
+    },
+    {
+      "category": "responsiveness",
+      "severity": "high",
+      "title": "Perceived loading speed needs stronger feedback",
+      "evidence": "At least one core screen crossed the configured slow threshold.",
+      "recommendation": "Add skeleton loaders and preserve layout while data loads so transitions feel intentional instead of blocked."
+    },
+    {
+      "category": "hierarchy",
+      "severity": "medium",
+      "title": "Information hierarchy should prioritize student actions over raw density",
+      "evidence": "Dashboard, analytics, and practice surfaces contain many cards and metrics competing for attention.",
+      "recommendation": "Lead each screen with one primary action, one progress summary, and move secondary metrics below the fold."
+    },
+    {
+      "category": "visual-noise",
+      "severity": "medium",
+      "title": "The product would benefit from calmer visual grouping",
+      "evidence": "Many surfaces use similarly weighted cards, making it harder to distinguish primary vs secondary information.",
+      "recommendation": "Use quieter containers for supporting information, stronger section spacing, and one accent surface per screen."
+    }
+  ],
+  "generatedFlutterFile": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T16-10-07-799Z/generated_flutter/improved_ui.dart"
+}

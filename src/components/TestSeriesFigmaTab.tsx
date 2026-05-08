@@ -401,47 +401,7 @@ const UserAvatar = ({ large = false }: { large?: boolean }) => (
   </div>
 );
 
-const MobileStatusBar = () => (
-  <div className="flex items-center justify-between px-[2px] text-[13px] font-semibold tracking-[-0.02em] text-[#111827]">
-    <span>9:41</span>
-    <div className="flex items-center gap-[5px]">
-      <div className="flex items-end gap-[1px]">
-        <span className="h-[4px] w-[2px] rounded-full bg-current" />
-        <span className="h-[6px] w-[2px] rounded-full bg-current" />
-        <span className="h-[8px] w-[2px] rounded-full bg-current" />
-        <span className="h-[10px] w-[2px] rounded-full bg-current" />
-      </div>
-      <svg viewBox="0 0 16 12" className="h-[10px] w-[14px] text-current" aria-hidden="true">
-        <path
-          d="M1.5 4.4C3.2 2.6 5.4 1.7 8 1.7c2.6 0 4.8.9 6.5 2.7"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-        <path
-          d="M3.7 6.6C4.8 5.4 6.2 4.8 8 4.8c1.8 0 3.2.6 4.3 1.8"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-        <path
-          d="M6.1 8.7C6.6 8.1 7.2 7.9 8 7.9c.8 0 1.4.2 1.9.8"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-        <circle cx="8" cy="10.2" r="1" fill="currentColor" />
-      </svg>
-      <div className="relative h-[10px] w-[22px] rounded-[3px] border-[1.4px] border-current">
-        <span className="absolute right-[-3px] top-[2px] h-[4px] w-[2px] rounded-r-[1px] bg-current" />
-        <span className="absolute inset-[1.5px] rounded-[1.5px] bg-current" />
-      </div>
-    </div>
-  </div>
-);
+const MobileStatusBar = () => null;
 
 const ChipBadge = ({ tone, children }: { tone: SeriesCard['chipTone']; children: React.ReactNode }) => {
   const classes = {
@@ -1851,17 +1811,21 @@ export const TestSeriesFigmaTab = ({
   );
 
   const mobileShell = (testId: string, content: React.ReactNode) => (
-    <div data-testid={testId} className="flex min-h-dvh flex-1 flex-col bg-white px-[18px] pb-[108px] pt-[10px] lg:hidden" style={{ fontFamily: uiFontStack }}>
-      <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">{content}</div>
+    <div
+      data-testid={testId}
+      className="mobile-safe-screen flex min-h-dvh flex-1 flex-col overflow-x-hidden bg-white pb-[108px] pt-[10px] lg:hidden"
+      style={{ fontFamily: uiFontStack }}
+    >
+      <div className="mobile-safe-content mx-auto flex flex-1 flex-col overflow-x-hidden">{content}</div>
     </div>
   );
 
   const mobileHome = mobileShell('tests-home-mobile', (
     <>
       <MobileStatusBar />
-      <div className="mt-[14px] flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[24px] font-semibold tracking-[-0.03em] text-[#1e2f5a]">Hi {learnerName}</p>
+      <div className="mt-[10px] flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[20px] font-semibold text-[#1e2f5a]">Hi {learnerName}</p>
           <p className="mt-[6px] text-[13px] text-[#7284a7]">Pick up your next mock without the extra clutter.</p>
         </div>
         <button className="relative mt-[2px] flex h-[40px] w-[40px] items-center justify-center rounded-full border border-[#e7edf7] bg-white text-[#223357] shadow-[0_10px_18px_rgba(16,24,40,0.04)]">
@@ -1871,9 +1835,9 @@ export const TestSeriesFigmaTab = ({
       </div>
 
       <div className="mt-[14px] flex items-center gap-[10px]">
-        <div className="flex h-[46px] flex-1 items-center gap-3 rounded-[16px] border border-[#e5ebf5] bg-white px-[14px] text-[13px] text-[#96a1b4] shadow-[0_8px_18px_rgba(16,24,40,0.05)]">
+        <div className="flex h-[46px] min-w-0 flex-1 items-center gap-3 rounded-[16px] border border-[#e5ebf5] bg-white px-[14px] text-[13px] text-[#96a1b4] shadow-[0_8px_18px_rgba(16,24,40,0.05)]">
           <Search className="h-4 w-4" />
-          <span>Search for tests, classes...</span>
+          <span className="truncate">Search for tests, classes...</span>
         </div>
         <button className="flex h-[46px] w-[46px] items-center justify-center rounded-[16px] border border-[#e5ebf5] bg-white text-[#223357] shadow-[0_8px_18px_rgba(16,24,40,0.05)]">
           <ListFilter className="h-[18px] w-[18px]" />
@@ -1885,7 +1849,7 @@ export const TestSeriesFigmaTab = ({
         onClick={() => openSeries(selectedTest?._id || fullMockTests[0]?._id || '')}
         className="mt-[14px] overflow-hidden rounded-[22px] border border-[#dfe8fb] bg-[linear-gradient(135deg,#f5f9ff_0%,#ffffff_52%,#eef4ff_100%)] p-[14px] text-left shadow-[0_16px_34px_rgba(45,110,229,0.08)]"
       >
-        <div className="grid grid-cols-[minmax(0,1fr)_132px] items-center gap-[8px]">
+        <div className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-[8px] min-[390px]:grid-cols-[minmax(0,1fr)_118px]">
           <div className="min-w-0">
             <span className="inline-flex rounded-full bg-[#eaf1ff] px-[10px] py-[4px] text-[11px] font-semibold text-[#2f78eb]">
               Resume where you left
@@ -1898,12 +1862,12 @@ export const TestSeriesFigmaTab = ({
             <div className="mt-[8px] h-[4px] w-[118px] rounded-full bg-[#dfe8fb]">
               <div className="h-full w-[0%] rounded-full bg-[linear-gradient(90deg,#3d94f4_0%,#2b83e6_100%)]" />
             </div>
-            <span className="mt-[14px] inline-flex h-[40px] items-center gap-[10px] rounded-[12px] bg-[linear-gradient(90deg,#2d8cf1,#315df9)] px-[18px] text-[13px] font-semibold text-white shadow-[0_12px_24px_rgba(49,99,255,0.24)]">
+            <span className="mt-[14px] inline-flex h-[38px] items-center gap-[8px] rounded-[12px] bg-[linear-gradient(90deg,#2d8cf1,#315df9)] px-[14px] text-[12px] font-semibold text-white shadow-[0_12px_24px_rgba(49,99,255,0.24)]">
               Continue Test
               <ArrowRight className="h-[16px] w-[16px]" />
             </span>
           </div>
-          <div className="flex justify-end">
+          <div className="flex origin-right scale-[0.68] justify-end min-[390px]:scale-[0.78]">
             <HeroIllustration />
           </div>
         </div>
@@ -1911,13 +1875,13 @@ export const TestSeriesFigmaTab = ({
 
       <div className="mt-[16px]">
         <div className="flex items-center justify-between">
-          <p className="text-[17px] font-semibold text-[#1e2f5a]">Your Recent Test Series</p>
+          <p className="min-w-0 text-[16px] font-semibold text-[#1e2f5a]">Your Recent Test Series</p>
           <button className="inline-flex items-center gap-[4px] text-[12px] font-semibold text-[#2f78eb]">
             View All
             <ChevronRight className="h-[14px] w-[14px]" />
           </button>
         </div>
-        <div className="mt-[10px] grid grid-cols-3 gap-[10px]">
+        <div className="mt-[10px] grid grid-cols-2 gap-[10px] min-[390px]:grid-cols-3">
           {recentSeries.slice(0, 3).map((series, index) => (
             <button
               key={series.id}
@@ -1969,7 +1933,7 @@ export const TestSeriesFigmaTab = ({
 
       <div className="mt-[16px]">
         <div className="flex items-center justify-between">
-          <p className="text-[17px] font-semibold text-[#1e2f5a]">Recommended for You</p>
+          <p className="min-w-0 text-[16px] font-semibold text-[#1e2f5a]">Recommended for You</p>
           <button className="inline-flex items-center gap-[4px] text-[12px] font-semibold text-[#2f78eb]">
             See All
             <ChevronRight className="h-[14px] w-[14px]" />
@@ -1982,7 +1946,7 @@ export const TestSeriesFigmaTab = ({
               type="button"
               onClick={() => openSeries(item.seriesId)}
               className={cn(
-                'grid w-full grid-cols-[42px_minmax(0,1fr)_78px_18px] items-center gap-[10px] px-[12px] py-[11px] text-left',
+                'grid w-full grid-cols-[38px_minmax(0,1fr)_18px] items-center gap-[10px] px-[12px] py-[11px] text-left min-[390px]:grid-cols-[42px_minmax(0,1fr)_70px_18px]',
                 index !== recommendedTests.length - 1 && 'border-b border-[#edf2fb]',
               )}
             >
@@ -1996,7 +1960,7 @@ export const TestSeriesFigmaTab = ({
                   <span className="rounded-full bg-[#f3f6fb] px-[8px] py-[3px] text-[10px] text-[#607394]">{item.secondaryLabel}</span>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="hidden text-right min-[390px]:block">
                 <p className="text-[10px] text-[#8a97ab]">Attempted by</p>
                 <p className="mt-[4px] text-[11px] font-medium text-[#526987]">{item.attemptedLabel}</p>
               </div>
@@ -2007,8 +1971,8 @@ export const TestSeriesFigmaTab = ({
       </div>
 
       <div className="mt-[16px]">
-        <p className="text-[17px] font-semibold text-[#1e2f5a]">Quick Actions</p>
-        <div className="mt-[10px] grid grid-cols-4 gap-[10px]">
+        <p className="text-[16px] font-semibold text-[#1e2f5a]">Quick Actions</p>
+        <div className="mt-[10px] grid grid-cols-2 gap-[10px]">
           {quickActionItems.map((item, index) => (
             <button
               key={item.id}
@@ -2020,12 +1984,12 @@ export const TestSeriesFigmaTab = ({
                   setScreen('home');
                 }
               }}
-              className="rounded-[18px] border border-[#ebeef6] bg-white px-[10px] py-[12px] text-left shadow-[0_10px_22px_rgba(18,39,74,0.06)]"
+              className="rounded-[18px] border border-[#ebeef6] bg-white px-[12px] py-[12px] text-left shadow-[0_10px_22px_rgba(18,39,74,0.06)]"
             >
               <div className={cn('flex h-[36px] w-[36px] items-center justify-center rounded-[12px]', quickActionToneClasses[item.iconTone])}>
                 {index === 0 ? <FileText className="h-[16px] w-[16px]" /> : index === 1 ? <Bookmark className="h-[16px] w-[16px]" /> : index === 2 ? <Clock3 className="h-[16px] w-[16px]" /> : <Users className="h-[16px] w-[16px]" />}
               </div>
-              <p className="mt-[14px] text-[11px] font-medium leading-[1.35] text-[#1e2f5a]">{item.label}</p>
+              <p className="mt-[12px] text-[12px] font-medium leading-[1.35] text-[#1e2f5a]">{item.label}</p>
             </button>
           ))}
         </div>

@@ -1,8 +1,13 @@
 import React, { Component, ErrorInfo, ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Capacitor } from '@capacitor/core';
 import { AlertCircle, RefreshCcw } from 'lucide-react';
 import App from './App.tsx';
 import './index.css';
+
+if (Capacitor.isNativePlatform()) {
+  document.documentElement.classList.add('cap-native', `cap-${Capacitor.getPlatform()}`);
+}
 
 interface Props {
   children: ReactNode;

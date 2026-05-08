@@ -1325,21 +1325,7 @@ const AuthScreen = ({
   const authInputClassName = 'h-[40px] w-full rounded-[8px] border border-[#2a3142] bg-[#121826] px-12 text-[14px] text-[#f8fafc] outline-none transition placeholder:text-[#94a3b8] focus:border-[#6366f1] focus:bg-[#151c2d]';
   const socialButtonClassName = 'flex h-[46px] w-full items-center justify-center gap-3 rounded-[12px] border border-[#2a3142] bg-transparent px-4 text-[16px] font-semibold text-[#f8fafc] transition hover:border-[#46506b] hover:bg-white/[0.02]';
   const primaryButtonClassName = 'relative flex h-[48px] w-full items-center justify-center gap-3 rounded-[12px] bg-[linear-gradient(90deg,#7c3aed_0%,#3b82f6_100%)] px-4 text-[16px] font-semibold text-white shadow-[0_18px_40px_rgba(79,70,229,0.36)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60';
-  const renderPhoneStatusBar = () => (
-    <div className="mb-2 flex items-center justify-between text-[12px] font-semibold text-white/92 lg:hidden">
-      <span>9:41</span>
-      <div className="flex items-center gap-1.5 text-white">
-        <span className="h-[8px] w-[5px] rounded-[2px] bg-current opacity-70" />
-        <span className="h-[10px] w-[5px] rounded-[2px] bg-current opacity-85" />
-        <span className="h-[12px] w-[5px] rounded-[2px] bg-current" />
-        <svg width="22" height="11" viewBox="0 0 22 11" fill="none" xmlns="http://www.w3.org/2000/svg" className="ml-1">
-          <rect x="0.5" y="0.5" width="19" height="10" rx="3" stroke="currentColor" />
-          <rect x="2.5" y="2.5" width="13" height="6" rx="2" fill="currentColor" />
-          <rect x="20.5" y="3.25" width="1.5" height="4.5" rx="0.75" fill="currentColor" />
-        </svg>
-      </div>
-    </div>
-  );
+  const renderPhoneStatusBar = () => null;
 
   const submitLogin = async (
     email = loginForm.email,
@@ -2552,13 +2538,13 @@ const Shell = ({
           )}
 
           <main className={cn(
-            'mx-auto flex w-full flex-1 flex-col overflow-hidden',
+            'mx-auto flex w-full flex-1 flex-col overflow-x-hidden overflow-y-auto lg:overflow-hidden',
             (isOverviewWorkspace || isCoursesWorkspace || isTestsWorkspace)
               ? 'max-w-none px-0 pb-0 pt-0'
               : isLiveWorkspace
                 ? cn('max-w-[1460px] px-0 pt-0 sm:px-4 sm:pt-5 lg:px-7 lg:pb-10', hideMobileShellNav ? 'pb-6 sm:pb-8 lg:pb-10' : 'pb-28 sm:pb-36 lg:pb-10')
                 : 'max-w-[1380px] px-4 pb-36 pt-4 sm:px-6 lg:px-8 lg:pb-10',
-            showShellHeader && !isCoursesWorkspace ? 'pt-6' : '',
+            showShellHeader && !isCoursesWorkspace && !isLiveWorkspace ? 'pt-6' : '',
           )} style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
             <AnimatePresence mode="wait">
               <motion.div

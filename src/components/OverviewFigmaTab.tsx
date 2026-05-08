@@ -332,13 +332,13 @@ export const OverviewFigmaTab = ({
   };
 
   const renderHeader = () => (
-    <div data-testid="overview-topbar" className="flex items-start justify-between gap-[16px]">
+    <div data-testid="overview-topbar" className="flex min-w-0 items-start justify-between gap-[12px]">
       <div className="min-w-0">
-        <p className="text-[15px] font-semibold text-[#202a44]">Welcome back, {learnerName}</p>
-        <p className="mt-[8px] text-[14px] text-[#5f6f86]">Your dashboard is based on live course, test, and class activity.</p>
+        <p className="truncate text-[15px] font-semibold text-[#202a44]">Welcome back, {learnerName}</p>
+        <p className="mt-[6px] text-[13px] leading-[1.45] text-[#5f6f86]">Your dashboard is based on live course, test, and class activity.</p>
       </div>
 
-      <div className="flex items-center gap-[12px] self-start">
+      <div className="flex shrink-0 items-center gap-[10px] self-start">
         <div className="flex h-[38px] w-[38px] items-center justify-center overflow-hidden rounded-full border border-[#e2e8f2] bg-white shadow-[0_6px_16px_rgba(28,41,61,0.05)]">
           <Avatar name={learnerName} />
         </div>
@@ -691,10 +691,10 @@ export const OverviewFigmaTab = ({
     return (
       <div
         data-testid="overview-dashboard"
-        className="min-h-[100dvh] w-full overflow-x-hidden overflow-y-auto bg-[#eef3fb] pb-[96px]"
+        className="mobile-safe-screen min-h-[100dvh] overflow-x-hidden overflow-y-auto bg-[#eef3fb] pb-[96px]"
         style={{ fontFamily: overviewFontStack }}
       >
-        <div className="space-y-[18px] px-[14px] pb-[18px] pt-[14px]">
+        <div className="mobile-safe-content mx-auto space-y-[14px] pb-[18px] pt-[12px]">
           {renderHeader()}
           {renderHero()}
           {renderCourses()}

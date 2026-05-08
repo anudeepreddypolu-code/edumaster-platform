@@ -1,0 +1,200 @@
+[
+  {
+    "platform": "ios",
+    "name": "courses",
+    "viewportWidth": 393,
+    "documentScrollWidth": 393,
+    "hasHorizontalOverflow": false,
+    "windowScrollable": false,
+    "mainScrollable": false,
+    "targetScrollable": false,
+    "movedWindow": false,
+    "movedMain": false,
+    "movedTarget": false,
+    "firstHeading": "All Courses",
+    "firstHeadingTop": 73
+  },
+  {
+    "platform": "ios",
+    "name": "live-list",
+    "viewportWidth": 393,
+    "documentScrollWidth": 393,
+    "hasHorizontalOverflow": false,
+    "windowScrollable": true,
+    "mainScrollable": false,
+    "targetScrollable": false,
+    "movedWindow": true,
+    "movedMain": false,
+    "movedTarget": false,
+    "firstHeading": "Live Classes",
+    "firstHeadingTop": -320
+  },
+  {
+    "platform": "ios",
+    "name": "tests",
+    "viewportWidth": 393,
+    "documentScrollWidth": 393,
+    "hasHorizontalOverflow": false,
+    "windowScrollable": true,
+    "mainScrollable": false,
+    "targetScrollable": false,
+    "movedWindow": true,
+    "movedMain": false,
+    "movedTarget": false,
+    "firstHeading": null,
+    "firstHeadingTop": null
+  },
+  {
+    "platform": "ios",
+    "action": "schedule",
+    "clicked": true
+  },
+  {
+    "platform": "ios",
+    "action": "my-classes",
+    "clicked": true
+  },
+  {
+    "platform": "ios",
+    "remindersText": "Reminders Enabled"
+  },
+  {
+    "platform": "ios",
+    "name": "live-detail",
+    "viewportWidth": 393,
+    "documentScrollWidth": 393,
+    "hasHorizontalOverflow": false,
+    "windowScrollable": true,
+    "mainScrollable": false,
+    "targetScrollable": false,
+    "movedWindow": true,
+    "movedMain": false,
+    "movedTarget": false,
+    "firstHeading": "Live Class Details",
+    "firstHeadingTop": -1359
+  },
+  {
+    "platform": "ios",
+    "detailTab": "overview",
+    "clicked": true
+  },
+  {
+    "platform": "ios",
+    "detailTab": "chat",
+    "clicked": true
+  },
+  {
+    "platform": "ios",
+    "detailTab": "notes",
+    "clicked": true
+  },
+  {
+    "platform": "ios",
+    "detailTab": "polls",
+    "clicked": true
+  },
+  {
+    "platform": "ios",
+    "joinButton": null,
+    "joinDisabled": null
+  },
+  {
+    "platform": "android",
+    "name": "courses",
+    "viewportWidth": 393,
+    "documentScrollWidth": 393,
+    "hasHorizontalOverflow": false,
+    "windowScrollable": false,
+    "mainScrollable": false,
+    "targetScrollable": false,
+    "movedWindow": false,
+    "movedMain": false,
+    "movedTarget": false,
+    "firstHeading": "All Courses",
+    "firstHeadingTop": 35
+  },
+  {
+    "platform": "android",
+    "name": "live-list",
+    "viewportWidth": 393,
+    "documentScrollWidth": 393,
+    "hasHorizontalOverflow": false,
+    "windowScrollable": true,
+    "mainScrollable": false,
+    "targetScrollable": false,
+    "movedWindow": true,
+    "movedMain": false,
+    "movedTarget": false,
+    "firstHeading": "Live Classes",
+    "firstHeadingTop": -320
+  },
+  {
+    "platform": "android",
+    "name": "tests",
+    "viewportWidth": 393,
+    "documentScrollWidth": 393,
+    "hasHorizontalOverflow": false,
+    "windowScrollable": false,
+    "mainScrollable": false,
+    "targetScrollable": false,
+    "movedWindow": false,
+    "movedMain": false,
+    "movedTarget": false,
+    "firstHeading": null,
+    "firstHeadingTop": null
+  },
+  {
+    "platform": "android",
+    "action": "schedule",
+    "clicked": true
+  },
+  {
+    "platform": "android",
+    "action": "my-classes",
+    "clicked": true
+  },
+  {
+    "platform": "android",
+    "remindersText": "Reminders Enabled"
+  },
+  {
+    "platform": "android",
+    "name": "live-detail",
+    "viewportWidth": 393,
+    "documentScrollWidth": 393,
+    "hasHorizontalOverflow": false,
+    "windowScrollable": true,
+    "mainScrollable": false,
+    "targetScrollable": false,
+    "movedWindow": true,
+    "movedMain": false,
+    "movedTarget": false,
+    "firstHeading": "Live Class Details",
+    "firstHeadingTop": -1359
+  },
+  {
+    "platform": "android",
+    "detailTab": "overview",
+    "clicked": true
+  },
+  {
+    "platform": "android",
+    "detailTab": "chat",
+    "clicked": true
+  },
+  {
+    "platform": "android",
+    "detailTab": "notes",
+    "clicked": true
+  },
+  {
+    "platform": "android",
+    "detailTab": "polls",
+    "clicked": true
+  },
+  {
+    "platform": "android",
+    "joinButton": null,
+    "joinDisabled": null
+  }
+]

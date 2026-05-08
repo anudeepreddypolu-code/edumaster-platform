@@ -1,0 +1,53 @@
+{
+  "captures": [
+    {
+      "stepId": "course-overview-desktop",
+      "label": "course-overview-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T13-01-22-133Z/screenshots/course-overview-desktop-course-overview-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T13-01-22-133Z/sources/course-overview-desktop-course-overview-desktop.html",
+      "timestamp": "2026-05-07T13:01:30.558Z",
+      "notes": [
+        "Desktop shell before entering Courses."
+      ]
+    },
+    {
+      "stepId": "course-screen-desktop",
+      "label": "course-screen-desktop",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T13-01-22-133Z/screenshots/course-screen-desktop-course-screen-desktop.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T13-01-22-133Z/sources/course-screen-desktop-course-screen-desktop.html",
+      "timestamp": "2026-05-07T13:01:30.945Z",
+      "notes": [
+        "Desktop course screen."
+      ]
+    },
+    {
+      "stepId": "course-overview-mobile",
+      "label": "course-overview-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T13-01-22-133Z/screenshots/course-overview-mobile-course-overview-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T13-01-22-133Z/sources/course-overview-mobile-course-overview-mobile.html",
+      "timestamp": "2026-05-07T13:01:39.010Z",
+      "notes": [
+        "Mobile shell before entering Courses."
+      ]
+    },
+    {
+      "stepId": "course-screen-mobile",
+      "label": "course-screen-mobile",
+      "state": "ui",
+      "durationMs": 0,
+      "screenshotPath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T13-01-22-133Z/screenshots/course-screen-mobile-course-screen-mobile.png",
+      "sourcePath": "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/qa-automation/artifacts/2026-05-07T13-01-22-133Z/sources/course-screen-mobile-course-screen-mobile.html",
+      "timestamp": "2026-05-07T13:01:39.346Z",
+      "notes": [
+        "Mobile course screen."
+      ]
+    }
+  ],
+  "failures": []
+}
