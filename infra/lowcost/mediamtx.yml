@@ -1,7 +1,7 @@
 logLevel: info
 
 authMethod: http
-authHTTPAddress: http://app:5000/api/live-classes/ingest/on-publish
+authHTTPAddress: http://app:5000/backend/api/live-classes/ingest/on-publish
 authHTTPExclude:
   - action: read
   - action: playback
@@ -15,8 +15,9 @@ rtmpAddress: :1935
 hls: yes
 hlsAddress: :8888
 hlsAlwaysRemux: yes
-hlsSegmentCount: 6
-hlsSegmentDuration: 6s
+hlsVariant: mpegts
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
 
 record: yes
 recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S.mp4

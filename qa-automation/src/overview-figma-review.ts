@@ -20,12 +20,10 @@ const step: StepDefinition = {
   requiredSelectors: [
     selectors.overviewDashboard,
     selectors.overviewTopbar,
-    selectors.overviewHero,
     selectors.overviewActionQueue,
     selectors.overviewActiveCourses,
     selectors.overviewSignals,
     selectors.overviewStreak,
-    selectors.overviewRecommendation,
     selectors.overviewScoreSummary,
     selectors.overviewScoreCard,
     selectors.overviewUpcomingClasses,
@@ -33,16 +31,13 @@ const step: StepDefinition = {
   ],
   expectedTexts: [
     'Welcome back',
-    'Learning workspace',
-    'Active Courses',
+    'Courses',
     'Performance Overview',
     'Learning Activity',
     "Today's Schedule",
     'Tests',
     'Latest Result',
     'Session Status',
-    'Quick Revision',
-    'Recommended Track',
   ],
 };
 
@@ -212,7 +207,16 @@ export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; 
       {
         label: 'overview-dashboard-desktop',
         viewport: { width: 1536, height: 1024, deviceScaleFactor: 1, isMobile: false, hasTouch: false },
-        extraSelectors: [] as string[],
+        extraSelectors: [
+          selectors.overviewHero,
+          selectors.overviewRecommendation,
+        ] as string[],
+        extraTexts: [
+          'Continue learning',
+          'Active Courses',
+          'Quick Revision',
+          'Recommended Track',
+        ] as string[],
       },
       {
         label: 'overview-dashboard-mobile',
@@ -222,6 +226,12 @@ export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; 
           selectors.mobileNavCourses,
           selectors.mobileNavLive,
           selectors.mobileNavTests,
+        ] as string[],
+        extraTexts: [
+          'View all',
+          'Open Courses',
+          'View timetable',
+          'View all tests',
         ] as string[],
       },
     ] as const;
@@ -268,7 +278,7 @@ export const runOverviewReview = async (): Promise<{ captures: CaptureRecord[]; 
         }
       }
 
-      for (const text of step.expectedTexts || []) {
+      for (const text of [...(step.expectedTexts || []), ...variant.extraTexts]) {
         if (!pageText.includes(text)) {
           failures.push({
             stepId: step.id,

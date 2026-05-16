@@ -26,6 +26,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  Menu,
   Mic,
   MicOff,
   MessageSquare,
@@ -326,6 +327,13 @@ type SearchTarget =
   | { id: string; kind: 'test'; title: string; subtitle: string; tab: TabKey }
   | { id: string; kind: 'saved'; title: string; subtitle: string; tab: TabKey; courseId: string; lessonId: string };
 
+type NotificationNavigationTarget = {
+  tab: TabKey;
+  liveClassId?: string | null;
+  courseId?: string | null;
+  lessonId?: string | null;
+};
+
 type RevisionDayPlan = {
   dateLabel: string;
   title: string;
@@ -371,7 +379,60 @@ const searchKindLabels: Record<SearchTarget['kind'], string> = {
   saved: 'Saved topic',
 };
 
-const getNotificationNavigationTarget = (_notification: NotificationItem) => null;
+const readStringPayload = (payload: Record<string, unknown> | undefined, key: string) => {
+  const value = payload?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+};
+
+const getNotificationNavigationTarget = (notification: NotificationItem): NotificationNavigationTarget | null => {
+  const payload = notification.payload || {};
+  const payloadTab = readStringPayload(payload, 'tab');
+  const liveClassId = readStringPayload(payload, 'liveClassId') || notification.entityId || null;
+  const courseId = readStringPayload(payload, 'courseId') || null;
+  const lessonId = readStringPayload(payload, 'lessonId') || null;
+
+  if (payloadTab && payloadTab in shellTabMeta) {
+    return {
+      tab: payloadTab as TabKey,
+      liveClassId,
+      courseId,
+      lessonId,
+    };
+  }
+
+  const actionUrl = String(notification.actionUrl || '').trim();
+  if (actionUrl) {
+    try {
+      const parsedUrl = new URL(actionUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+      const tab = parsedUrl.searchParams.get('tab');
+      if (tab && tab in shellTabMeta) {
+        return {
+          tab: tab as TabKey,
+          liveClassId: parsedUrl.searchParams.get('liveClassId') || liveClassId,
+          courseId: parsedUrl.searchParams.get('courseId') || courseId,
+          lessonId: parsedUrl.searchParams.get('lessonId') || lessonId,
+        };
+      }
+    } catch {
+      // Fall through to type-based routing.
+    }
+  }
+
+  if (String(notification.type || '').startsWith('live-class')) {
+    return { tab: 'live', liveClassId };
+  }
+  if (courseId || String(notification.type || '').includes('course')) {
+    return { tab: 'courses', courseId, lessonId };
+  }
+  if (String(notification.type || '').includes('test')) {
+    return { tab: 'tests' };
+  }
+  if (String(notification.type || '').includes('revision')) {
+    return { tab: 'revision' };
+  }
+
+  return null;
+};
 
 const HeaderInsightCard = ({
   label,
@@ -485,6 +546,11 @@ const MobileMoreSheet = ({
   onSelect,
   onClose,
   onLogout,
+  onOpenProfile,
+  learnerName,
+  learnerEmail,
+  learnerPhone,
+  learnerInitials,
 }: {
   open: boolean;
   tabs: { id: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[];
@@ -492,6 +558,11 @@ const MobileMoreSheet = ({
   onSelect: (tab: TabKey) => void;
   onClose: () => void;
   onLogout: () => Promise<void>;
+  onOpenProfile: () => void;
+  learnerName: string;
+  learnerEmail: string;
+  learnerPhone: string;
+  learnerInitials: string;
 }) => (
   <AnimatePresence>
     {open && (
@@ -502,31 +573,33 @@ const MobileMoreSheet = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 z-40 bg-slate-950/32 backdrop-blur-[3px] lg:hidden"
-          aria-label="Close more menu"
+          className="fixed inset-0 z-40 bg-[#07111f]/62 backdrop-blur-[3px] lg:hidden"
+          aria-label="Close profile menu"
         />
         <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 18 }}
-          transition={{ duration: 0.18, ease: 'easeOut' }}
-          className="fixed inset-x-3 bottom-24 z-50 rounded-[32px] border border-white/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,250,255,0.95)_100%)] p-5 shadow-[0_28px_90px_rgba(15,23,42,0.24)] backdrop-blur lg:hidden"
+          initial={{ x: '-104%' }}
+          animate={{ x: 0 }}
+          exit={{ x: '-104%' }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          className="fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[384px] flex-col overflow-y-auto bg-[#fbfdff] text-[#17233f] shadow-[24px_0_70px_rgba(15,23,42,0.28)] lg:hidden"
         >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--ink-soft)]">More destinations</p>
-              <h2 className="mt-2 text-xl font-semibold text-[var(--ink)]">Open secondary tools without crowding the main nav</h2>
+          <div className="border-b border-[#dbe5f5] bg-[linear-gradient(180deg,#eef5ff_0%,#dfe9f7_100%)] px-5 pb-6 pt-[max(1.5rem,env(safe-area-inset-top))]">
+            <div className="grid grid-cols-[76px_minmax(0,1fr)] items-center gap-4">
+              <div className="flex h-[76px] w-[76px] shrink-0 items-center justify-center rounded-[22px] bg-[#20262c] text-[29px] font-bold text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)]">
+                {learnerInitials}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-[20px] font-bold leading-[1.15] text-[#172033]">{learnerName}</p>
+                <p className="mt-2 truncate text-[13px] leading-5 text-[#516786]">{learnerEmail}</p>
+                {learnerPhone && <p className="mt-1 truncate text-[13px] leading-5 text-[#516786]">{learnerPhone}</p>}
+                <button type="button" onClick={onOpenProfile} className="mt-2.5 text-[14px] font-bold text-[#2f6fe4]">
+                  View Profile
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--line)] bg-white text-[var(--ink-soft)] shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
-              aria-label="Close more menu"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
-          <div className="mt-5 grid gap-3">
+
+          <div className="py-3">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -534,36 +607,194 @@ const MobileMoreSheet = ({
                 data-testid={`mobile-more-${tab.id}`}
                 onClick={() => onSelect(tab.id)}
                 className={cn(
-                  'flex w-full items-start justify-between gap-4 rounded-[24px] border px-4 py-4 text-left transition',
+                  'mx-3 flex min-h-[58px] w-[calc(100%-1.5rem)] items-center gap-4 rounded-[18px] px-4 text-left text-[15px] transition',
                   activeTab === tab.id
-                    ? 'border-[var(--accent-rust)]/20 bg-[linear-gradient(180deg,#ffffff_0%,var(--accent-cream)_100%)] shadow-[0_16px_30px_rgba(22,152,212,0.10)]'
-                    : 'border-[var(--line)] bg-white',
+                    ? 'bg-[#eef4ff] font-bold text-[#1b5fe3] shadow-[0_10px_24px_rgba(45,110,229,0.10)]'
+                    : 'font-semibold text-[#29364a] hover:bg-[#f3f7fc]',
                 )}
               >
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className={cn(
-                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
-                    activeTab === tab.id ? 'bg-white text-[var(--accent-rust)] shadow-[0_10px_22px_rgba(22,152,212,0.12)]' : 'bg-[var(--accent-cream)] text-[var(--ink-soft)]',
-                  )}>
-                    <tab.icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[var(--ink)]">{tab.label}</p>
-                    <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">{shellTabMeta[tab.id].description}</p>
-                  </div>
-                </div>
-                <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-[var(--ink-soft)]" />
+                <span
+                  className={cn(
+                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px]',
+                    activeTab === tab.id ? 'bg-white text-[#1b5fe3]' : 'bg-[#f1f5fb] text-[#53647d]',
+                  )}
+                >
+                  <tab.icon className="h-[20px] w-[20px]" />
+                </span>
+                <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+                <ChevronRight className={cn('h-5 w-5 shrink-0', activeTab === tab.id ? 'text-[#1b5fe3]' : 'text-[#8c9ab0]')} />
               </button>
             ))}
           </div>
           <button
             type="button"
             onClick={() => void onLogout()}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-[22px] border border-[var(--line)] bg-[var(--accent-cream)] px-4 py-3 text-sm font-semibold text-[var(--ink)]"
+            className="mx-5 mb-6 mt-auto flex items-center gap-4 rounded-[18px] border border-[#dfe7f4] bg-white px-4 py-4 text-[15px] font-semibold text-[#29364a] shadow-[0_12px_28px_rgba(31,45,78,0.05)]"
           >
             <LogOut className="h-4 w-4" />
             Sign out
           </button>
+        </motion.div>
+      </>
+    )}
+  </AnimatePresence>
+);
+
+const MobileNotificationSheet = ({
+  open,
+  notifications,
+  onClose,
+  onOpen,
+}: {
+  open: boolean;
+  notifications: NotificationItem[];
+  onClose: () => void;
+  onOpen: (notification: NotificationItem) => void;
+}) => (
+  <AnimatePresence>
+    {open && (
+      <>
+        <motion.button
+          type="button"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+	          className="fixed inset-0 z-40 bg-[#071833]/48 backdrop-blur-[2px] lg:hidden"
+          aria-label="Close notifications"
+        />
+        <motion.div
+          initial={{ y: 24, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 24, opacity: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+	          className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+92px)] z-50 max-h-[70dvh] overflow-hidden rounded-[24px] border border-[#dbe6f6] bg-[#fbfdff] shadow-[0_28px_90px_rgba(15,34,68,0.26)] lg:hidden"
+          style={{ fontFamily: LIVE_FONT_STACK }}
+        >
+	          <div className="flex items-center justify-between border-b border-[#dfe8f6] bg-[linear-gradient(180deg,#f7fbff_0%,#eef5ff_100%)] px-5 py-4">
+            <div>
+	              <p className="text-[16px] font-bold text-[#17233f]">Notifications</p>
+	              <p className="mt-1 text-[12px] text-[#687a99]">{notifications.length ? `${notifications.length} updates` : 'No updates right now'}</p>
+	            </div>
+	            <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full border border-[#dbe6f6] bg-white text-[#53647d]" aria-label="Close notifications">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="max-h-[calc(70dvh-74px)] overflow-y-auto p-3">
+            {notifications.length > 0 ? notifications.map((notification) => (
+              <button
+                key={notification._id}
+                type="button"
+                onClick={() => onOpen(notification)}
+	                className="flex w-full items-start gap-3 rounded-[16px] border border-transparent px-3 py-3 text-left transition hover:border-[#dbe6f6] hover:bg-[#f4f8ff]"
+	              >
+	                <span className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] bg-[#eef4ff] text-[#2f6fe4]">
+	                  <BellRing className="h-4 w-4" />
+	                </span>
+	                <span className="min-w-0 flex-1">
+	                  <span className="block text-[14px] font-semibold text-[#17233f]">{notification.title}</span>
+	                  <span className="mt-1 block text-[13px] leading-5 text-[#607394]">{notification.message}</span>
+	                  {notification.actionLabel && (
+	                    <span className="mt-2 inline-flex text-[12px] font-semibold text-[#2f6fe4]">{notification.actionLabel}</span>
+	                  )}
+	                </span>
+	                <ChevronRight className="mt-2 h-5 w-5 shrink-0 text-[#8b9ab3]" />
+              </button>
+            )) : (
+	              <div className="rounded-[16px] border border-dashed border-[#d8e2f0] bg-white px-4 py-6 text-center text-[13px] text-[#64748b]">
+                You are all caught up.
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </>
+    )}
+  </AnimatePresence>
+);
+
+const ProfileEditorSheet = ({
+  open,
+  form,
+  saving,
+  error,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  form: { name: string; email: string; mobileNumber: string };
+  saving: boolean;
+  error: string | null;
+  onChange: (field: 'name' | 'email' | 'mobileNumber', value: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) => (
+  <AnimatePresence>
+    {open && (
+      <>
+        <motion.button
+          type="button"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 z-[60] bg-slate-950/45 backdrop-blur-[2px]"
+          aria-label="Close profile editor"
+        />
+        <motion.div
+          initial={{ y: 28, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 28, opacity: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="fixed inset-x-3 bottom-3 z-[70] overflow-hidden rounded-[24px] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.28)] sm:left-1/2 sm:right-auto sm:w-[430px] sm:-translate-x-1/2"
+          style={{ fontFamily: LIVE_FONT_STACK }}
+        >
+          <div className="bg-[#f4f7fc] px-5 py-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[18px] font-bold text-[#20242d]">Edit profile</p>
+                <p className="mt-1 text-[13px] leading-5 text-[#64748b]">Update the details shown in your account menu.</p>
+              </div>
+              <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#e1e8f3] bg-white text-[#53647d]" aria-label="Close profile editor">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4 px-5 py-5">
+            {[
+              ['name', 'Full name', 'Enter your name', UserCircle2],
+              ['email', 'Email', 'Enter your email', Mail],
+              ['mobileNumber', 'Mobile number', 'Enter mobile number', Phone],
+            ].map(([field, label, placeholder, Icon]) => {
+              const FieldIcon = Icon as React.ComponentType<{ className?: string }>;
+              return (
+                <label key={field as string} className="block">
+                  <span className="text-[12px] font-semibold text-[#53647d]">{label as string}</span>
+                  <span className="mt-2 flex h-12 items-center gap-3 rounded-[14px] border border-[#d9e3f2] bg-white px-4 text-[#8a98ad] focus-within:border-[#2f6fe4]">
+                    <FieldIcon className="h-5 w-5 shrink-0" />
+                    <input
+                      value={form[field as keyof typeof form]}
+                      onChange={(event) => onChange(field as 'name' | 'email' | 'mobileNumber', event.target.value)}
+                      placeholder={placeholder as string}
+                      className="min-w-0 flex-1 bg-transparent text-[16px] text-[#20242d] outline-none placeholder:text-[#9aa7bc]"
+                    />
+                  </span>
+                </label>
+              );
+            })}
+
+            {error && <p className="rounded-[12px] border border-[#fecaca] bg-[#fff1f2] px-3 py-2 text-[13px] text-[#b91c1c]">{error}</p>}
+
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="flex h-12 w-full items-center justify-center rounded-[14px] bg-[#2f6fe4] text-[15px] font-bold text-white shadow-[0_14px_24px_rgba(47,111,228,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? <LoaderCircle className="h-5 w-5 animate-spin" /> : 'Save profile'}
+            </button>
+          </div>
         </motion.div>
       </>
     )}
@@ -1227,12 +1458,7 @@ const buildLocalTestAttemptResult = (
   };
 };
 
-const AuthScreen = ({
-  publicOverview,
-}: {
-  publicOverview: PlatformOverview | null;
-}) => {
-  void publicOverview;
+const AuthScreen = () => {
   const { login, register, refreshSession } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [submitting, setSubmitting] = useState(false);
@@ -1269,13 +1495,6 @@ const AuthScreen = ({
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
-  const localAdminCredentials = {
-    email: 'admin@local.edumaster',
-    password: 'AdminChangeMe_2026',
-  };
-  const showLocalAdminHelper = import.meta.env.DEV
-    || (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname));
-
   const passwordStrength = useMemo(() => {
     const password = registerForm.password;
     if (!password) {
@@ -1321,10 +1540,10 @@ const AuthScreen = ({
     return label;
   };
 
-  const authPanelClassName = 'min-h-screen overflow-hidden bg-[linear-gradient(180deg,rgba(18,24,38,0.97),rgba(10,15,28,0.99))] shadow-[0_24px_80px_rgba(2,6,23,0.55)] backdrop-blur-xl sm:min-h-[calc(100vh-32px)] sm:rounded-[28px] sm:border sm:border-white/10';
-  const authInputClassName = 'h-[40px] w-full rounded-[8px] border border-[#2a3142] bg-[#121826] px-12 text-[14px] text-[#f8fafc] outline-none transition placeholder:text-[#94a3b8] focus:border-[#6366f1] focus:bg-[#151c2d]';
-  const socialButtonClassName = 'flex h-[46px] w-full items-center justify-center gap-3 rounded-[12px] border border-[#2a3142] bg-transparent px-4 text-[16px] font-semibold text-[#f8fafc] transition hover:border-[#46506b] hover:bg-white/[0.02]';
-  const primaryButtonClassName = 'relative flex h-[48px] w-full items-center justify-center gap-3 rounded-[12px] bg-[linear-gradient(90deg,#7c3aed_0%,#3b82f6_100%)] px-4 text-[16px] font-semibold text-white shadow-[0_18px_40px_rgba(79,70,229,0.36)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60';
+  const authPanelClassName = 'min-h-dvh overflow-hidden bg-[#f8fbff] shadow-[0_24px_70px_rgba(37,73,125,0.18)] sm:min-h-0 sm:rounded-[28px] sm:border sm:border-[#d8e5f5]';
+  const authInputClassName = 'h-[48px] w-full rounded-[14px] border border-[#d7e3f2] bg-white px-12 text-[16px] font-medium text-[#17233d] outline-none transition placeholder:text-[#8b9bb2] focus:border-[#2f6fe4] focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,111,228,0.10)] sm:h-[46px]';
+  const socialButtonClassName = 'flex h-[48px] w-full items-center justify-center gap-3 rounded-[14px] border border-[#d7e3f2] bg-white px-4 text-[15px] font-bold text-[#17233d] shadow-[0_10px_24px_rgba(37,73,125,0.06)] transition hover:border-[#b9cbe3] hover:bg-[#f7fbff]';
+  const primaryButtonClassName = 'relative flex h-[50px] w-full items-center justify-center gap-3 rounded-[14px] bg-[linear-gradient(90deg,#2f6fe4_0%,#1698d4_100%)] px-4 text-[16px] font-bold text-white shadow-[0_16px_32px_rgba(47,111,228,0.28)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60';
   const renderPhoneStatusBar = () => null;
 
   const submitLogin = async (
@@ -1384,6 +1603,7 @@ const AuthScreen = ({
       await register({
         name: registerForm.name,
         email: registerForm.email,
+        mobileNumber: registerForm.mobileNumber,
         password: registerForm.password,
       });
     } catch (err) {
@@ -1414,14 +1634,6 @@ const AuthScreen = ({
     }
   };
 
-  const fillLocalAdminLogin = () => {
-    setMode('login');
-    setError(null);
-    setSessionConflict(null);
-    setTakeoverSuccess(null);
-    setLoginForm(localAdminCredentials);
-  };
-
   const continueAfterTakeover = async () => {
     setSubmitting(true);
     setError(null);
@@ -1437,28 +1649,28 @@ const AuthScreen = ({
   const renderBrandMark = (large = false) => (
     <div className="flex flex-col items-center text-center">
       <div className={cn(
-        'relative flex items-center justify-center overflow-hidden rounded-[26px] border border-white/12 bg-[radial-gradient(circle_at_30%_30%,rgba(139,92,246,0.34),transparent_48%),linear-gradient(180deg,rgba(18,24,38,0.98),rgba(10,15,28,0.96))] shadow-[0_18px_40px_rgba(0,0,0,0.42)]',
+        'relative flex items-center justify-center overflow-hidden rounded-[24px] border border-[#d7e3f2] bg-[linear-gradient(180deg,#ffffff_0%,#eaf4ff_100%)] shadow-[0_16px_34px_rgba(47,111,228,0.14)]',
         large ? 'h-[62px] w-[62px] sm:h-[92px] sm:w-[92px]' : 'h-[88px] w-[88px]',
       )}>
         <img
           src="/favicon.svg"
           alt="VARONENGLISH"
-          className={cn('object-contain drop-shadow-[0_10px_24px_rgba(99,102,241,0.34)]', large ? 'h-[46px] w-[46px] sm:h-[66px] sm:w-[66px]' : 'h-[60px] w-[60px]')}
+          className={cn('object-contain drop-shadow-[0_10px_20px_rgba(47,111,228,0.18)]', large ? 'h-[46px] w-[46px] sm:h-[66px] sm:w-[66px]' : 'h-[60px] w-[60px]')}
           draggable="false"
         />
       </div>
-      <p className={cn('mt-1.5 font-bold tracking-[0.02em] text-white', large ? 'text-[18px] sm:text-[28px]' : 'text-[24px]')}>VARONENGLISH</p>
-      <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.24em] text-[#cbd5e1] sm:text-[11px] sm:tracking-[0.32em]">
+      <p className={cn('mt-2 font-bold tracking-[0.02em] text-[#17233d]', large ? 'text-[18px] sm:text-[28px]' : 'text-[24px]')}>VARONENGLISH</p>
+      <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.24em] text-[#657792] sm:text-[11px] sm:tracking-[0.32em]">
         FOR COMPETITIVE EXAMS
       </p>
     </div>
   );
 
   const renderAuthHeader = () => (
-    <div className="relative overflow-hidden px-6 pb-4 pt-10 sm:px-8 sm:pb-8 sm:pt-8">
-      <div className="absolute right-6 top-5 grid grid-cols-4 gap-2 opacity-90">
+    <div className="relative overflow-hidden border-b border-[#e3ecf7] bg-[linear-gradient(180deg,#ffffff_0%,#f1f7ff_100%)] px-6 pb-5 pt-9 sm:px-8 sm:pb-7 sm:pt-8">
+      <div className="absolute right-6 top-5 grid grid-cols-4 gap-2 opacity-70">
         {Array.from({ length: 12 }).map((_, index) => (
-          <span key={index} className="h-1 w-1 rounded-full bg-[#7c3aed]" />
+          <span key={index} className="h-1 w-1 rounded-full bg-[#2f6fe4]" />
         ))}
       </div>
       {mode === 'register' && (
@@ -1468,7 +1680,7 @@ const AuthScreen = ({
             setMode('login');
             setError(null);
           }}
-          className="absolute left-6 top-8 inline-flex h-8 w-8 items-center justify-center rounded-full text-white"
+          className="absolute left-6 top-8 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#d7e3f2] bg-white text-[#17233d] shadow-[0_8px_18px_rgba(47,111,228,0.08)]"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -1480,8 +1692,8 @@ const AuthScreen = ({
   const renderLoginForm = () => (
     <>
       <div>
-        <h1 className="!font-sans max-w-[300px] text-[22px] font-semibold leading-[1.2] text-white sm:max-w-none sm:text-[28px]">Welcome Back! <span className="align-middle">👋</span></h1>
-        <p className="mt-2 text-[14px] leading-5 text-[#94a3b8] sm:text-[16px]">Login to continue your exam preparation</p>
+        <h1 className="!font-sans max-w-[300px] text-[24px] font-bold leading-[1.18] text-[#17233d] sm:max-w-none sm:text-[28px]">Welcome back</h1>
+        <p className="mt-2 text-[14px] leading-6 text-[#53647d] sm:text-[15px]">Login to continue your exam preparation.</p>
       </div>
 
       <form
@@ -1492,9 +1704,9 @@ const AuthScreen = ({
         }}
       >
         <div>
-          <label className="text-[12px] font-medium text-white">Email or Mobile Number</label>
+          <label className="text-[13px] font-bold text-[#17233d]">Email or Mobile Number</label>
           <div className="relative mt-2">
-            <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
             <input
               data-testid="auth-login-email"
               type="text"
@@ -1509,11 +1721,11 @@ const AuthScreen = ({
 
         <div>
           <div className="flex items-center justify-between gap-3">
-            <label className="text-[12px] font-medium text-white">Password</label>
-            <button type="button" className="text-[12px] font-medium text-[#7c63ff]">Forgot Password?</button>
+            <label className="text-[13px] font-bold text-[#17233d]">Password</label>
+            <button type="button" className="text-[12px] font-bold text-[#2f6fe4]">Forgot Password?</button>
           </div>
           <div className="relative mt-2">
-            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
             <input
               data-testid="auth-login-password"
               type={showLoginPassword ? 'text' : 'password'}
@@ -1527,14 +1739,14 @@ const AuthScreen = ({
               type="button"
               aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowLoginPassword((current) => !current)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7b8da6]"
             >
               {showLoginPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
         </div>
 
-        <label className="flex items-center gap-3 text-[12px] text-[#e2e8f0]">
+        <label className="flex items-center gap-3 text-[13px] font-medium text-[#53647d]">
           <button
             type="button"
             aria-pressed={rememberMe}
@@ -1542,7 +1754,7 @@ const AuthScreen = ({
             onClick={() => setRememberMe((current) => !current)}
             className={cn(
               'flex h-5 w-5 items-center justify-center rounded-[6px] border transition',
-              rememberMe ? 'border-[#6366f1] bg-[#6366f1] text-white' : 'border-[#3a4358] bg-transparent text-transparent',
+              rememberMe ? 'border-[#2f6fe4] bg-[#2f6fe4] text-white' : 'border-[#c8d6ea] bg-white text-transparent',
             )}
           >
             <Check className="h-3.5 w-3.5" />
@@ -1561,10 +1773,10 @@ const AuthScreen = ({
         </button>
       </form>
 
-      <div className="my-3 flex items-center gap-4 text-[#64748b]">
-        <div className="h-px flex-1 bg-[#273043]" />
-        <span className="text-[15px]">OR</span>
-        <div className="h-px flex-1 bg-[#273043]" />
+      <div className="my-4 flex items-center gap-4 text-[#7b8da6]">
+        <div className="h-px flex-1 bg-[#dbe6f3]" />
+        <span className="text-[13px] font-bold">OR</span>
+        <div className="h-px flex-1 bg-[#dbe6f3]" />
       </div>
 
       <div className="space-y-2.5">
@@ -1573,12 +1785,12 @@ const AuthScreen = ({
           Continue with Google
         </button>
         <button type="button" className={socialButtonClassName}>
-          <span className="text-[24px] leading-none text-white"></span>
+          <span className="text-[24px] leading-none text-[#111827]"></span>
           Continue with Apple
         </button>
       </div>
 
-      <p className="mt-3 text-center text-[13px] text-[#94a3b8]">
+      <p className="mt-4 text-center text-[13px] font-medium text-[#657792]">
         Don&apos;t have an account?{' '}
         <button
           type="button"
@@ -1586,7 +1798,7 @@ const AuthScreen = ({
             setMode('register');
             setError(null);
           }}
-          className="font-semibold text-[#7c63ff]"
+          className="font-bold text-[#2f6fe4]"
         >
           Sign Up
         </button>
@@ -1597,8 +1809,8 @@ const AuthScreen = ({
   const renderRegisterForm = () => (
     <>
       <div>
-        <h1 className="!font-sans max-w-[300px] text-[22px] font-semibold leading-[1.2] text-white sm:max-w-none sm:text-[28px]">Create Your Account <span className="align-middle">🚀</span></h1>
-        <p className="mt-1.5 text-[14px] leading-5 text-[#94a3b8] sm:text-[16px]">Join VaronEnglish and start your preparation</p>
+        <h1 className="!font-sans max-w-[300px] text-[24px] font-bold leading-[1.18] text-[#17233d] sm:max-w-none sm:text-[28px]">Create your account</h1>
+        <p className="mt-2 text-[14px] leading-6 text-[#53647d] sm:text-[15px]">Join VaronEnglish and start your preparation.</p>
       </div>
 
       <form
@@ -1609,9 +1821,9 @@ const AuthScreen = ({
         }}
       >
         <div>
-          <label className="text-[12px] font-medium text-white">Full Name</label>
+          <label className="text-[13px] font-bold text-[#17233d]">Full Name</label>
           <div className="relative mt-2">
-            <UserCircle2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <UserCircle2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
             <input
               data-testid="auth-register-name"
               type="text"
@@ -1625,9 +1837,9 @@ const AuthScreen = ({
         </div>
 
         <div>
-          <label className="text-[12px] font-medium text-white">Email Address</label>
+          <label className="text-[13px] font-bold text-[#17233d]">Email Address</label>
           <div className="relative mt-2">
-            <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
             <input
               data-testid="auth-register-email"
               type="email"
@@ -1641,9 +1853,9 @@ const AuthScreen = ({
         </div>
 
         <div>
-          <label className="text-[12px] font-medium text-white">Mobile Number (Optional)</label>
+          <label className="text-[13px] font-bold text-[#17233d]">Mobile Number (Optional)</label>
           <div className="relative mt-2">
-            <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
             <input
               type="tel"
               value={registerForm.mobileNumber}
@@ -1656,9 +1868,9 @@ const AuthScreen = ({
         </div>
 
         <div>
-          <label className="text-[12px] font-medium text-white">Password</label>
+          <label className="text-[13px] font-bold text-[#17233d]">Password</label>
           <div className="relative mt-2">
-            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
             <input
               data-testid="auth-register-password"
               type={showRegisterPassword ? 'text' : 'password'}
@@ -1672,20 +1884,20 @@ const AuthScreen = ({
               type="button"
               aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowRegisterPassword((current) => !current)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7b8da6]"
             >
               {showRegisterPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
-          <div className="mt-1.5 flex items-center gap-3 text-[10px]">
-            <span className="text-[#ef4444]">Weak</span>
+          <div className="mt-2 flex items-center gap-3 text-[11px]">
+            <span className="font-medium text-[#657792]">Strength</span>
             <div className="flex flex-1 gap-2">
               {Array.from({ length: 4 }).map((_, index) => (
                 <span
                   key={index}
                   className={cn(
                     'h-[2px] flex-1 rounded-full',
-                    index < passwordStrength.active ? 'bg-current' : 'bg-[#2a3142]',
+                    index < passwordStrength.active ? 'bg-current' : 'bg-[#dbe6f3]',
                     passwordStrength.tone,
                   )}
                 />
@@ -1696,9 +1908,9 @@ const AuthScreen = ({
         </div>
 
         <div>
-          <label className="text-[12px] font-medium text-white">Confirm Password</label>
+          <label className="text-[13px] font-bold text-[#17233d]">Confirm Password</label>
           <div className="relative mt-2">
-            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8aa6]" />
+            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
             <input
               data-testid="auth-register-confirm-password"
               type={showRegisterConfirmPassword ? 'text' : 'password'}
@@ -1712,14 +1924,14 @@ const AuthScreen = ({
               type="button"
               aria-label={showRegisterConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
               onClick={() => setShowRegisterConfirmPassword((current) => !current)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8b97b0]"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7b8da6]"
             >
               {showRegisterConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
         </div>
 
-        <label className="flex items-start gap-3 text-[11px] leading-4 text-[#cbd5e1]">
+        <label className="flex items-start gap-3 text-[12px] leading-5 text-[#53647d]">
           <button
             type="button"
             aria-pressed={registerForm.agreeToTerms}
@@ -1727,13 +1939,13 @@ const AuthScreen = ({
             onClick={() => setRegisterForm((current) => ({ ...current, agreeToTerms: !current.agreeToTerms }))}
             className={cn(
               'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border transition',
-              registerForm.agreeToTerms ? 'border-[#6366f1] bg-[#6366f1] text-white' : 'border-[#3a4358] bg-transparent text-transparent',
+              registerForm.agreeToTerms ? 'border-[#2f6fe4] bg-[#2f6fe4] text-white' : 'border-[#c8d6ea] bg-white text-transparent',
             )}
           >
             <Check className="h-3.5 w-3.5" />
           </button>
           <span>
-            I agree to the <button type="button" className="text-[#7c63ff]">Terms &amp; Conditions</button> and <button type="button" className="text-[#7c63ff]">Privacy Policy</button>
+            I agree to the <button type="button" className="font-bold text-[#2f6fe4]">Terms &amp; Conditions</button> and <button type="button" className="font-bold text-[#2f6fe4]">Privacy Policy</button>
           </span>
         </label>
 
@@ -1748,7 +1960,7 @@ const AuthScreen = ({
         </button>
       </form>
 
-      <p className="mt-2.5 text-center text-[13px] text-[#94a3b8]">
+      <p className="mt-4 text-center text-[13px] font-medium text-[#657792]">
         Already have an account?{' '}
         <button
           type="button"
@@ -1756,7 +1968,7 @@ const AuthScreen = ({
             setMode('login');
             setError(null);
           }}
-          className="font-semibold text-[#7c63ff]"
+          className="font-bold text-[#2f6fe4]"
         >
           Login
         </button>
@@ -1765,63 +1977,34 @@ const AuthScreen = ({
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#0b0f19] text-white" style={{ fontFamily: LIVE_FONT_STACK }}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.28),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_24%),linear-gradient(180deg,#0b0f19_0%,#0c1220_100%)]" />
-      <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] [background-size:64px_64px]" />
+    <div className="relative min-h-dvh overflow-x-hidden overflow-y-auto bg-[#d3daec] text-[#17233d]" style={{ fontFamily: LIVE_FONT_STACK }}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_8%,rgba(255,255,255,0.72),transparent_24%),radial-gradient(circle_at_85%_14%,rgba(47,111,228,0.13),transparent_22%),linear-gradient(180deg,#d3daec_0%,#edf4ff_58%,#d3daec_100%)]" />
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-0 py-0 sm:px-4 sm:py-6 lg:px-8">
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-7xl items-center justify-center px-0 py-0 sm:px-4 sm:py-6 lg:px-8">
         <div className="grid w-full max-w-[1260px] gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
           <section className="hidden lg:block">
-            <div className="rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(11,15,25,0.92),rgba(15,23,42,0.92))] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.5)]">
+            <div className="rounded-[28px] border border-[#d8e5f5] bg-white/88 p-8 shadow-[0_24px_70px_rgba(37,73,125,0.16)] backdrop-blur">
               <div className="flex items-center gap-5">
-                <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-white/[0.04]">
+                <div className="flex h-20 w-20 items-center justify-center rounded-[22px] border border-[#d7e3f2] bg-[#eef6ff]">
                   <img src="/favicon.svg" alt="VARONENGLISH" className="h-14 w-14 object-contain" />
                 </div>
                 <div>
-                  <p className="font-serif text-[34px] font-black tracking-[0.04em] text-white">VARONENGLISH</p>
-                  <p className="mt-1 text-[14px] font-semibold uppercase tracking-[0.28em] text-[#cbd5e1]">FOR COMPETITIVE EXAMS</p>
+                  <p className="font-serif text-[34px] font-black tracking-[0.04em] text-[#17233d]">VARONENGLISH</p>
+                  <p className="mt-1 text-[14px] font-semibold uppercase tracking-[0.28em] text-[#657792]">FOR COMPETITIVE EXAMS</p>
                 </div>
               </div>
 
-              <div className="mt-10 grid grid-cols-2 gap-6 text-sm text-[#cbd5e1]">
-                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7c63ff]">Colors</p>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    {['#6366F1', '#8B5CF6', '#38BDF8', '#1E293B', '#0F172A', '#22C55E', '#EF4444'].map((swatch) => (
-                      <span key={swatch} className="space-y-2">
-                        <span className="block h-11 w-20 rounded-[12px] border border-white/10" style={{ backgroundColor: swatch }} />
-                        <span className="block text-[11px] text-[#94a3b8]">{swatch}</span>
-                      </span>
-                    ))}
+              <div className="mt-10 grid gap-4 text-sm text-[#53647d]">
+                {[
+                  ['Structured courses', 'Continue lessons, notes, and CBT practice from one clean workspace.'],
+                  ['Mock test focus', 'Attempt practice papers with exam-style instructions and review.'],
+                  ['Live class ready', 'Join active sessions and keep replay material close to courses.'],
+                ].map(([title, body]) => (
+                  <div key={title} className="rounded-[18px] border border-[#dbe6f3] bg-[#f8fbff] p-5">
+                    <p className="text-[15px] font-bold text-[#17233d]">{title}</p>
+                    <p className="mt-2 leading-6 text-[#53647d]">{body}</p>
                   </div>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7c63ff]">Typography</p>
-                  <div className="mt-4 space-y-3 text-[#f8fafc]">
-                    <p className="text-[32px] font-bold leading-none">Aa</p>
-                    <div className="space-y-2 text-[13px]">
-                      <p>H1 / 32px / 700</p>
-                      <p>H2 / 24px / 600</p>
-                      <p>Body / 14px / 400</p>
-                      <p>Button / 16px / 600</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7c63ff]">Spacing</p>
-                  <div className="mt-4 flex flex-wrap gap-2 text-[12px] text-[#cbd5e1]">
-                    {[4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80].map((value) => (
-                      <span key={value} className="rounded-[10px] border border-white/10 px-3 py-2">{value}</span>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7c63ff]">Components</p>
-                  <div className="mt-4 space-y-4">
-                    <button type="button" className="flex h-12 w-full items-center justify-center rounded-[14px] bg-[linear-gradient(90deg,#7c3aed_0%,#3b82f6_100%)] text-[16px] font-semibold text-white">Primary Button</button>
-                    <button type="button" className="flex h-12 w-full items-center justify-center rounded-[14px] border border-white/14 text-[16px] font-medium text-white">Outline Button</button>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </section>
@@ -1833,17 +2016,17 @@ const AuthScreen = ({
               className={authPanelClassName}
             >
               {renderAuthHeader()}
-              <div className="border-t border-white/8 px-6 pb-5 pt-4 sm:px-8 sm:pb-8 sm:pt-7">
+              <div className="px-6 pb-6 pt-5 sm:px-8 sm:pb-8 sm:pt-7">
                 {mode === 'login' ? renderLoginForm() : renderRegisterForm()}
 
                 {error && (
-                  <div className="mt-5 rounded-[14px] border border-[#7f1d1d] bg-[rgba(127,29,29,0.22)] px-4 py-3 text-[14px] text-[#fecaca]">
+                  <div className="mt-5 rounded-[14px] border border-[#fecaca] bg-[#fff1f2] px-4 py-3 text-[14px] font-medium text-[#b42318]">
                     {error}
                   </div>
                 )}
 
-                <div className="mt-6 hidden rounded-[18px] border border-white/8 bg-white/[0.03] p-4 text-[13px] text-[#94a3b8] lg:block">
-                  <p className="font-semibold uppercase tracking-[0.2em] text-[#7c63ff]">Session behavior</p>
+                <div className="mt-6 hidden rounded-[18px] border border-[#dbe6f3] bg-[#f8fbff] p-4 text-[13px] text-[#53647d] lg:block">
+                  <p className="font-bold uppercase tracking-[0.2em] text-[#2f6fe4]">Session behavior</p>
                   <div className="mt-3 space-y-2.5">
                     <div className="flex items-start gap-3">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#22c55e]" />
@@ -1856,23 +2039,6 @@ const AuthScreen = ({
                   </div>
                 </div>
 
-                {showLocalAdminHelper && (
-                  <div className="mt-4 hidden rounded-[18px] border border-[#3b4660] bg-[#111827] p-4 text-[13px] text-[#9fb0ca] lg:block">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-white">Local admin access</p>
-                        <p className="mt-1 truncate">admin@local.edumaster / AdminChangeMe_2026</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={fillLocalAdminLogin}
-                        className="shrink-0 rounded-[12px] border border-[#3b4660] px-3 py-2 font-semibold text-[#7c63ff]"
-                      >
-                        Use admin login
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             </motion.div>
           </section>
@@ -2079,10 +2245,15 @@ const Shell = ({
   savedTopics: SavedTopic[];
   onToggleSavedTopic: (courseId: string, lessonId: string) => void;
 }) => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, updateProfile } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
+  const [isNotificationSheetOpen, setIsNotificationSheetOpen] = useState(false);
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: '', email: '', mobileNumber: '' });
   const [liveMobileMode, setLiveMobileMode] = useState<'list' | 'detail' | 'room'>('list');
   const [isImmersiveCoursePlayer, setIsImmersiveCoursePlayer] = useState(false);
   const [isImmersiveTestsFlow, setIsImmersiveTestsFlow] = useState(false);
@@ -2123,7 +2294,6 @@ const Shell = ({
   const hideMobileShellNav = isLiveWorkspace && liveMobileMode !== 'list';
   const shouldLockViewport = isOverviewWorkspace || isImmersiveWorkspace;
   const continueCourse = overview.dashboard.continueLearning[0] || null;
-  const isSecondaryMobileTabActive = utilityTabs.some((tab) => tab.id === activeTab);
   const mobileNavLabels: Record<TabKey, string> = {
     overview: 'Home',
     courses: 'Courses',
@@ -2134,6 +2304,25 @@ const Shell = ({
     admin: 'Admin',
   };
   const showShellHeader = false;
+  const rawLearnerName = user?.name?.trim() || overview.user?.name?.trim() || 'Learner';
+  const learnerName = rawLearnerName.includes('@') ? rawLearnerName.split('@')[0] : rawLearnerName;
+  const learnerLevel = isAdmin ? 'Admin' : (overview.dashboard.streak > 0 ? `${overview.dashboard.streak} day streak` : 'Aspirant');
+  const enrolledCourseCount = overview.courses.filter((course) => course.enrolled).length;
+  const sidebarStats = [
+    { label: 'Courses', value: enrolledCourseCount || overview.courses.length },
+    { label: 'Tests', value: overview.testSeries.length },
+  ];
+  const continueTitle = continueCourse?.continueLesson?.title || continueCourse?.title || 'Open your next study task.';
+  const learnerEmail = user?.email || overview.user?.email || 'student@varonenglish.com';
+  const learnerPhone = user?.mobileNumber || overview.user?.mobileNumber || '';
+
+  useEffect(() => {
+    setProfileForm({
+      name: rawLearnerName,
+      email: learnerEmail,
+      mobileNumber: learnerPhone,
+    });
+  }, [learnerEmail, rawLearnerName, learnerPhone]);
 
   useEffect(() => {
     const handleWindowClick = (event: MouseEvent) => {
@@ -2202,6 +2391,18 @@ const Shell = ({
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const liveClassId = params.get('liveClassId');
+    if (params.get('tab') === 'live' && liveClassId) {
+      setPendingLiveClassId(liveClassId);
+    }
+  }, []);
+
   const handleSearchTargetSelect = (target: SearchTarget) => {
     setSearchQuery('');
     setIsSearchOpen(false);
@@ -2220,6 +2421,59 @@ const Shell = ({
     setActiveTab(tab);
     setIsSearchOpen(false);
     setIsMobileMoreOpen(false);
+    setIsNotificationSheetOpen(false);
+  };
+
+  const openNotifications = () => {
+    setIsSearchOpen(false);
+    setIsMobileMoreOpen(false);
+    setIsNotificationSheetOpen(true);
+  };
+
+  const handleNotificationOpen = (notification: NotificationItem) => {
+    setIsNotificationSheetOpen(false);
+    const target = getNotificationNavigationTarget(notification);
+    if (target) {
+      setIsSearchOpen(false);
+      setIsMobileMoreOpen(false);
+      setActiveTab(target.tab);
+
+      if (target.tab === 'live' && target.liveClassId) {
+        setPendingLiveClassId(target.liveClassId);
+      }
+
+      if (target.tab === 'courses' && target.courseId) {
+        onContinueLearningNavigate(target.courseId, target.lessonId || null);
+      }
+
+      return;
+    }
+
+    onOpenNotification(notification);
+  };
+
+  const openProfileEditor = () => {
+    setIsMobileMoreOpen(false);
+    setProfileError(null);
+    setIsProfileEditorOpen(true);
+  };
+
+  const saveProfile = async () => {
+    setProfileSaving(true);
+    setProfileError(null);
+    try {
+      await updateProfile({
+        name: profileForm.name,
+        email: profileForm.email,
+        mobileNumber: profileForm.mobileNumber,
+      });
+      await onRefresh();
+      setIsProfileEditorOpen(false);
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Unable to update profile');
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const renderActiveTab = () => {
@@ -2235,7 +2489,7 @@ const Shell = ({
           onOpenTestsTab={() => setActiveTab('tests')}
           onOpenRevisionTab={() => setActiveTab('revision')}
           onOpenCoursesTab={() => setActiveTab('courses')}
-          onOpenNotification={onOpenNotification}
+          onOpenNotification={handleNotificationOpen}
         />
       );
     }
@@ -2313,45 +2567,91 @@ const Shell = ({
       <div className="flex min-h-dvh">
         {!isImmersiveWorkspace && (
           <aside
-            className={cn(
-              'hidden shrink-0 overflow-y-auto px-4 py-5 shadow-[0_20px_64px_rgba(15,23,42,0.12)] lg:flex lg:flex-col',
-              'w-[280px] border-r border-white/8 bg-[linear-gradient(180deg,#14233f_0%,#172944_100%)] text-white shadow-[0_20px_64px_rgba(15,23,42,0.24)]',
-            )}
+	            className={cn(
+	              'hidden shrink-0 overflow-y-auto px-4 py-5 lg:flex lg:flex-col',
+	              'w-[284px] border-r border-[#dfe8f6] bg-[linear-gradient(180deg,#fbfdff_0%,#f3f8ff_54%,#eef5ff_100%)] text-[#1f2d4e]',
+	            )}
             style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}
           >
             <div>
-              <div className="px-2">
-                <BrandLogo tone="dark" size="sm" />
-                <p className="mt-[4px] text-[11px] leading-none text-white/58">Competitive exam platform</p>
+              <div className="flex items-center justify-between gap-3 px-2">
+                <div className="min-w-0">
+                  <BrandLogo tone="light" size="sm" />
+                  <p className="mt-[4px] text-[11px] leading-none text-[#7b8cab]">Competitive exam platform</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openNotifications}
+                  className="relative flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[14px] border border-[#dbe5f4] bg-white text-[#53647d] shadow-[0_10px_24px_rgba(31,45,78,0.06)] transition hover:border-[#bdd4f7] hover:text-[#1b5fe3]"
+                  aria-label="Open notifications"
+                >
+                  <BellRing className="h-[18px] w-[18px]" />
+                  {overview.notifications.length > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#2f6fe4] px-1 text-[9px] font-bold text-white">
+                      {overview.notifications.length}
+                    </span>
+                  )}
+                </button>
               </div>
 
-              <div className="mt-6 rounded-[20px] border border-white/8 bg-white/[0.06] px-[14px] py-[16px]">
-                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/38">Current learner</p>
+              <div className="relative mt-5">
+                <div className="flex h-[44px] items-center gap-3 rounded-[16px] border border-[#dfe8f5] bg-white px-3.5 text-[#7b8cab] shadow-[0_10px_24px_rgba(31,45,78,0.05)]">
+                  <Search className="h-[17px] w-[17px] shrink-0 text-[#6f82a5]" />
+                  <input
+                    value={searchQuery}
+                    onFocus={() => setIsSearchOpen(true)}
+                    onChange={(event) => {
+                      setSearchQuery(event.target.value);
+                      setIsSearchOpen(true);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        setIsSearchOpen(false);
+                      }
+
+                      if (event.key === 'Enter' && filteredTargets[0]) {
+                        event.preventDefault();
+                        handleSearchTargetSelect(filteredTargets[0]);
+                      }
+                    }}
+                    placeholder="Search lessons, tests..."
+                    className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-[#20335c] outline-none placeholder:text-[#8b9ab3]"
+                  />
+                </div>
+                <SearchPanel
+                  open={isSearchOpen}
+                  query={searchQuery}
+                  results={filteredTargets}
+                  onSelect={handleSearchTargetSelect}
+                  onClose={() => setIsSearchOpen(false)}
+                />
+              </div>
+
+              <div className="mt-5 rounded-[20px] border border-[#e3ebf7] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-[14px] py-[16px] shadow-[0_16px_34px_rgba(31,45,78,0.06)]">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#8b9ab3]">Current learner</p>
                 <div className="mt-[14px] flex items-center gap-[12px]">
-                  <div className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white/[0.12]">
-                    <UserCircle2 className="h-6 w-6" />
+                  <div className="flex h-[42px] w-[42px] items-center justify-center rounded-[15px] bg-white text-[#2563eb] shadow-[0_10px_22px_rgba(37,99,235,0.08)]">
+                    <span className="text-[13px] font-semibold">{buildInitials(learnerName)}</span>
                   </div>
-                  <div>
-                    <p className="text-[13px] font-semibold text-white">Abuw Singh</p>
-                    <p className="text-[12px] text-white/58">Beginner</p>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold text-[#20335c]">{learnerName}</p>
+                    <p className="text-[12px] text-[#7b8cab]">{learnerLevel}</p>
                   </div>
                 </div>
 
                 <div className="mt-[16px] grid grid-cols-2 gap-[10px] text-[11px]">
-                  <div className="rounded-[14px] bg-white/[0.07] px-[12px] py-[10px]">
-                    <p className="text-white/42">Recent</p>
-                    <p className="mt-[6px] text-[16px] font-semibold text-white">9</p>
-                  </div>
-                  <div className="rounded-[14px] bg-white/[0.07] px-[12px] py-[10px]">
-                    <p className="text-white/42">Snapshots</p>
-                    <p className="mt-[6px] text-[16px] font-semibold text-white">265</p>
-                  </div>
+                  {sidebarStats.map((stat) => (
+                    <div key={stat.label} className="rounded-[15px] border border-[#e7eef9] bg-white px-[12px] py-[10px] shadow-[0_8px_18px_rgba(31,45,78,0.04)]">
+                      <p className="text-[#7b8cab]">{stat.label}</p>
+                      <p className="mt-[6px] text-[16px] font-semibold text-[#20335c]">{stat.value}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
             <div className="mt-[18px]">
-              <nav className="space-y-[4px]">
+              <nav className="space-y-[5px]">
                 {overviewSidebarTabs.map((tab) => (
                   <button
                     key={tab.id}
@@ -2365,24 +2665,31 @@ const Shell = ({
                     }}
                     data-testid={`nav-${tab.id}`}
                     className={cn(
-                      'flex w-full items-center gap-[11px] rounded-[18px] px-[14px] py-[12px] text-left text-[13px] font-medium transition',
+                      'flex w-full items-center gap-[11px] rounded-[16px] px-[11px] py-[10px] text-left text-[13px] font-semibold transition',
                       activeTab === tab.id
-                        ? 'bg-white text-[#1f2d4e] shadow-[0_12px_24px_rgba(255,255,255,0.12)]'
-                        : 'text-white/78 hover:bg-white/8 hover:text-white',
+                        ? 'bg-[#eef4ff] text-[#1b5fe3] shadow-[0_10px_22px_rgba(37,99,235,0.10)]'
+                        : 'text-[#53647d] hover:bg-[#f3f7fc] hover:text-[#20335c]',
                     )}
                   >
-                    <tab.icon className="h-4 w-4" />
-                    {tab.label}
+                    <span
+                      className={cn(
+                        'flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[13px]',
+                        activeTab === tab.id ? 'bg-white text-[#1b5fe3]' : 'bg-[#f1f5fb] text-[#6f82a5]',
+                      )}
+                    >
+                      <tab.icon className="h-[17px] w-[17px]" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{tab.label}</span>
                   </button>
                 ))}
               </nav>
             </div>
 
             <div className="mt-auto space-y-[12px]">
-              <div className="rounded-[20px] border border-white/8 bg-white/[0.06] px-[14px] py-[16px]">
-                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/42">Next Best Move</p>
-                <p className="mt-[12px] text-[13px] leading-[1.6] text-white/78">
-                  Resume Circuits &amp; Network Reduction Essentials before opening something new.
+              <div className="rounded-[20px] border border-[#e3ebf7] bg-white px-[14px] py-[16px] shadow-[0_14px_30px_rgba(31,45,78,0.05)]">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#8b9ab3]">Next best move</p>
+                <p className="mt-[12px] overflow-hidden text-[13px] leading-[1.6] text-[#53647d] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
+                  {continueTitle}
                 </p>
                 <button
                   type="button"
@@ -2395,17 +2702,17 @@ const Shell = ({
 
                     handleTabChange('revision');
                   }}
-                  className="mt-[14px] inline-flex h-[34px] items-center rounded-[12px] bg-white/[0.12] px-[14px] text-[12px] font-semibold text-white transition hover:bg-white/[0.18]"
+                  className="mt-[14px] inline-flex h-[36px] items-center rounded-[12px] bg-[#1b5fe3] px-[15px] text-[12px] font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)] transition hover:bg-[#164fc2]"
                 >
                   Resume now
                 </button>
               </div>
 
-              <div className="rounded-[18px] border border-white/8 bg-white/[0.06] p-[8px]">
+              <div className="rounded-[18px] border border-[#e3ebf7] bg-white p-[8px] shadow-[0_10px_22px_rgba(31,45,78,0.04)]">
                 <button
                   type="button"
                   onClick={onLogout}
-                  className="flex w-full items-center gap-[10px] rounded-[14px] px-[12px] py-[11px] text-[13px] text-white/78 transition hover:bg-white/8 hover:text-white"
+                  className="flex w-full items-center gap-[10px] rounded-[13px] px-[12px] py-[11px] text-[13px] font-semibold text-[#53647d] transition hover:bg-[#f3f7fc] hover:text-[#20335c]"
                 >
                   <LogOut className="h-4 w-4" />
                   Sign out
@@ -2416,6 +2723,78 @@ const Shell = ({
         )}
 
         <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden" data-testid="shell-ready">
+          {!isImmersiveWorkspace && !hideMobileShellNav && (
+	            <div
+	              className="sticky top-0 z-30 border-b border-[#1f3766] bg-[linear-gradient(180deg,#17233f_0%,#15294f_100%)] px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))] lg:hidden"
+              style={{ fontFamily: LIVE_FONT_STACK }}
+            >
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMoreOpen(true);
+                    setIsSearchOpen(false);
+                  }}
+	                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/24 bg-white/16 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]"
+                  aria-label="Open profile menu"
+                >
+                  <Menu className="h-7 w-7" />
+                </button>
+
+                <div ref={searchContainerRef} className="relative min-w-0 flex-1">
+	                  <div className="flex h-14 items-center gap-3 rounded-[14px] bg-[#24365f] px-4 text-[#afbdd5] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+                    <Search className="h-6 w-6 shrink-0" />
+                    <input
+                      data-testid="mobile-global-search-input"
+                      value={searchQuery}
+                      onFocus={() => {
+                        setIsSearchOpen(true);
+                        setIsMobileMoreOpen(false);
+                      }}
+                      onChange={(event) => {
+                        setSearchQuery(event.target.value);
+                        setIsSearchOpen(true);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          setIsSearchOpen(false);
+                        }
+
+                        if (event.key === 'Enter' && filteredTargets[0]) {
+                          event.preventDefault();
+                          handleSearchTargetSelect(filteredTargets[0]);
+                        }
+                      }}
+                      placeholder="Search exams, tests and more"
+	                      className="min-w-0 flex-1 bg-transparent text-[16px] text-white outline-none placeholder:text-[#afbdd5]"
+                    />
+                  </div>
+                  <SearchPanel
+                    open={isSearchOpen}
+                    query={searchQuery}
+                    results={filteredTargets}
+                    onSelect={handleSearchTargetSelect}
+                    onClose={() => setIsSearchOpen(false)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={openNotifications}
+	                  className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/24 bg-white/16 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]"
+                  aria-label="Open notifications"
+                >
+                  <BellRing className="h-7 w-7" />
+                  {overview.notifications.length > 0 && (
+	                    <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#35d07f] px-1 text-[9px] font-bold text-[#092214]">
+                      {overview.notifications.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           {isLiveWorkspace && !isImmersiveWorkspace && (
             <div className="hidden border-b border-[#edf2fb] bg-white px-4 py-5 lg:block lg:px-8">
               <div className="mx-auto flex w-full max-w-[1460px] items-center justify-between gap-4">
@@ -2444,11 +2823,11 @@ const Shell = ({
                 <div className="flex items-center gap-4">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (overview.notifications[0]) {
-                        onOpenNotification(overview.notifications[0]);
-                      }
-                    }}
+	                  onClick={() => {
+	                    if (overview.notifications[0]) {
+	                      handleNotificationOpen(overview.notifications[0]);
+	                    }
+	                  }}
                     className="relative flex h-11 w-11 items-center justify-center rounded-full text-[#20335c]"
                   >
                     <BellRing className="h-5 w-5" />
@@ -2581,27 +2960,47 @@ const Shell = ({
                 onSelect={handleTabChange}
                 onClose={() => setIsMobileMoreOpen(false)}
                 onLogout={onLogout}
+                onOpenProfile={openProfileEditor}
+                learnerName={learnerName}
+                learnerEmail={learnerEmail}
+                learnerPhone={learnerPhone}
+                learnerInitials={buildInitials(learnerName)}
+              />
+              <MobileNotificationSheet
+                open={isNotificationSheetOpen}
+                notifications={overview.notifications}
+                onClose={() => setIsNotificationSheetOpen(false)}
+                onOpen={handleNotificationOpen}
+              />
+              <ProfileEditorSheet
+                open={isProfileEditorOpen}
+                form={profileForm}
+                saving={profileSaving}
+                error={profileError}
+                onChange={(field, value) => setProfileForm((current) => ({ ...current, [field]: value }))}
+                onClose={() => setIsProfileEditorOpen(false)}
+                onSave={() => void saveProfile()}
               />
 
               <div
-                className="pointer-events-none fixed inset-x-0 bottom-0 z-30 border-t border-[#dde6f4] bg-white/98 px-3 pt-2 shadow-[0_-12px_34px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.45rem)' }}
+                className="pointer-events-none fixed inset-x-0 bottom-0 z-30 border-t border-[#e5ebf4] bg-white px-5 pt-2 shadow-[0_-12px_34px_rgba(15,23,42,0.08)] lg:hidden"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)', fontFamily: LIVE_FONT_STACK }}
               >
-                <div className="pointer-events-auto grid grid-cols-5 gap-1">
+                <div className="pointer-events-auto grid grid-cols-4 items-center gap-2">
                   {primaryNavTabs.map((tab) => (
                     <button
                       key={tab.id}
                       onClick={() => handleTabChange(tab.id)}
                       data-testid={`mobile-nav-${tab.id}`}
                       className={cn(
-                        'flex flex-col items-center gap-[6px] rounded-[16px] px-2 py-[8px] text-[11px] font-medium transition',
-                        activeTab === tab.id ? 'text-[#1b5fe3]' : 'text-[#65789b]',
+                        'flex min-h-[68px] flex-col items-center justify-center gap-[4px] rounded-[30px] px-2 py-[8px] text-[13px] font-semibold transition',
+                        activeTab === tab.id ? 'bg-[#eeeeef] text-[#2f6fe4]' : 'text-[#20242d]',
                       )}
                     >
                       <div
                         className={cn(
                           'flex h-[30px] w-[30px] items-center justify-center rounded-[10px]',
-                          activeTab === tab.id ? 'bg-[#eef4ff]' : 'bg-transparent',
+                          activeTab === tab.id ? 'text-[#2f6fe4]' : 'text-[#8c94a3]',
                         )}
                       >
                         <tab.icon className="h-[19px] w-[19px]" />
@@ -2609,28 +3008,6 @@ const Shell = ({
                       {mobileNavLabels[tab.id]}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    data-testid="mobile-nav-more"
-                    onClick={() => {
-                      setIsMobileMoreOpen(true);
-                      setIsSearchOpen(false);
-                    }}
-                    className={cn(
-                      'flex flex-col items-center gap-[6px] rounded-[16px] px-2 py-[8px] text-[11px] font-medium transition',
-                      isSecondaryMobileTabActive || isMobileMoreOpen ? 'text-[#1b5fe3]' : 'text-[#65789b]',
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'flex h-[30px] w-[30px] items-center justify-center rounded-[10px]',
-                        isSecondaryMobileTabActive || isMobileMoreOpen ? 'bg-[#eef4ff]' : 'bg-transparent',
-                      )}
-                    >
-                      <UserCircle2 className="h-[19px] w-[19px]" />
-                    </div>
-                    Profile
-                  </button>
                 </div>
               </div>
             </>
@@ -6299,6 +6676,11 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
   const [fullMockQuestions, setFullMockQuestions] = useState<EditableAssessmentQuestion[]>(() => [createEditableAssessmentQuestion()]);
   const [cbtBuilderStep, setCbtBuilderStep] = useState(0);
   const [fullMockBuilderStep, setFullMockBuilderStep] = useState(0);
+  const [announcementForm, setAnnouncementForm] = useState({
+    title: '',
+    message: '',
+    targetTab: 'overview' as TabKey,
+  });
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const aiProviderOptions = overview.ai.generation?.providers || [
@@ -6375,6 +6757,35 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     }),
     [overview.testSeries],
   );
+
+  const sendMajorAnnouncement = async () => {
+    const title = announcementForm.title.trim();
+    const message = announcementForm.message.trim();
+    if (!title || !message) {
+      setAdminMessage('Announcement title and message are required.');
+      return;
+    }
+
+    setBusy(true);
+    setAdminMessage(null);
+    try {
+      const actionUrl = `/?tab=${encodeURIComponent(announcementForm.targetTab)}`;
+      const response = await EduService.sendAnnouncement({
+        title,
+        message,
+        actionUrl,
+        actionLabel: 'Open update',
+        payload: { tab: announcementForm.targetTab },
+      });
+      setAnnouncementForm({ title: '', message: '', targetTab: 'overview' });
+      setAdminMessage(`Announcement sent to ${response.notificationsSent} learner${response.notificationsSent === 1 ? '' : 's'}.`);
+      await onRefresh();
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : 'Unable to send announcement.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const createCourse = async () => {
     setBusy(true);
@@ -7105,6 +7516,48 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
             <MetricCard title="Capacity target" value={overview.adminOverview?.concurrentCapacityTarget || '10K'} hint="Target concurrency" icon={Gauge} />
           </div>
 
+          <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-xl">
+                <SectionHeader title="Major announcement" caption="Send important updates to learners with a clear in-app destination" />
+              </div>
+              <button
+                type="button"
+                onClick={() => void sendMajorAnnouncement()}
+                disabled={busy}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-[16px] bg-[#1b5fe3] px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(37,99,235,0.18)] transition hover:bg-[#164fc2] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Send announcement
+              </button>
+            </div>
+            <div className="mt-5 grid gap-3 lg:grid-cols-[0.9fr_1.3fr_0.7fr]">
+              <input
+                value={announcementForm.title}
+                onChange={(event) => setAnnouncementForm((current) => ({ ...current, title: event.target.value }))}
+                placeholder="Title"
+                className="h-12 rounded-[16px] border border-[#dfe8f6] bg-[#f8fbff] px-4 text-sm font-medium text-[#20335c] outline-none placeholder:text-[#8b9ab3] focus:border-[#2f6fe4]/45"
+              />
+              <input
+                value={announcementForm.message}
+                onChange={(event) => setAnnouncementForm((current) => ({ ...current, message: event.target.value }))}
+                placeholder="Message"
+                className="h-12 rounded-[16px] border border-[#dfe8f6] bg-[#f8fbff] px-4 text-sm font-medium text-[#20335c] outline-none placeholder:text-[#8b9ab3] focus:border-[#2f6fe4]/45"
+              />
+              <select
+                value={announcementForm.targetTab}
+                onChange={(event) => setAnnouncementForm((current) => ({ ...current, targetTab: event.target.value as TabKey }))}
+                className="h-12 rounded-[16px] border border-[#dfe8f6] bg-[#f8fbff] px-4 text-sm font-semibold text-[#20335c] outline-none focus:border-[#2f6fe4]/45"
+              >
+                <option value="overview">Home</option>
+                <option value="courses">Courses</option>
+                <option value="live">Live</option>
+                <option value="tests">Tests</option>
+                <option value="revision">Revision</option>
+              </select>
+            </div>
+          </section>
+
           <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
             <section className="rounded-[30px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
               <SectionHeader title="Operational posture" caption="What this admin system is optimized for" />
@@ -7422,7 +7875,6 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
 
 const AppContent = () => {
   const { user, loading, logout } = useAuth();
-  const [publicOverview, setPublicOverview] = useState<PlatformOverview | null>(null);
   const [overview, setOverview] = useState<PlatformOverview | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingOverview, setLoadingOverview] = useState(true);
@@ -7434,12 +7886,6 @@ const AppContent = () => {
       setLoadingOverview(true);
     }
     try {
-      const nextPublicOverview = await EduService.getPlatformOverview({
-        includeAuth: false,
-        expireSessionOn401: false,
-      });
-      setPublicOverview(nextPublicOverview);
-
       if (user) {
         const nextOverview = await EduService.getPlatformOverview();
         setOverview(nextOverview);
@@ -7553,7 +7999,7 @@ const AppContent = () => {
   }
 
   if (!user) {
-    return <AuthScreen publicOverview={publicOverview} />;
+    return <AuthScreen />;
   }
 
   if (!overview) {

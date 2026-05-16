@@ -2819,15 +2819,32 @@ const coursesRepository = {
   async list() {
     await ensurePlatformReady();
 
+    const cacheKeyCourses = cacheKey('courses', 'list');
+    const courseCacheTtlMs = Math.max(1000, Number(appConfig.courseCacheTtlMs || platformDataCacheTtlMs));
+
+    try {
+      const cached = await getRedisJson(cacheKeyCourses);
+      if (cached) {
+        return cached;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    let courses;
     if (isPostgresMode()) {
-      return getPgCourses();
+      courses = await getPgCourses();
+    } else if (isMongoMode()) {
+      courses = await Course.find().lean();
+    } else {
+      courses = state.courses.map((course) => clone(course));
     }
 
-    if (isMongoMode()) {
-      return Course.find().lean();
-    }
+    try {
+      await setRedisJson(cacheKeyCourses, courses, { ttlSeconds: Math.ceil(courseCacheTtlMs / 1000) });
+    } catch (e) {}
 
-    return state.courses.map((course) => clone(course));
+    return courses;
   },
 
   async listForViewer(userId) {
@@ -3525,6 +3542,14 @@ const quizzesRepository = {
 
   async findByDate(date) {
     await ensurePlatformReady();
+    const dateKey = String(date).slice(0, 10);
+    const cacheKeyQuizDate = cacheKey('quiz', `date:${dateKey}`);
+    const quizCacheTtlMs = Math.max(500, Number(appConfig.quizCacheTtlMs || 3000));
+
+    try {
+      const cached = await getRedisJson(cacheKeyQuizDate);
+      if (cached) return cached;
+    } catch (e) {}
 
     if (isPostgresMode()) {
       const quiz = await pgOne(
@@ -3543,7 +3568,9 @@ const quizzesRepository = {
       };
     }
 
-    return clone(state.quizzes.find((quiz) => quiz.date === String(date).slice(0, 10)) || null);
+    const result = clone(state.quizzes.find((quiz) => quiz.date === String(date).slice(0, 10)) || null);
+    try { await setRedisJson(cacheKeyQuizDate, result, { ttlSeconds: Math.ceil(quizCacheTtlMs / 1000) }); } catch (e) {}
+    return result;
   },
 
   async findById(id) {
@@ -3843,26 +3870,41 @@ const notificationsRepository = {
   async list(userId) {
     await ensurePlatformReady();
 
+    const cacheKeyNotifications = userId ? cacheKey('notifications', `user:${userId}`) : cacheKey('notifications', 'list');
+    const notificationsCacheTtlMs = Math.max(500, Number(appConfig.notificationsCacheTtlMs || 2000));
+
+    try {
+      const cached = await getRedisJson(cacheKeyNotifications);
+      if (cached) return cached;
+    } catch (e) {}
+
     if (isPostgresMode()) {
       if (userId) {
-        return pgMany(
+        const rows = await pgMany(
           'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
           [String(userId)],
           mapNotificationRow,
         );
+        try { await setRedisJson(cacheKeyNotifications, rows, { ttlSeconds: Math.ceil(notificationsCacheTtlMs / 1000) }); } catch (e) {}
+        return rows;
       }
 
-      return getPgNotifications();
+      const all = await getPgNotifications();
+      try { await setRedisJson(cacheKeyNotifications, all, { ttlSeconds: Math.ceil(notificationsCacheTtlMs / 1000) }); } catch (e) {}
+      return all;
     }
 
     const items = userId
       ? state.notifications.filter((notification) => notification.userId === String(userId))
       : state.notifications;
 
-    return items
+    const result = items
       .slice()
       .sort((left, right) => sortNewestFirst(left, right, 'createdAt'))
       .map((item) => clone(item));
+
+    try { await setRedisJson(cacheKeyNotifications, result, { ttlSeconds: Math.ceil(notificationsCacheTtlMs / 1000) }); } catch (e) {}
+    return result;
   },
 
   async create(payload) {
@@ -4624,10 +4666,20 @@ const adminRepository = {
   },
 
   async getPlatformAnalytics() {
+    const cacheKeyPlatformAnalytics = cacheKey('analytics', 'platform');
+    const analyticsCacheTtlMs = Math.max(1000, Number(appConfig.analyticsCacheTtlMs || 5_000));
+
+    try {
+      const cached = await getRedisJson(cacheKeyPlatformAnalytics);
+      if (cached) {
+        return cached;
+      }
+    } catch (e) {}
+
     const data = await loadPlatformData();
     const leaderboardEntries = await quizzesRepository.listLeaderboardEntries();
 
-    return {
+    const result = {
       activeUsers: data.users.length,
       activeSessions: data.users.filter((user) => Boolean(user.session)).length,
       totalCourses: data.courses.length,
@@ -4643,12 +4695,26 @@ const adminRepository = {
       concurrentCapacityTarget: '',
       recentDeviceActivity: getRecentDeviceActivity(data),
     };
+
+    try {
+      await setRedisJson(cacheKeyPlatformAnalytics, result, { ttlSeconds: Math.ceil(analyticsCacheTtlMs / 1000) });
+    } catch (e) {}
+
+    return result;
   },
 
 };
 
 const analyticsRepository = {
   async getUserAnalytics(userId) {
+    const cacheKeyUserAnalytics = cacheKey('analytics', `user:${userId}`);
+    const userAnalyticsCacheTtlMs = Math.max(500, Number(appConfig.userAnalyticsCacheTtlMs || 2_000));
+
+    try {
+      const cached = await getRedisJson(cacheKeyUserAnalytics);
+      if (cached) return cached;
+    } catch (e) {}
+
     const data = await loadPlatformData();
     const quizInsights = computeQuizInsights(data, userId);
     const testInsights = computeTestInsights(data, userId);
@@ -4666,7 +4732,7 @@ const analyticsRepository = {
 
     const attempts = quizInsights.attempts + testInsights.attempts.length;
 
-    return {
+    const result = {
       accuracy,
       speed,
       attempts,
@@ -4676,6 +4742,12 @@ const analyticsRepository = {
       trend: buildAnalyticsTrend(data, userId),
       adaptivePlan: computeAdaptivePlan({ accuracy, attempts }),
     };
+
+    try {
+      await setRedisJson(cacheKeyUserAnalytics, result, { ttlSeconds: Math.ceil(userAnalyticsCacheTtlMs / 1000) });
+    } catch (e) {}
+
+    return result;
   },
 
   async getLeaderboard() {

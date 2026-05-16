@@ -2,6 +2,7 @@ export interface AuthUser {
   _id: string;
   name: string;
   email: string;
+  mobileNumber?: string | null;
   role: 'student' | 'admin';
   device?: string | null;
   session?: string | null;
@@ -660,4 +661,5 @@ export interface RegisterPayload {
   name: string;
   email: string;
   password: string;
+  mobileNumber?: string;
 }

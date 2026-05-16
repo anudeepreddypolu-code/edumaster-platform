@@ -14,6 +14,7 @@ interface AuthContextType {
   isAdmin: boolean;
   login: (email: string, password: string, options?: { forceLogoutOtherSessions?: boolean }) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+  updateProfile: (payload: { name: string; email: string; mobileNumber?: string | null }) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 }
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   login: async () => {},
   register: async () => {},
+  updateProfile: async () => {},
   logout: async () => {},
   refreshSession: async () => {},
 });
@@ -88,6 +90,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(response.user);
   };
 
+  const updateProfile = async (payload: { name: string; email: string; mobileNumber?: string | null }) => {
+    const response = await EduService.updateProfile(payload);
+    setUser(response.user);
+  };
+
   const logout = async () => {
     if (typeof window !== 'undefined') {
       try {
@@ -109,6 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin: user?.role === 'admin',
         login,
         register,
+        updateProfile,
         logout,
         refreshSession,
       }}

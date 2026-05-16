@@ -11,6 +11,7 @@ const schemaStatements = [
       id TEXT PRIMARY KEY,
       full_name VARCHAR(120) NOT NULL,
       email VARCHAR(160) UNIQUE NOT NULL,
+      mobile_number VARCHAR(20),
       password_hash TEXT NOT NULL,
       role VARCHAR(20) NOT NULL DEFAULT 'student',
       device JSONB,
@@ -23,6 +24,7 @@ const schemaStatements = [
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)`,
   `
     CREATE TABLE IF NOT EXISTS user_sessions (
       id TEXT PRIMARY KEY,
@@ -379,16 +381,33 @@ const schemaStatements = [
     )
   `,
   'CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_user_sessions_user_status_last_seen ON user_sessions(user_id, status, last_seen_at DESC)',
   'CREATE INDEX IF NOT EXISTS idx_device_activity_user_id ON device_activity(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_device_activity_user_created ON device_activity(user_id, created_at DESC)',
   'CREATE INDEX IF NOT EXISTS idx_test_attempts_user_id ON test_attempts(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_test_attempts_user_completed ON test_attempts(user_id, completed_at DESC)',
   'CREATE INDEX IF NOT EXISTS idx_daily_quiz_attempts_user_id ON daily_quiz_attempts(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_daily_quiz_attempts_quiz_submitted ON daily_quiz_attempts(daily_quiz_id, submitted_at DESC)',
   'CREATE INDEX IF NOT EXISTS idx_watch_history_user_course ON watch_history(user_id, course_id)',
+  'CREATE INDEX IF NOT EXISTS idx_watch_history_user_lesson ON watch_history(user_id, lesson_id)',
   'CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC)',
   'CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_payments_user_created ON payments(user_id, created_at DESC)',
+  'CREATE INDEX IF NOT EXISTS idx_enrollments_user_course ON enrollments(user_id, course_id)',
+  'CREATE INDEX IF NOT EXISTS idx_enrollments_course_user ON enrollments(course_id, user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_live_chat_messages_class_created ON live_chat_messages(live_class_id, created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_live_classes_status_start ON live_classes(status, scheduled_start_at)',
+  'CREATE INDEX IF NOT EXISTS idx_subscriptions_user_status ON subscriptions(user_id, status)',
+  'CREATE INDEX IF NOT EXISTS idx_video_access_grants_user_lesson ON video_access_grants(user_id, course_id, lesson_id)',
+  'CREATE INDEX IF NOT EXISTS idx_live_replay_access_grants_user_live ON live_replay_access_grants(user_id, live_class_id)',
 ];
 
 const isSslDisabledTarget = (connectionString) =>
-  connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+  connectionString.includes('localhost')
+  || connectionString.includes('127.0.0.1')
+  || connectionString.includes('@postgres:')
+  || connectionString.includes('//postgres:');
 
 const getPool = () => {
   if (!appConfig.postgresUrl) {
@@ -398,9 +417,11 @@ const getPool = () => {
   if (!pool) {
     pool = new Pool({
       connectionString: appConfig.postgresUrl,
-      max: 20,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      max: Math.max(1, Number(appConfig.postgresPoolMax || 20)),
+      idleTimeoutMillis: Math.max(1_000, Number(appConfig.postgresIdleTimeoutMillis || 30_000)),
+      connectionTimeoutMillis: Math.max(1_000, Number(appConfig.postgresConnectionTimeoutMillis || 10_000)),
+      statement_timeout: Math.max(1_000, Number(appConfig.postgresStatementTimeoutMillis || 15_000)),
+      query_timeout: Math.max(1_000, Number(appConfig.postgresStatementTimeoutMillis || 15_000)),
       ssl: isSslDisabledTarget(appConfig.postgresUrl)
         ? false
         : { rejectUnauthorized: false },
@@ -535,6 +556,11 @@ const checkPostgresHealth = async () => {
       enabled: true,
       status: 'up',
       detail: result.rows[0]?.database || 'connected',
+      pool: {
+        total: currentPool.totalCount,
+        idle: currentPool.idleCount,
+        waiting: currentPool.waitingCount,
+      },
     };
   } catch (error) {
     postgresReady = false;

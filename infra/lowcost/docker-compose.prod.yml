@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     depends_on:
       - app
-      - mediamtx
+      - nginx-rtmp
     ports:
       - "80:80"
       - "443:443"
@@ -32,8 +32,8 @@ services:
       HOST: 0.0.0.0
       POSTGRES_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/edumaster
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
-      LIVE_HLS_INTERNAL_BASE_URL: http://mediamtx:8888/hls
-      REPLAY_IMPORT_API_BASE_URL: http://app:5000/api
+      LIVE_HLS_INTERNAL_BASE_URL: http://nginx-rtmp:8080/hls
+      REPLAY_IMPORT_API_BASE_URL: http://app:5000/backend/api
       LIVE_RECORDINGS_ROOT: /recordings
     depends_on:
       - postgres
@@ -72,29 +72,35 @@ services:
     env_file:
       - ../../.env.production
     environment:
-      REPLAY_IMPORT_API_BASE_URL: http://app:5000/api
+      REPLAY_IMPORT_API_BASE_URL: http://app:5000/backend/api
       LIVE_RECORDINGS_ROOT: /recordings
-      REPLAY_IMPORT_POLL_MS: 60000
-      REPLAY_IMPORT_FILE_MIN_AGE_SECONDS: 120
+      REPLAY_IMPORT_POLL_MS: 15000
+      REPLAY_IMPORT_FILE_MIN_AGE_SECONDS: 20
       REPLAY_IMPORT_DELETE_AFTER_SUCCESS: "true"
       REPLAY_IMPORT_ADMIN_EMAIL: ${REPLAY_IMPORT_ADMIN_EMAIL:-${ADMIN_EMAIL}}
       REPLAY_IMPORT_ADMIN_PASSWORD: ${REPLAY_IMPORT_ADMIN_PASSWORD:-${ADMIN_PASSWORD}}
     depends_on:
       - app
-      - mediamtx
+      - nginx-rtmp
     volumes:
       - live-recordings:/recordings
 
-  mediamtx:
-    image: bluenviron/mediamtx:1.8.4
+  nginx-rtmp:
+    build:
+      context: .
+      dockerfile: nginx-rtmp/Dockerfile
     restart: unless-stopped
     env_file:
       - ../../.env.production
+    environment:
+      NGINX_RTMP_INGEST_CALLBACK_URL: http://app:5000/backend/api/live-classes/ingest/on-publish
+      LIVE_INGEST_PUBLISHER_SECRET: ${LIVE_INGEST_PUBLISHER_SECRET}
     ports:
       - "1935:1935"
-      - "127.0.0.1:8888:8888"
+    depends_on:
+      - app
     volumes:
-      - ./mediamtx.yml:/mediamtx.yml:ro
+      - live-hls:/var/www/hls
       - live-recordings:/recordings
 
   postgres:
@@ -127,6 +133,7 @@ services:
 volumes:
   app-private:
   app-uploads:
+  live-hls:
   live-recordings:
   postgres-data:
   redis-data:

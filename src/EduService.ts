@@ -343,6 +343,13 @@ export const EduService = {
     return EduService.login(payload.email, payload.password);
   },
 
+  updateProfile: async (payload: { name: string; email: string; mobileNumber?: string | null }) => {
+    return request<{ user: AuthUser }>('/users/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
   login: async (email: string, password: string, options: LoginOptions = {}): Promise<AuthResponse> => {
     const response = await request<AuthResponse>('/auth/login', {
       method: 'POST',
@@ -412,6 +419,21 @@ export const EduService = {
     const response = await request<{ liveClasses: LiveClass[] }>('/live-classes/admin');
     return { ...response, liveClasses: (response.liveClasses || []).map(normalizeLiveClass) };
   },
+
+  sendAnnouncement: async (payload: {
+    title: string;
+    message: string;
+    actionUrl?: string | null;
+    actionLabel?: string | null;
+    payload?: Record<string, unknown>;
+  }) => request<{ message: string; notificationsSent: number }>('/notifications/send', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...payload,
+      type: 'announcement',
+      audience: 'all',
+    }),
+  }),
 
   createLiveClass: async (payload: Partial<LiveClass>) => {
     return request<{ liveClass: LiveClass }>('/live-classes', {

@@ -17,4 +17,17 @@ describe('Auth API', () => {
       .send({ email: 'admin@edumaster.local', password: 'wrong' });
     expect(res.statusCode).toBe(401);
   });
+
+  it('should keep normal login retries on 401 instead of 429', async () => {
+    const attempts = Array.from({ length: 35 }, () =>
+      request(app)
+        .post('/api/auth/login')
+        .send({ email: 'rate-limit-smoke@edumaster.local', password: 'wrong-password' }),
+    );
+
+    const responses = await Promise.all(attempts);
+    responses.forEach((res) => {
+      expect(res.statusCode).toBe(401);
+    });
+  });
 });

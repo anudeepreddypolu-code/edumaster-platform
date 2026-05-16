@@ -10,6 +10,7 @@
     "browser:courses": "node --import tsx src/courses-browser-review.ts",
     "browser:live": "node --import tsx src/live-browser-review.ts",
     "browser:overview": "node --import tsx src/overview-figma-review.ts",
+    "load:platform": "node --import tsx src/platform-1000-load-review.ts",
     "browser:tests": "node --import tsx src/tests-browser-review.ts",
     "loop": "tsx src/loop.ts",
     "generate:flutter": "tsx src/flutter-generator.ts"

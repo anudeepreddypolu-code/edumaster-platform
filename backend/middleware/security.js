@@ -1,5 +1,6 @@
 const { appConfig } = require('../lib/config.js');
 const { incrementRedisCounter } = require('../lib/redis.js');
+const { createHash } = require('crypto');
 
 const requestBuckets = new Map();
 
@@ -59,13 +60,74 @@ const isProtectedMediaStreamRequest = (req) => {
   return requestPath.startsWith('/api/courses/stream/');
 };
 
-const buildRateLimitKey = (req) => `${req.ip || 'unknown'}:${req.method}:${req.path}`;
+const hashKeyPart = (value) => createHash('sha256').update(String(value || '')).digest('hex').slice(0, 24);
 
-const applyHeadersAndCheckLimit = (res, count) => {
-  res.setHeader('X-RateLimit-Limit', String(appConfig.rateLimitMax));
-  res.setHeader('X-RateLimit-Remaining', String(Math.max(appConfig.rateLimitMax - count, 0)));
+const getAuthTokenKey = (req) => {
+  const header = String(req.headers.authorization || '');
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? `token:${hashKeyPart(match[1])}` : null;
+};
 
-  if (count > appConfig.rateLimitMax) {
+const getLoginSubjectKey = (req) => {
+  const subject = req.body?.email || req.body?.mobileNumber || req.body?.mobile || '';
+  return subject ? `subject:${hashKeyPart(String(subject).trim().toLowerCase())}` : null;
+};
+
+const getRateLimitPolicy = (req) => {
+  const requestPath = String(req.path || '');
+
+  if (/^\/api\/auth\/(login|register|signup|forgot-password|reset-password)/.test(requestPath)) {
+    return {
+      name: 'auth',
+      max: Math.max(1, Number(appConfig.rateLimitAuthMax || 30)),
+      identity: getLoginSubjectKey(req) || `ip:${req.ip || 'unknown'}`,
+    };
+  }
+
+  const tokenKey = getAuthTokenKey(req);
+  if (tokenKey) {
+    return {
+      name: 'authenticated',
+      max: Math.max(1, Number(appConfig.rateLimitAuthenticatedMax || appConfig.rateLimitReadMax || appConfig.rateLimitWriteMax)),
+      identity: tokenKey,
+    };
+  }
+
+  return {
+    name: 'ip',
+    max: Math.max(1, Number(appConfig.rateLimitMax || 300)),
+    identity: `ip:${req.ip || 'unknown'}`,
+  };
+};
+
+const normalizeRateLimitPath = (req) => {
+  const requestPath = String(req.path || '/');
+  if (requestPath.startsWith('/api/courses/')) {
+    return '/api/courses/:id';
+  }
+  if (requestPath.startsWith('/api/tests/')) {
+    return '/api/tests/:id';
+  }
+  if (requestPath.startsWith('/api/live-classes/')) {
+    return '/api/live-classes/:id';
+  }
+  return requestPath;
+};
+
+const buildRateLimitKey = (req, policy) => [
+  policy.name,
+  policy.identity,
+  req.method,
+  normalizeRateLimitPath(req),
+].join(':');
+
+const applyHeadersAndCheckLimit = (res, count, limit, windowMs = appConfig.rateLimitWindowMs) => {
+  res.setHeader('X-RateLimit-Limit', String(limit));
+  res.setHeader('X-RateLimit-Remaining', String(Math.max(limit - count, 0)));
+
+  if (count > limit) {
+    const retryAfterSeconds = Math.max(1, Math.ceil(Number(windowMs || appConfig.rateLimitWindowMs) / 1000));
+    res.setHeader('Retry-After', String(retryAfterSeconds));
     return res.status(429).json({ message: 'Too many requests. Please retry shortly.' });
   }
 
@@ -78,12 +140,13 @@ const basicRateLimit = async (req, res, next) => {
   }
 
   const now = Date.now();
-  const key = buildRateLimitKey(req);
+  const policy = getRateLimitPolicy(req);
+  const key = buildRateLimitKey(req, policy);
 
   try {
     const redisCount = await incrementRedisCounter(`ratelimit:${key}`, Math.ceil(appConfig.rateLimitWindowMs / 1000));
     if (redisCount !== null) {
-      const limited = applyHeadersAndCheckLimit(res, redisCount);
+      const limited = applyHeadersAndCheckLimit(res, redisCount, policy.max);
       if (limited) {
         return limited;
       }
@@ -102,7 +165,7 @@ const basicRateLimit = async (req, res, next) => {
   bucket.count += 1;
   requestBuckets.set(key, bucket);
 
-  const limited = applyHeadersAndCheckLimit(res, bucket.count);
+  const limited = applyHeadersAndCheckLimit(res, bucket.count, policy.max);
   if (limited) {
     return limited;
   }

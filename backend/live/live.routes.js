@@ -23,6 +23,7 @@ const requireAuthFromQuery = async (req, res, next) => {
 };
 
 router.get('/', controller.listLiveClasses);
+router.get('/ingest/on-publish', controller.validateIngestPublish);
 router.post('/ingest/on-publish', controller.validateIngestPublish);
 router.get('/stream/:token', controller.streamProtectedLiveAsset);
 router.get('/admin', requireAuth, controller.listAdminLiveClasses);

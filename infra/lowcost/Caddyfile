@@ -12,5 +12,5 @@
   @hls_segments path *.ts *.m4s *.mp4
   header @hls_segments Cache-Control "public, max-age=86400, immutable"
 
-  reverse_proxy mediamtx:8888
+  reverse_proxy nginx-rtmp:8080
 }

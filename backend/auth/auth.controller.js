@@ -17,6 +17,7 @@ const validatePassword = (password) => {
 const register = asyncHandler(async (req, res) => {
   const name = requireString(req.body?.name, 'name', { maxLength: 80 });
   const email = requireString(req.body?.email, 'email', { maxLength: 160 }).toLowerCase();
+  const mobileNumber = optionalString(req.body?.mobileNumber, '', { maxLength: 20 });
   const password = validatePassword(req.body?.password);
 
   if (req.body?.role && req.body.role !== 'student') {
@@ -33,7 +34,7 @@ const register = asyncHandler(async (req, res) => {
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  const user = await usersRepository.create({ name, email, password: hashed, role });
+  const user = await usersRepository.create({ name, email, mobileNumber: mobileNumber || null, password: hashed, role });
   return created(res, { user: sanitizeUser(user) });
 });
 
@@ -106,7 +107,7 @@ const login = asyncHandler(async (req, res) => {
   });
 
   const token = jwt.sign(
-    { id: user._id, role: user.role, session: sessionId },
+    { id: user._id, role: user.role, session: sessionId, email: user.email, name: user.name },
     appConfig.jwtSecret,
     { expiresIn: '7d' },
   );

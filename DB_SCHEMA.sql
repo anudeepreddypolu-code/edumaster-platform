@@ -7,6 +7,7 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   full_name VARCHAR(120) NOT NULL,
   email VARCHAR(160) UNIQUE NOT NULL,
+  mobile_number VARCHAR(20),
   password_hash TEXT NOT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'student',
   avatar_url TEXT,
@@ -301,7 +302,12 @@ CREATE TABLE ai_recommendations (
 
 CREATE INDEX idx_user_sessions_user_active ON user_sessions(user_id, is_active);
 CREATE INDEX idx_enrollments_user ON enrollments(user_id);
+CREATE INDEX idx_enrollments_course_user ON enrollments(course_id, user_id);
 CREATE INDEX idx_watch_history_user_course ON watch_history(user_id, course_id);
+CREATE INDEX idx_watch_history_user_lesson ON watch_history(user_id, lesson_id);
 CREATE INDEX idx_test_attempts_user_test ON test_attempts(user_id, test_id);
+CREATE INDEX idx_test_attempts_user_completed ON test_attempts(user_id, completed_at DESC);
 CREATE INDEX idx_daily_quiz_attempts_quiz ON daily_quiz_attempts(daily_quiz_id);
+CREATE INDEX idx_daily_quiz_attempts_quiz_submitted ON daily_quiz_attempts(daily_quiz_id, submitted_at DESC);
 CREATE INDEX idx_notifications_user_read ON notifications(user_id, is_read);
+CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);

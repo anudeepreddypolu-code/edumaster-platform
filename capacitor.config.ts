@@ -9,6 +9,8 @@ const config: CapacitorConfig = {
     allowNavigation: [
       'app.varoonenglish.com',
       '*.varoonenglish.com',
+      'app.178.105.48.179.nip.io',
+      'live.178.105.48.179.nip.io',
       '*.stripe.com',
       '*.phonepe.com',
       '*.youtube.com',

@@ -4303,14 +4303,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
               </div>
             )}
             <div data-testid="live-hero-card" className={cn('rounded-[18px] border border-[#dfe7f5] bg-white p-[12px] shadow-[0_8px_18px_rgba(28,41,61,0.05)] md:rounded-[24px] md:p-5', isReferenceMode && 'rounded-none border-0 bg-transparent p-0 shadow-none')}>
-              <div className={cn('mb-4 flex items-center justify-between md:hidden', isReferenceMode && 'mt-[8px]')}>
-                <button type="button" onClick={() => setUtilityPanel('menu')} className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
-                  <Menu className="h-[18px] w-[18px]" />
-                </button>
-                <button type="button" onClick={() => setUtilityPanel('schedule')} className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-full border border-[#dfe7f5] bg-white text-[#1f2d4e] shadow-[0_8px_18px_rgba(28,41,61,0.06)]">
-                  <CalendarDays className="h-[18px] w-[18px]" />
-                </button>
-              </div>
               <div className="md:hidden">
                 <h2 className="text-[18px] font-semibold leading-none tracking-[-0.02em] text-[#1f2d4e]">Live Classes</h2>
               </div>

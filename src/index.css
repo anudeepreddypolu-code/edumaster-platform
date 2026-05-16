@@ -153,6 +153,14 @@ textarea {
     transform 0.18s ease;
 }
 
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 .cbt-scroll {
   scrollbar-gutter: stable;
   scrollbar-width: auto;

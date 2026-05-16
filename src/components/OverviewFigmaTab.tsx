@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
-  Bell,
   BookOpen,
   CalendarClock,
   ChevronRight,
@@ -338,30 +337,8 @@ export const OverviewFigmaTab = ({
         <p className="mt-[6px] text-[13px] leading-[1.45] text-[#5f6f86]">Your dashboard is based on live course, test, and class activity.</p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-[10px] self-start">
-        <div className="flex h-[38px] w-[38px] items-center justify-center overflow-hidden rounded-full border border-[#e2e8f2] bg-white shadow-[0_6px_16px_rgba(28,41,61,0.05)]">
-          <Avatar name={learnerName} />
-        </div>
-
-        <button
-          type="button"
-          data-testid="overview-notification-button"
-          onClick={() => {
-            const firstNotification = overview.notifications[0];
-            if (firstNotification) {
-              onOpenNotification?.(firstNotification);
-            }
-          }}
-          className="relative flex h-[38px] w-[38px] items-center justify-center rounded-full border border-[#e2e8f2] bg-white text-[#79869b] shadow-[0_6px_16px_rgba(28,41,61,0.05)]"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" />
-          {overview.notifications.length > 0 && (
-            <span className="absolute -right-[3px] -top-[3px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#2f6fe4] px-[4px] text-[9px] font-semibold leading-none text-white">
-              {overview.notifications.length}
-            </span>
-          )}
-        </button>
+      <div className="hidden h-[38px] w-[38px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e2e8f2] bg-white shadow-[0_6px_16px_rgba(28,41,61,0.05)] lg:flex">
+        <Avatar name={learnerName} />
       </div>
     </div>
   );

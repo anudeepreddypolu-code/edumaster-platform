@@ -46,12 +46,31 @@ const appConfig = {
   frontendDistDir: path.join(process.cwd(), 'dist'),
   rateLimitWindowMs: toNumber(process.env.RATE_LIMIT_WINDOW_MS, 60_000),
   rateLimitMax: toNumber(process.env.RATE_LIMIT_MAX, 300),
+  rateLimitAuthMax: toNumber(process.env.RATE_LIMIT_AUTH_MAX, 120),
+  rateLimitAuthenticatedMax: toNumber(process.env.RATE_LIMIT_AUTHENTICATED_MAX, 1200),
+  rateLimitReadMax: toNumber(process.env.RATE_LIMIT_READ_MAX, 1800),
+  rateLimitWriteMax: toNumber(process.env.RATE_LIMIT_WRITE_MAX, 900),
   jwtSecret: process.env.JWT_SECRET || DEFAULT_JWT_SECRET,
   adminName: process.env.ADMIN_NAME || 'Platform Admin',
   adminEmail: process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL,
   adminPassword: process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD,
   mongoUri: process.env.MONGODB_URI || '',
   postgresUrl: process.env.POSTGRES_URL || '',
+  postgresPoolMax: toNumber(process.env.POSTGRES_POOL_MAX, 20),
+  postgresIdleTimeoutMillis: toNumber(process.env.POSTGRES_IDLE_TIMEOUT_MS, 30_000),
+  postgresConnectionTimeoutMillis: toNumber(process.env.POSTGRES_CONNECTION_TIMEOUT_MS, 10_000),
+  postgresStatementTimeoutMillis: toNumber(process.env.POSTGRES_STATEMENT_TIMEOUT_MS, 15_000),
+  platformReadyCacheTtlMs: toNumber(process.env.PLATFORM_READY_CACHE_TTL_MS, 60_000),
+  platformDataCacheTtlMs: toNumber(process.env.PLATFORM_DATA_CACHE_TTL_MS, 3_000),
+  courseCacheTtlMs: toNumber(process.env.COURSE_CACHE_TTL_MS, 3_000),
+  cachePrefix: process.env.CACHE_PREFIX || 'varonenglish',
+  testsCacheTtlMs: toNumber(process.env.TESTS_CACHE_TTL_MS, 3_000),
+  analyticsCacheTtlMs: toNumber(process.env.ANALYTICS_CACHE_TTL_MS, 5_000),
+  userAnalyticsCacheTtlMs: toNumber(process.env.USER_ANALYTICS_CACHE_TTL_MS, 2_000),
+  watchProgressCacheInvalidationIntervalMs: toNumber(process.env.WATCH_PROGRESS_CACHE_INVALIDATION_INTERVAL_MS, 300_000),
+  watchProgressCacheInvalidationPercentStep: toNumber(process.env.WATCH_PROGRESS_CACHE_INVALIDATION_PERCENT_STEP, 25),
+  quizCacheTtlMs: toNumber(process.env.QUIZ_CACHE_TTL_MS, 3_000),
+  notificationsCacheTtlMs: toNumber(process.env.NOTIFICATIONS_CACHE_TTL_MS, 2_000),
   firebaseStateStorage: toBool(process.env.FIREBASE_STATE_STORAGE, false),
   firebaseStateDatabaseId: process.env.FIREBASE_STATE_DATABASE_ID || '',
   firebaseStateCollection: process.env.FIREBASE_STATE_COLLECTION || 'app_state',
@@ -81,6 +100,12 @@ const appConfig = {
   privateVideoTokenSecret: process.env.PRIVATE_VIDEO_TOKEN_SECRET || process.env.JWT_SECRET || 'dev-only-secret',
   privateVideoTokenTtlSeconds: toNumber(process.env.PRIVATE_VIDEO_TOKEN_TTL_SECONDS, 900),
   privateVideoDeliveryUrlTtlSeconds: toNumber(process.env.PRIVATE_VIDEO_DELIVERY_URL_TTL_SECONDS, 900),
+  privateVideoHlsManifestCacheSeconds: toNumber(process.env.PRIVATE_VIDEO_HLS_MANIFEST_CACHE_SECONDS, 8),
+  privateVideoHlsSegmentCacheSeconds: toNumber(process.env.PRIVATE_VIDEO_HLS_SEGMENT_CACHE_SECONDS, 31_536_000),
+  privateVideoHlsSegmentTokenTtlSeconds: toNumber(process.env.PRIVATE_VIDEO_HLS_SEGMENT_TOKEN_TTL_SECONDS, 21_600),
+  privateVideoHlsCacheWarmBaseUrl: process.env.PRIVATE_VIDEO_HLS_CACHE_WARM_BASE_URL || '',
+  privateVideoHlsChildManifestWarmAsync: toBool(process.env.PRIVATE_VIDEO_HLS_CHILD_MANIFEST_WARM_ASYNC, true),
+  privateVideoHlsEagerHttpWarmEnabled: toBool(process.env.PRIVATE_VIDEO_HLS_EAGER_HTTP_WARM_ENABLED, false),
   privateVideoDrmEnabled: toBool(process.env.PRIVATE_VIDEO_DRM_ENABLED, false),
   privateVideoStorageProvider: process.env.PRIVATE_VIDEO_STORAGE_PROVIDER || 'local',
   courseDefaultValidityDays: toNumber(process.env.COURSE_DEFAULT_VALIDITY_DAYS, 183),
@@ -101,6 +126,9 @@ const appConfig = {
   exposeSampleCredentials: toBool(process.env.EXPOSE_SAMPLE_CREDENTIALS, false),
   jitsiMeetDomain: process.env.JITSI_MEET_DOMAIN || 'meet.jit.si',
   liveHlsInternalBaseUrl: process.env.LIVE_HLS_INTERNAL_BASE_URL || '',
+  liveHlsPublicBaseUrl: process.env.LIVE_HLS_PUBLIC_BASE_URL || process.env.VITE_LIVE_HLS_BASE_URL || '',
+  liveHlsDevSourcePath: process.env.LIVE_HLS_DEV_SOURCE_PATH || '',
+  liveHlsDevFallbackPlaybackUrl: process.env.LIVE_HLS_DEV_FALLBACK_PLAYBACK_URL || '',
   liveIngestStreamBaseUrl: process.env.LIVE_INGEST_STREAM_BASE_URL || '',
   liveIngestPublisherSecret: process.env.LIVE_INGEST_PUBLISHER_SECRET || '',
   livekitUrl: process.env.LIVEKIT_URL || '',
@@ -116,10 +144,10 @@ appConfig.hasLiveKit = isLiveKitConfiguredValue(appConfig.livekitUrl)
   && isLiveKitConfiguredValue(appConfig.livekitApiSecret);
 appConfig.hasManagedLiveHls = isConfiguredRuntimeValue(appConfig.liveHlsInternalBaseUrl)
   && isConfiguredRuntimeValue(appConfig.liveIngestStreamBaseUrl);
-appConfig.preferredLivePlaybackType = appConfig.hasLiveKit
-  ? 'livekit'
-  : appConfig.hasManagedLiveHls
-    ? 'hls'
+appConfig.preferredLivePlaybackType = appConfig.hasManagedLiveHls
+  ? 'hls'
+  : appConfig.hasLiveKit
+    ? 'livekit'
     : 'jitsi';
 
 const isDefaultJwtSecret = appConfig.jwtSecret === DEFAULT_JWT_SECRET;
@@ -256,7 +284,7 @@ const getProductionConfigDiagnostics = () => {
   }
 
   if (isProduction && !appConfig.hasLiveKit && !appConfig.hasManagedLiveHls) {
-    warnings.push('No LiveKit or managed HLS live stack is configured. Live classes will rely on the Jitsi fallback only.');
+    errors.push('No LiveKit or managed HLS live stack is configured. Production live classes must use a real media backend.');
   }
 
   if (isProduction && !appConfig.redisUrl) {

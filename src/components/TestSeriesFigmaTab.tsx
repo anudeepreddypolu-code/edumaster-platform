@@ -806,6 +806,7 @@ export const TestSeriesFigmaTab = ({
   );
   const examMeta = useMemo(() => buildExamMeta(selectedTest), [selectedTest]);
   const learnerName = overview.user?.name || 'Learner';
+  const learnerDisplayName = learnerName.includes('@') ? learnerName.split('@')[0] : learnerName;
   const questions = useMemo(() => buildExamQuestions(selectedTest?.questions || []), [selectedTest]);
   const currentQuestion = questions[currentIndex] || {
     id: 'empty-question',
@@ -1823,15 +1824,11 @@ export const TestSeriesFigmaTab = ({
   const mobileHome = mobileShell('tests-home-mobile', (
     <>
       <MobileStatusBar />
-      <div className="mt-[10px] flex items-start justify-between gap-3">
+      <div className="mt-[6px] flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[20px] font-semibold text-[#1e2f5a]">Hi {learnerName}</p>
-          <p className="mt-[6px] text-[13px] text-[#7284a7]">Pick up your next mock without the extra clutter.</p>
+          <p className="truncate text-[16px] font-semibold text-[#1e2f5a]">Hi {learnerDisplayName}</p>
+          <p className="mt-[4px] text-[12px] leading-5 text-[#7284a7]">Pick up your next mock without the extra clutter.</p>
         </div>
-        <button className="relative mt-[2px] flex h-[40px] w-[40px] items-center justify-center rounded-full border border-[#e7edf7] bg-white text-[#223357] shadow-[0_10px_18px_rgba(16,24,40,0.04)]">
-          <Bell className="h-[18px] w-[18px]" />
-          <span className="absolute right-[10px] top-[9px] h-[6px] w-[6px] rounded-full bg-[#2f78eb]" />
-        </button>
       </div>
 
       <div className="mt-[14px] flex items-center gap-[10px]">

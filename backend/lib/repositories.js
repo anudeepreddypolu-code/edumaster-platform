@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { randomUUID } = require('crypto');
+const path = require('path');
 const User = require('../models/User.js');
 const Course = require('../models/Course.js');
 const Test = require('../models/Test.js');
@@ -15,9 +16,10 @@ const {
 } = require('./redis.js');
 const { state, clone, nextId, nowIso } = require('./store.js');
 const { decryptVideoId, normalizeYouTubeVideoId, buildSecureYouTubeEmbedUrl } = require('./video-security.js');
-const { issuePlaybackToken } = require('./private-video.js');
+const { issuePlaybackToken, buildManifestBundleUrl } = require('./private-video.js');
 const { appConfig } = require('./config.js');
 const { getAiGenerationProviders } = require('./ai-content.js');
+const liveKitService = require('../live/livekit.service.js');
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 const toNumber = (value, fallback = 0) => {
@@ -28,7 +30,8 @@ const asArray = (value) => (Array.isArray(value) ? clone(value) : []);
 const asObject = (value) => (value && typeof value === 'object' ? clone(value) : {});
 const createPersistentId = (prefix) => `${prefix}_${randomUUID().replace(/-/g, '')}`;
 const createId = (prefix) => (isPostgresReady() ? createPersistentId(prefix) : nextId(prefix));
-const cacheKey = (name, suffix) => `edumaster:${name}:${suffix}`;
+const CACHE_PREFIX = String(appConfig.cachePrefix || 'varonenglish').replace(/[:\s]+/g, '-');
+const cacheKey = (name, suffix) => `${CACHE_PREFIX}:${name}:${suffix}`;
 const courseDefaultValidityDays = Math.max(1, Number(appConfig.courseDefaultValidityDays || 183));
 const replayRetentionDays = Math.max(1, Number(appConfig.videoReplayRetentionDays || 183));
 const replayViewLimitEnabled = Boolean(appConfig.videoReplayViewLimitEnabled);
@@ -37,6 +40,8 @@ const replayRetentionMs = replayRetentionDays * 24 * 60 * 60 * 1000;
 const liveReplayRetentionDays = replayRetentionDays;
 const liveReplayMaxViews = replayMaxViews;
 const liveReplayRetentionMs = liveReplayRetentionDays * 24 * 60 * 60 * 1000;
+const platformReadyCacheTtlMs = Math.max(1_000, Number(appConfig.platformReadyCacheTtlMs || 60_000));
+const platformDataCacheTtlMs = Math.max(0, Number(appConfig.platformDataCacheTtlMs || 3_000));
 const activeEnrollmentSql = '(expires_at IS NULL OR expires_at > now())';
 const addDaysIso = (days, baseMs = Date.now()) => new Date(baseMs + Math.max(1, Number(days || courseDefaultValidityDays)) * 24 * 60 * 60 * 1000).toISOString();
 const isEnrollmentActive = (enrollment) => {
@@ -73,17 +78,233 @@ const toIso = (value) => {
   return String(value);
 };
 
+const normalizeOptionalUrl = (value) => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized || normalized.toLowerCase() === 'null' || normalized.toLowerCase() === 'undefined') {
+    return null;
+  }
+  return normalized;
+};
+
 const isMongoMode = () => getDatabaseMode() === 'mongodb';
 const isPostgresMode = () => isPostgresReady();
-const getDefaultLivePlaybackType = () => 'jitsi';
+let platformReadyUntil = 0;
+let platformReadyPromise = null;
+let platformDataCache = null;
+let platformDataCachePromise = null;
+const watchProgressInvalidationState = new Map();
+
+const PLATFORM_READY_REDIS_KEY = cacheKey('platform-ready', 'v1');
+const PLATFORM_DATA_REDIS_KEY = cacheKey('platform-data', 'v1');
+const PLATFORM_ANALYTICS_REDIS_KEY = cacheKey('analytics', 'platform');
+const PLATFORM_COURSES_REDIS_KEY = cacheKey('courses', 'list');
+const PLATFORM_TESTS_REDIS_KEY = cacheKey('tests', 'list');
+const PLATFORM_NOTIFICATIONS_REDIS_KEY = cacheKey('notifications', 'list');
+const PLATFORM_QUIZ_WEEKLY_REDIS_KEY = cacheKey('quiz-weekly', 'all');
+const PLATFORM_LEADERBOARD_REDIS_KEY = cacheKey('analytics', 'leaderboard');
+const USER_LOOKUP_CACHE_TTL_SECONDS = Math.max(5, Number(appConfig.userLookupCacheTtlMs || 10_000) / 1000);
+const COURSE_LOOKUP_CACHE_TTL_SECONDS = Math.max(5, Number(appConfig.courseLookupCacheTtlMs || 15_000) / 1000);
+const TEST_LOOKUP_CACHE_TTL_SECONDS = Math.max(5, Number(appConfig.testLookupCacheTtlMs || 15_000) / 1000);
+const ACTIVE_ENROLLMENTS_LOOKUP_CACHE_TTL_SECONDS = Math.max(5, Number(appConfig.activeEnrollmentsCacheTtlMs || 15_000) / 1000);
+const USER_PROGRESS_CACHE_TTL_SECONDS = Math.max(5, Number(appConfig.userProgressCacheTtlMs || 15_000) / 1000);
+const LIVE_CLASS_LOOKUP_CACHE_TTL_SECONDS = Math.max(5, Number(appConfig.liveClassLookupCacheTtlMs || 10_000) / 1000);
+const LIVE_CLASS_ACCESS_CACHE_TTL_SECONDS = Math.max(5, Number(appConfig.liveClassAccessCacheTtlMs || 10_000) / 1000);
+const LIVE_CLASS_ENTITLEMENT_CACHE_TTL_SECONDS = Math.max(10, Number(appConfig.liveClassEntitlementCacheTtlMs || 30_000) / 1000);
+const ANALYTICS_LEADERBOARD_CACHE_TTL_SECONDS = Math.max(2, Number(appConfig.analyticsLeaderboardCacheTtlMs || 5_000) / 1000);
+const WATCH_PROGRESS_CACHE_INVALIDATION_INTERVAL_SECONDS = Math.max(60, Number(appConfig.watchProgressCacheInvalidationIntervalMs || 300_000) / 1000);
+const WATCH_PROGRESS_CACHE_INVALIDATION_PERCENT_STEP = Math.max(5, Number(appConfig.watchProgressCacheInvalidationPercentStep || 25));
+
+const getCachedJsonValue = async (key, loader, ttlSeconds) => {
+  try {
+    const cached = await getRedisJson(key);
+    if (cached !== null && cached !== undefined) {
+      return cached;
+    }
+  } catch (error) {
+    // Ignore cache read failures and fall back to the loader.
+  }
+
+  const value = await loader();
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  try {
+    await setRedisJson(key, value, { ttlSeconds: Math.max(1, Math.ceil(ttlSeconds)) });
+  } catch (error) {
+    // Ignore cache write failures.
+  }
+
+  return value;
+};
+
+const clearRedisKeys = (keys) => {
+  keys.filter(Boolean).forEach((key) => {
+    void deleteRedisKey(key).catch(() => undefined);
+  });
+};
+
+const invalidateGlobalPlatformCaches = () => {
+  platformDataCache = null;
+  platformDataCachePromise = null;
+  clearRedisKeys([
+    PLATFORM_DATA_REDIS_KEY,
+    PLATFORM_ANALYTICS_REDIS_KEY,
+    PLATFORM_LEADERBOARD_REDIS_KEY,
+    PLATFORM_COURSES_REDIS_KEY,
+    PLATFORM_TESTS_REDIS_KEY,
+    PLATFORM_NOTIFICATIONS_REDIS_KEY,
+    PLATFORM_QUIZ_WEEKLY_REDIS_KEY,
+  ]);
+};
+
+const invalidateUserPlatformCaches = (userId) => {
+  if (!userId) {
+    return;
+  }
+
+  clearRedisKeys([
+    cacheKey('enrollments', `active:${userId}`),
+    cacheKey('analytics', `user:${userId}`),
+    cacheKey('notifications', `user:${userId}`),
+    cacheKey('progress', String(userId)),
+    cacheKey('user-session', String(userId)),
+  ]);
+};
+
+const shouldInvalidateWatchProgressCaches = ({ userId, courseId, lessonId, progressPercent, progressSeconds, completed }) => {
+  if (!userId) {
+    return false;
+  }
+
+  const stateKey = `${String(userId)}:${String(courseId)}:${String(lessonId)}`;
+  if (completed) {
+    watchProgressInvalidationState.delete(stateKey);
+    return true;
+  }
+
+  const now = Date.now();
+  const existing = watchProgressInvalidationState.get(stateKey);
+  const nextState = {
+    progressPercent: Number(progressPercent || 0),
+    progressSeconds: Number(progressSeconds || 0),
+    updatedAt: now,
+  };
+
+  if (!existing) {
+    watchProgressInvalidationState.set(stateKey, nextState);
+    return false;
+  }
+
+  const advancedSeconds = Number(progressSeconds || 0) - Number(existing.progressSeconds || 0);
+  const advancedPercent = Number(progressPercent || 0) - Number(existing.progressPercent || 0);
+  const elapsedSeconds = (now - Number(existing.updatedAt || now)) / 1000;
+  const shouldInvalidate = advancedSeconds >= WATCH_PROGRESS_CACHE_INVALIDATION_INTERVAL_SECONDS
+    || advancedPercent >= WATCH_PROGRESS_CACHE_INVALIDATION_PERCENT_STEP
+    || elapsedSeconds >= WATCH_PROGRESS_CACHE_INVALIDATION_INTERVAL_SECONDS;
+
+  watchProgressInvalidationState.set(stateKey, nextState);
+
+  if (watchProgressInvalidationState.size > 20_000) {
+    for (const [key, value] of watchProgressInvalidationState.entries()) {
+      if ((now - Number(value.updatedAt || 0)) > (WATCH_PROGRESS_CACHE_INVALIDATION_INTERVAL_SECONDS * 1000 * 2)) {
+        watchProgressInvalidationState.delete(key);
+      }
+    }
+  }
+
+  return shouldInvalidate;
+};
+
+const invalidateQuizCaches = ({ quizId = null, quizDate = null } = {}) => {
+  clearRedisKeys([
+    PLATFORM_QUIZ_WEEKLY_REDIS_KEY,
+    quizId ? cacheKey('quiz-leaderboard', String(quizId)) : null,
+    quizDate ? cacheKey('quiz', `date:${String(quizDate).slice(0, 10)}`) : null,
+  ]);
+};
+
+const getPlatformDataFromRedis = async () => {
+  try {
+    const cached = await getRedisJson(PLATFORM_DATA_REDIS_KEY);
+    if (cached && cached.expiresAt && Number(cached.expiresAt) > Date.now()) {
+      return cached.value;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+};
+
+const setPlatformDataToRedis = async (value) => {
+  try {
+    await setRedisJson(PLATFORM_DATA_REDIS_KEY, { value, expiresAt: Date.now() + platformDataCacheTtlMs }, { ttlSeconds: Math.ceil(platformDataCacheTtlMs / 1000) });
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+const getPlatformReadyFromRedis = async () => {
+  try {
+    const val = await getRedisValue(PLATFORM_READY_REDIS_KEY);
+    if (!val) return 0;
+    const num = Number(val);
+    return Number.isFinite(num) ? num : 0;
+  } catch (e) {
+    return 0;
+  }
+};
+
+const setPlatformReadyToRedis = async (untilMs) => {
+  try {
+    // store as unix ms string with TTL
+    await setRedisValue(PLATFORM_READY_REDIS_KEY, String(untilMs), { ttlSeconds: Math.ceil(platformReadyCacheTtlMs / 1000) });
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+const invalidatePlatformDataCache = () => {
+  invalidateGlobalPlatformCaches();
+};
+const getDefaultLivePlaybackType = () => (appConfig.preferredLivePlaybackType === 'hls' ? 'live-stream' : 'livekit');
 const getEffectiveLivePlaybackType = (liveClass) => {
   const explicitType = String(liveClass?.livePlaybackType || '').trim().toLowerCase();
 
   if (!explicitType) {
+    if (liveClass?.livePlaybackUrl) {
+      return 'live-stream';
+    }
+    if (liveClass?.embedUrl || liveClass?.roomUrl) {
+      return 'unsupported';
+    }
     return getDefaultLivePlaybackType();
   }
 
+  if (explicitType === 'hls') {
+    return 'live-stream';
+  }
+
   return explicitType;
+};
+
+const buildManagedHlsStreamName = (liveClass) => (liveClass?.courseId && liveClass?.moduleId
+  ? `${liveClass._id}__${liveClass.courseId}__${liveClass.moduleId}__${liveClass.chapterId || 'root'}`
+  : String(liveClass?._id || ''));
+
+const buildPublicManagedHlsPlaybackUrl = (streamName) => {
+  const publicBaseUrl = String(appConfig.liveHlsPublicBaseUrl || '').replace(/\/+$/, '');
+  if (!publicBaseUrl || !streamName) {
+    return null;
+  }
+
+  if (/\/hls$/i.test(publicBaseUrl)) {
+    return `${publicBaseUrl}/${encodeURIComponent(String(streamName))}.m3u8`;
+  }
+
+  return `${publicBaseUrl}/${encodeURIComponent(String(streamName))}/index.m3u8`;
 };
 
 const getReplayExpiresAtIso = (baseMs = Date.now()) => new Date(baseMs + replayRetentionMs).toISOString();
@@ -251,7 +472,14 @@ const lessonProgressMapForCourse = (data, userId, courseId) =>
       .map((entry) => [entry.lessonId, entry]),
   );
 
-const isLessonSequentiallyUnlocked = (course, userId, lessonId, data) => {
+const buildLessonProgressMap = (watchHistory, userId, courseId) =>
+  new Map(
+    (watchHistory || [])
+      .filter((entry) => entry.userId === String(userId) && entry.courseId === String(courseId))
+      .map((entry) => [entry.lessonId, entry]),
+  );
+
+const isLessonSequentiallyUnlockedForProgressMap = (course, lessonId, progressMap) => {
   const lessons = lessonListFromCourse(course);
   const lessonIndex = lessons.findIndex((lesson) => lesson.id === String(lessonId));
 
@@ -259,7 +487,6 @@ const isLessonSequentiallyUnlocked = (course, userId, lessonId, data) => {
     return true;
   }
 
-  const progressMap = lessonProgressMapForCourse(data, userId, course._id);
   const currentProgress = progressMap.get(String(lessonId));
   if (currentProgress?.completed) {
     return true;
@@ -268,6 +495,14 @@ const isLessonSequentiallyUnlocked = (course, userId, lessonId, data) => {
   const previousLesson = lessons[lessonIndex - 1];
   const previousProgress = progressMap.get(previousLesson.id);
   return Boolean(previousProgress?.completed || Number(previousProgress?.progressPercent || 0) >= 90);
+};
+
+const isLessonSequentiallyUnlocked = (course, userId, lessonId, data) => {
+  return isLessonSequentiallyUnlockedForProgressMap(
+    course,
+    lessonId,
+    lessonProgressMapForCourse(data, userId, course._id),
+  );
 };
 
 const sanitizeLessonForViewer = (lesson, hasFullAccess) => {
@@ -312,6 +547,62 @@ const deriveLiveClassStatus = (liveClass) => {
   return explicitStatus || 'ended';
 };
 
+const deriveLiveClassRecordingState = (liveClass) => {
+  if (liveClass?.replayAvailable === false) {
+    return 'disabled';
+  }
+
+  const explicit = String(liveClass?.recordingState || '').trim().toLowerCase();
+  if (explicit) {
+    return explicit;
+  }
+
+  const status = deriveLiveClassStatus(liveClass);
+  if (status === 'live') {
+    return 'recording';
+  }
+
+  if (liveClass?.recordingPublishedAt || liveClass?.recordingUrl || liveClass?.recordingStoragePath) {
+    return 'published';
+  }
+
+  if (status === 'ended') {
+    return 'processing';
+  }
+
+  return 'pending';
+};
+
+const deriveLiveClassReplayState = (liveClass) => {
+  if (liveClass?.replayAvailable === false) {
+    return 'disabled';
+  }
+
+  const explicit = String(liveClass?.replayState || '').trim().toLowerCase();
+  if (explicit) {
+    return explicit;
+  }
+
+  const recordingExpired = Boolean(
+    liveClass?.recordingExpiresAt
+    && Number.isFinite(Date.parse(liveClass.recordingExpiresAt))
+    && Date.parse(liveClass.recordingExpiresAt) <= Date.now(),
+  );
+
+  if (
+    !recordingExpired
+    && (liveClass?.recordingUrl || liveClass?.recordingStoragePath || (liveClass?.replayCourseId && liveClass?.replayLessonId))
+  ) {
+    return 'replay_ready';
+  }
+
+  if (deriveLiveClassStatus(liveClass) === 'ended') {
+    return 'processing';
+  }
+
+  return 'pending';
+};
+
 const sanitizeLiveClassForViewer = (liveClass) => {
   const status = deriveLiveClassStatus(liveClass);
   const effectivePlaybackType = getEffectiveLivePlaybackType(liveClass);
@@ -324,6 +615,13 @@ const sanitizeLiveClassForViewer = (liveClass) => {
     liveClass?.replayAvailable
     && !recordingExpired
     && (liveClass?.recordingUrl || liveClass?.recordingStoragePath || (liveClass?.replayCourseId && liveClass?.replayLessonId)),
+  );
+  const recordingState = deriveLiveClassRecordingState(liveClass);
+  const replayState = deriveLiveClassReplayState(liveClass);
+  const managedPlaybackReady = Boolean(
+    liveClass?.livePlaybackUrl
+    || liveClass?.embedUrl
+    || liveClass?.roomUrl,
   );
 
   return {
@@ -341,12 +639,10 @@ const sanitizeLiveClassForViewer = (liveClass) => {
     recordingDurationMinutes: undefined,
     replayCourseId: undefined,
     replayLessonId: undefined,
-    joinEnabled: status === 'live' && Boolean(
-      liveClass?.livePlaybackUrl
-      || liveClass?.embedUrl
-      || liveClass?.roomUrl
-    ),
+    joinEnabled: status === 'live' && effectivePlaybackType === 'livekit',
     replayReady,
+    recordingState,
+    replayState,
   };
 };
 
@@ -599,6 +895,7 @@ const mapUserRow = (row) => {
     _id: row.id,
     name: row.full_name,
     email: row.email,
+    mobileNumber: row.mobile_number || null,
     password: row.password_hash,
     role: row.role,
     device: row.device || null,
@@ -930,6 +1227,7 @@ const upsertPgUser = async (payload, client = null) => {
     _id: payload._id || createPersistentId('user'),
     name: payload.name,
     email: normalizeEmail(payload.email),
+    mobileNumber: payload.mobileNumber || null,
     password: payload.password,
     role: payload.role || 'student',
     device: payload.device || null,
@@ -945,12 +1243,13 @@ const upsertPgUser = async (payload, client = null) => {
   await pgExec(
     `
       INSERT INTO users (
-        id, full_name, email, password_hash, role, device, active_session_id,
+        id, full_name, email, mobile_number, password_hash, role, device, active_session_id,
         streak_days, reward_points, badges, referral_code, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11, $12, $13)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12, $13, $14)
       ON CONFLICT (id) DO UPDATE SET
         full_name = EXCLUDED.full_name,
         email = EXCLUDED.email,
+        mobile_number = EXCLUDED.mobile_number,
         password_hash = EXCLUDED.password_hash,
         role = EXCLUDED.role,
         device = EXCLUDED.device,
@@ -965,6 +1264,7 @@ const upsertPgUser = async (payload, client = null) => {
       user._id,
       user.name,
       user.email,
+      user.mobileNumber,
       user.password,
       user.role,
       JSON.stringify(user.device),
@@ -1195,17 +1495,6 @@ const insertPgNotification = async (payload, client = null) => {
 };
 
 const insertPgEnrollment = async (payload, client = null) => {
-  const existing = await pgOne(
-    'SELECT * FROM enrollments WHERE user_id = $1 AND course_id = $2',
-    [String(payload.userId), String(payload.courseId)],
-    mapEnrollmentRow,
-    client,
-  );
-
-  if (existing) {
-    return existing;
-  }
-
   const enrollment = {
     _id: payload._id || createPersistentId('enrollment'),
     userId: String(payload.userId),
@@ -1217,10 +1506,17 @@ const insertPgEnrollment = async (payload, client = null) => {
     viewCount: Number(payload.viewCount || 0),
   };
 
-  await pgExec(
+  const saved = await pgOne(
     `
       INSERT INTO enrollments (id, user_id, course_id, access_type, source, enrolled_at, expires_at, view_count)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (user_id, course_id) DO UPDATE SET
+        access_type = EXCLUDED.access_type,
+        source = EXCLUDED.source,
+        enrolled_at = enrollments.enrolled_at,
+        expires_at = EXCLUDED.expires_at,
+        view_count = enrollments.view_count
+      RETURNING *
     `,
     [
       enrollment._id,
@@ -1232,10 +1528,11 @@ const insertPgEnrollment = async (payload, client = null) => {
       enrollment.expiresAt,
       enrollment.viewCount,
     ],
+    mapEnrollmentRow,
     client,
   );
 
-  return enrollment;
+  return saved || enrollment;
 };
 
 const resolveReplayGrantExpiryIso = ({ enrollment = null, currentGrant = null } = {}) => {
@@ -1779,7 +2076,12 @@ const consumeReplayGrant = async ({
     throw new ApiError(404, 'Lesson not found', { code: 'LESSON_NOT_FOUND' });
   }
 
-  if (enforceSequentialUnlock && !isAdmin && !isLessonSequentiallyUnlocked(course, userId, lessonId, await loadPlatformData())) {
+  const watchHistory = isPostgresMode()
+    ? await getPgWatchHistoryForCourseUser(userId, courseId)
+    : (await loadPlatformData()).watchHistory;
+  const progressMap = buildLessonProgressMap(watchHistory, userId, courseId);
+
+  if (enforceSequentialUnlock && !isAdmin && !isLessonSequentiallyUnlockedForProgressMap(course, lessonId, progressMap)) {
     throw new ApiError(403, 'Finish the previous topic to unlock this lesson', { code: 'SEQUENTIAL_LOCKED' });
   }
 
@@ -1821,15 +2123,8 @@ const consumeReplayGrant = async ({
 };
 
 const upsertPgWatchHistory = async (payload, client = null) => {
-  const existing = await pgOne(
-    'SELECT * FROM watch_history WHERE user_id = $1 AND lesson_id = $2',
-    [String(payload.userId), String(payload.lessonId)],
-    mapWatchHistoryRow,
-    client,
-  );
-
   const record = {
-    _id: existing?._id || payload._id || createPersistentId('watch'),
+    _id: payload._id || createPersistentId('watch'),
     userId: String(payload.userId),
     courseId: String(payload.courseId),
     lessonId: String(payload.lessonId),
@@ -1839,7 +2134,7 @@ const upsertPgWatchHistory = async (payload, client = null) => {
     updatedAt: payload.updatedAt || nowIso(),
   };
 
-  await pgExec(
+  const saved = await pgOne(
     `
       INSERT INTO watch_history (
         id, user_id, course_id, lesson_id, progress_percent, progress_seconds, completed, updated_at
@@ -1850,6 +2145,7 @@ const upsertPgWatchHistory = async (payload, client = null) => {
         progress_seconds = EXCLUDED.progress_seconds,
         completed = EXCLUDED.completed,
         updated_at = EXCLUDED.updated_at
+      RETURNING *
     `,
     [
       record._id,
@@ -1861,10 +2157,10 @@ const upsertPgWatchHistory = async (payload, client = null) => {
       record.completed,
       record.updatedAt,
     ],
+    mapWatchHistoryRow,
     client,
   );
-
-  return record;
+  return saved || record;
 };
 
 const insertPgLiveClass = async (payload, client = null) => {
@@ -2433,6 +2729,35 @@ const insertPgDeviceActivity = async ({ userId, sessionId = null, device = null,
   return activity;
 };
 
+const queueBestEffortDeviceActivity = ({ userId, sessionId = null, device = null, eventType, meta = {} }) => {
+  if (!userId || !eventType) {
+    return;
+  }
+
+  if (isPostgresMode()) {
+    setImmediate(() => {
+      void insertPgDeviceActivity({ userId, sessionId, device, eventType, meta }).catch(() => undefined);
+    });
+    return;
+  }
+
+  const user = state.users.find((item) => item._id === String(userId));
+  if (!user) {
+    return;
+  }
+
+  state.deviceActivities.unshift({
+    _id: nextId('activity'),
+    userId: user._id,
+    sessionId: sessionId || user.session || null,
+    device: device || user.device || null,
+    eventType: String(eventType),
+    meta: asObject(meta),
+    createdAt: nowIso(),
+  });
+  state.deviceActivities = state.deviceActivities.slice(0, 200);
+};
+
 const getPgUsers = async (client = null) => pgMany('SELECT * FROM users ORDER BY created_at ASC', [], mapUserRow, client);
 const getPgCourses = async (client = null) => pgMany('SELECT * FROM courses ORDER BY created_at ASC', [], mapCourseRow, client);
 const getPgTests = async (client = null) => pgMany('SELECT * FROM tests ORDER BY created_at ASC', [], mapTestRow, client);
@@ -2468,87 +2793,193 @@ const getPgAiMessages = async (client = null) => pgMany('SELECT * FROM ai_messag
 const getPgSessions = async (client = null) => pgMany('SELECT * FROM user_sessions ORDER BY created_at DESC', [], mapSessionRow, client);
 const getPgDeviceActivities = async (client = null) => pgMany('SELECT * FROM device_activity ORDER BY created_at DESC', [], mapDeviceActivityRow, client);
 const getPgNotifications = async (client = null) => pgMany('SELECT * FROM notifications ORDER BY created_at DESC', [], mapNotificationRow, client);
+const getPgNotificationCount = async (client = null) => pgOne(
+  'SELECT count(*)::int AS count FROM notifications',
+  [],
+  (row) => Number(row.count || 0),
+  client,
+);
 const getPgReferrals = async (client = null) => pgMany('SELECT * FROM referrals ORDER BY created_at DESC', [], mapReferralRow, client);
 const getPgUploads = async (client = null) => pgMany('SELECT * FROM admin_uploads ORDER BY created_at DESC', [], mapUploadRow, client);
 const getPgPayments = async (client = null) => pgMany('SELECT * FROM payments ORDER BY created_at DESC', [], mapPaymentRow, client);
 const getPgWebhooks = async (client = null) => pgMany('SELECT * FROM payment_webhooks ORDER BY received_at DESC', [], mapWebhookRow, client);
+const getPgWatchHistoryForCourseUser = async (userId, courseId, client = null) => pgMany(
+  'SELECT * FROM watch_history WHERE user_id = $1 AND course_id = $2 ORDER BY updated_at DESC',
+  [String(userId), String(courseId)],
+  mapWatchHistoryRow,
+  client,
+);
+
+const getActiveEnrollmentsCacheKey = (userId) => cacheKey('enrollments', `active:${String(userId)}`);
+const getUserProgressCacheKey = (userId) => cacheKey('progress', String(userId));
+
+const getActiveEnrollmentsForUser = async (userId) => {
+  await ensurePlatformReady();
+
+  if (!userId) {
+    return [];
+  }
+
+  const cacheKeyActiveEnrollments = getActiveEnrollmentsCacheKey(userId);
+  if (!isMongoMode()) {
+    return getCachedJsonValue(cacheKeyActiveEnrollments, async () => {
+      if (isPostgresMode()) {
+        return pgMany(
+          `SELECT * FROM enrollments WHERE user_id = $1 AND ${activeEnrollmentSql}`,
+          [String(userId)],
+          mapEnrollmentRow,
+        );
+      }
+
+      return filterActiveEnrollments(state.enrollments.filter((entry) => entry.userId === String(userId)));
+    }, ACTIVE_ENROLLMENTS_LOOKUP_CACHE_TTL_SECONDS);
+  }
+
+  return filterActiveEnrollments(state.enrollments.filter((entry) => entry.userId === String(userId)));
+};
+
+const hasActiveEnrollmentForCourse = async (userId, courseId) => {
+  if (!userId || !courseId) {
+    return false;
+  }
+
+  const enrollments = await getActiveEnrollmentsForUser(userId);
+  return enrollments.some((entry) => entry.courseId === String(courseId));
+};
 
 const loadPlatformData = async () => {
   await ensurePlatformReady();
 
   if (isPostgresMode()) {
-    const [
-      users,
-      courses,
-      tests,
-      testAttempts,
-      quizzes,
-      enrollments,
-      watchHistory,
-      liveClasses,
-      liveChatMessages,
-      subscriptions,
-      userSubscriptions,
-      aiMessages,
-      loginSessions,
-      deviceActivities,
-      notifications,
-      referrals,
-      uploads,
-      payments,
-      webhooks,
-    ] = await Promise.all([
-      getPgUsers(),
-      getPgCourses(),
-      getPgTests(),
-      getPgAttempts(),
-      getPgQuizzes(),
-      getPgEnrollments(),
-      getPgWatchHistory(),
-      getPgLiveClasses(),
-      getPgLiveChatMessages(),
-      getPgPlans(),
-      getPgUserSubscriptions(),
-      getPgAiMessages(),
-      getPgSessions(),
-      getPgDeviceActivities(),
-      getPgNotifications(),
-      getPgReferrals(),
-      getPgUploads(),
-      getPgPayments(),
-      getPgWebhooks(),
-    ]);
+    const now = Date.now();
+    // Try in-memory cache first
+    if (platformDataCache && platformDataCache.expiresAt > now) {
+      return platformDataCache.value;
+    }
 
-    return {
-      users,
-      courses,
-      tests,
-      testAttempts,
-      quizzes,
-      enrollments,
-      watchHistory,
-      liveClasses,
-      liveChatMessages,
-      subscriptions,
-      userSubscriptions,
-      aiMessages,
-      loginSessions,
-      deviceActivities,
-      notifications,
-      referrals,
-      uploads,
-      payments,
-      webhooks,
-    };
+    // If Redis is available, try reading the platform data cache from Redis to avoid DB hits
+    try {
+      const redisCached = await getPlatformDataFromRedis();
+      if (redisCached) {
+        platformDataCache = {
+          value: redisCached,
+          expiresAt: Date.now() + platformDataCacheTtlMs,
+        };
+        return redisCached;
+      }
+    } catch (e) {
+      // ignore Redis errors and fall back to DB
+    }
+
+    if (platformDataCachePromise) {
+      return platformDataCachePromise;
+    }
+
+    platformDataCachePromise = (async () => {
+      const value = await runInTransaction(async (client) => {
+        const users = await getPgUsers(client);
+        const courses = await getPgCourses(client);
+        const tests = await getPgTests(client);
+        const testAttempts = await getPgAttempts(client);
+        const quizzes = await getPgQuizzes(client);
+        const enrollments = await getPgEnrollments(client);
+        const watchHistory = await getPgWatchHistory(client);
+        const liveClasses = await getPgLiveClasses(client);
+        const liveChatMessages = await getPgLiveChatMessages(client);
+        const subscriptions = await getPgPlans(client);
+        const userSubscriptions = await getPgUserSubscriptions(client);
+        const aiMessages = await getPgAiMessages(client);
+        const loginSessions = await getPgSessions(client);
+        const deviceActivities = await getPgDeviceActivities(client);
+        const notificationCount = await getPgNotificationCount(client);
+        const referrals = await getPgReferrals(client);
+        const uploads = await getPgUploads(client);
+        const payments = await getPgPayments(client);
+        const webhooks = await getPgWebhooks(client);
+
+        return {
+          users,
+          courses,
+          tests,
+          testAttempts,
+          quizzes,
+          enrollments,
+          watchHistory,
+          liveClasses,
+          liveChatMessages,
+          subscriptions,
+          userSubscriptions,
+          aiMessages,
+          loginSessions,
+          deviceActivities,
+          notifications: [],
+          notificationCount,
+          referrals,
+          uploads,
+          payments,
+          webhooks,
+        };
+      });
+      platformDataCache = {
+        value,
+        expiresAt: Date.now() + platformDataCacheTtlMs,
+      };
+      // Also attempt to populate Redis cache for other instances/processes
+      try {
+        await setPlatformDataToRedis(value);
+      } catch (e) {
+        // ignore Redis set errors
+      }
+
+      return value;
+    })();
+
+    try {
+      return await platformDataCachePromise;
+    } finally {
+      platformDataCachePromise = null;
+    }
   }
 
   return state;
 };
 
 const ensurePlatformReady = async () => {
-  await ensurePersistentDatabaseAvailability();
-  await ensureDefaultAdminUser();
-  return 'ready';
+  // Check Redis first for platform ready marker to avoid repeating admin setup on hot requests
+  try {
+    const redisUntil = await getPlatformReadyFromRedis();
+    if (redisUntil > Date.now()) {
+      platformReadyUntil = redisUntil;
+      return 'ready';
+    }
+  } catch (e) {
+    // ignore Redis errors and continue
+  }
+
+  if (platformReadyUntil > Date.now()) {
+    return 'ready';
+  }
+
+  if (!platformReadyPromise) {
+    platformReadyPromise = (async () => {
+      await ensurePersistentDatabaseAvailability();
+      await ensureDefaultAdminUser();
+      platformReadyUntil = Date.now() + platformReadyCacheTtlMs;
+      // try to persist marker to Redis so other processes can skip DB work
+      try {
+        await setPlatformReadyToRedis(platformReadyUntil);
+      } catch (e) {
+        // ignore
+      }
+      return 'ready';
+    })();
+  }
+
+  try {
+    return await platformReadyPromise;
+  } finally {
+    platformReadyPromise = null;
+  }
 };
 
 const getRecentSessions = (data, userId) =>
@@ -2606,6 +3037,7 @@ const sessionRepository = {
         }, client);
       });
       await sessionRepository.setActiveSession({ userId, sessionId });
+      invalidateUserPlatformCaches(userId);
       return;
     }
 
@@ -2634,6 +3066,7 @@ const sessionRepository = {
     });
     state.deviceActivities = state.deviceActivities.slice(0, 200);
     await sessionRepository.setActiveSession({ userId, sessionId });
+    invalidateUserPlatformCaches(userId);
   },
 
   async recordLogout({ userId, sessionId, device, reason = 'logout' }) {
@@ -2649,6 +3082,7 @@ const sessionRepository = {
         }, client);
       });
       await sessionRepository.clearActiveSession(userId);
+      invalidateUserPlatformCaches(userId);
       return;
     }
 
@@ -2676,6 +3110,7 @@ const sessionRepository = {
     });
     state.deviceActivities = state.deviceActivities.slice(0, 200);
     await sessionRepository.clearActiveSession(userId);
+    invalidateUserPlatformCaches(userId);
   },
 
   async replaceActiveSession({ userId, sessionId, device }) {
@@ -2725,15 +3160,20 @@ const usersRepository = {
   async findById(id) {
     await ensurePlatformReady();
 
-    if (isPostgresMode()) {
-      return pgOne('SELECT * FROM users WHERE id = $1', [String(id)], mapUserRow);
+    const cacheKeyUser = cacheKey('user', String(id));
+    const ttlSeconds = USER_LOOKUP_CACHE_TTL_SECONDS;
+
+    if (!isMongoMode()) {
+      return getCachedJsonValue(cacheKeyUser, async () => {
+        if (isPostgresMode()) {
+          return pgOne('SELECT * FROM users WHERE id = $1', [String(id)], mapUserRow);
+        }
+
+        return state.users.find((user) => user._id === String(id)) || null;
+      }, ttlSeconds);
     }
 
-    if (isMongoMode()) {
-      return User.findById(id);
-    }
-
-    return state.users.find((user) => user._id === String(id)) || null;
+    return User.findById(id);
   },
 
   async findSafeById(id) {
@@ -2748,6 +3188,9 @@ const usersRepository = {
         _id: payload._id || createPersistentId('user'),
         email: normalizeEmail(payload.email),
       });
+      try {
+        await deleteRedisKey(cacheKey('user', String(createdUser._id)));
+      } catch (error) {}
       return clone(createdUser);
     }
 
@@ -2763,6 +3206,7 @@ const usersRepository = {
       _id: payload._id || nextId('user'),
       name: payload.name,
       email: normalizeEmail(payload.email),
+      mobileNumber: payload.mobileNumber || null,
       password: payload.password,
       role: payload.role || 'student',
       device: payload.device || null,
@@ -2776,6 +3220,9 @@ const usersRepository = {
     };
 
     state.users.push(createdUser);
+    try {
+      await deleteRedisKey(cacheKey('user', String(createdUser._id)));
+    } catch (error) {}
     return clone(createdUser);
   },
 
@@ -2792,6 +3239,11 @@ const usersRepository = {
         updated_at: nowIso(),
       };
       await upsertPgUser(merged);
+      try {
+        await deleteRedisKey(cacheKey('user', String(id)));
+      } catch (error) {}
+      invalidateGlobalPlatformCaches();
+      invalidateUserPlatformCaches(id);
       return clone(merged);
     }
 
@@ -2810,6 +3262,11 @@ const usersRepository = {
       ...clone(patch),
       updated_at: nowIso(),
     };
+    try {
+      await deleteRedisKey(cacheKey('user', String(id)));
+    } catch (error) {}
+    invalidateGlobalPlatformCaches();
+    invalidateUserPlatformCaches(id);
 
     return clone(state.users[userIndex]);
   },
@@ -2819,15 +3276,36 @@ const coursesRepository = {
   async list() {
     await ensurePlatformReady();
 
+    const cacheKeyCourses = cacheKey('courses', 'list');
+    const courseCacheTtlMs = Math.max(1000, Number(appConfig.courseCacheTtlMs || platformDataCacheTtlMs));
+
+    // Try Redis cache first
+    try {
+      const cached = await getRedisJson(cacheKeyCourses);
+      if (cached) {
+        return cached;
+      }
+    } catch (e) {
+      // ignore redis errors
+    }
+
+    let courses;
     if (isPostgresMode()) {
-      return getPgCourses();
+      courses = await getPgCourses();
+    } else if (isMongoMode()) {
+      courses = await Course.find().lean();
+    } else {
+      courses = state.courses.map((course) => clone(course));
     }
 
-    if (isMongoMode()) {
-      return Course.find().lean();
+    // populate redis cache for short TTL
+    try {
+      await setRedisJson(cacheKeyCourses, courses, { ttlSeconds: Math.ceil(courseCacheTtlMs / 1000) });
+    } catch (e) {
+      // ignore
     }
 
-    return state.courses.map((course) => clone(course));
+    return courses;
   },
 
   async listForViewer(userId) {
@@ -2838,16 +3316,7 @@ const coursesRepository = {
     if (userId) {
       const user = await usersRepository.findSafeById(userId);
       isAdmin = user?.role === 'admin';
-
-      if (isPostgresMode()) {
-        enrollments = await pgMany(
-        `SELECT * FROM enrollments WHERE user_id = $1 AND ${activeEnrollmentSql}`,
-          [String(userId)],
-          mapEnrollmentRow,
-        );
-      } else {
-        enrollments = filterActiveEnrollments(state.enrollments.filter((entry) => entry.userId === String(userId)));
-      }
+      enrollments = await getActiveEnrollmentsForUser(userId);
     }
 
     const enrolledCourseIds = new Set(enrollments.map((entry) => entry.courseId));
@@ -2857,15 +3326,20 @@ const coursesRepository = {
   async findById(id) {
     await ensurePlatformReady();
 
-    if (isPostgresMode()) {
-      return pgOne('SELECT * FROM courses WHERE id = $1', [String(id)], mapCourseRow);
+    const cacheKeyCourse = cacheKey('course', String(id));
+    const ttlSeconds = COURSE_LOOKUP_CACHE_TTL_SECONDS;
+
+    if (!isMongoMode()) {
+      return getCachedJsonValue(cacheKeyCourse, async () => {
+        if (isPostgresMode()) {
+          return pgOne('SELECT * FROM courses WHERE id = $1', [String(id)], mapCourseRow);
+        }
+
+        return clone(state.courses.find((course) => course._id === String(id)) || null);
+      }, ttlSeconds);
     }
 
-    if (isMongoMode()) {
-      return Course.findById(id).lean();
-    }
-
-    return clone(state.courses.find((course) => course._id === String(id)) || null);
+    return Course.findById(id).lean();
   },
 
   async findVisibleById(id, userId) {
@@ -2879,17 +3353,7 @@ const coursesRepository = {
     if (userId) {
       const user = await usersRepository.findSafeById(userId);
       isAdmin = user?.role === 'admin';
-
-      if (isPostgresMode()) {
-        const row = await pgOne(
-          `SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2 AND ${activeEnrollmentSql}`,
-          [String(userId), String(id)],
-          (entry) => entry,
-        );
-        isEnrolled = Boolean(row);
-      } else {
-        isEnrolled = state.enrollments.some((entry) => entry.userId === String(userId) && entry.courseId === String(id) && isEnrollmentActive(entry));
-      }
+      isEnrolled = await hasActiveEnrollmentForCourse(userId, id);
     }
 
     return redactCourseForViewer(course, isAdmin || isEnrolled);
@@ -2898,6 +3362,10 @@ const coursesRepository = {
   async create(payload) {
     if (isPostgresMode()) {
       const course = await upsertPgCourse(payload);
+      invalidateGlobalPlatformCaches();
+      try {
+        await deleteRedisKey(cacheKey('course', String(course._id)));
+      } catch (error) {}
       return clone(course);
     }
 
@@ -2925,6 +3393,10 @@ const coursesRepository = {
     };
 
     state.courses.push(createdCourse);
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('course', String(createdCourse._id)));
+    } catch (error) {}
     return clone(createdCourse);
   },
 
@@ -2939,17 +3411,7 @@ const coursesRepository = {
     if (userId) {
       const user = await usersRepository.findSafeById(userId);
       isAdmin = user?.role === 'admin';
-
-      if (isPostgresMode()) {
-        const row = await pgOne(
-          `SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2 AND ${activeEnrollmentSql}`,
-          [String(userId), String(courseId)],
-          (entry) => entry,
-        );
-        isEnrolled = Boolean(row);
-      } else {
-        isEnrolled = state.enrollments.some((entry) => entry.userId === String(userId) && entry.courseId === String(courseId) && isEnrollmentActive(entry));
-      }
+      isEnrolled = await hasActiveEnrollmentForCourse(userId, courseId);
     }
 
     return lessonListFromCourse(redactCourseForViewer(course, isAdmin || isEnrolled));
@@ -2961,6 +3423,10 @@ const coursesRepository = {
         _id: courseId,
         ...updatedCourse,
       });
+      invalidateGlobalPlatformCaches();
+      try {
+        await deleteRedisKey(cacheKey('course', String(courseId)));
+      } catch (error) {}
       return updatedCourse;
     }
 
@@ -3001,8 +3467,39 @@ const coursesRepository = {
       modules: clone(updatedCourse.modules || []),
       updated_at: nowIso(),
     };
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('course', String(courseId)));
+    } catch (error) {}
 
     return clone(state.courses[courseIndex]);
+  },
+
+  async delete(courseId) {
+    if (isPostgresMode()) {
+      await pgExec('DELETE FROM courses WHERE id = $1', [String(courseId)]);
+      invalidateGlobalPlatformCaches();
+      try {
+        await deleteRedisKey(cacheKey('course', String(courseId)));
+      } catch (error) {}
+      return true;
+    }
+
+    if (isMongoMode()) {
+      await Course.findByIdAndDelete(courseId);
+      invalidateGlobalPlatformCaches();
+      return true;
+    }
+
+    const courseIndex = state.courses.findIndex((course) => course._id === String(courseId));
+    if (courseIndex >= 0) {
+      state.courses.splice(courseIndex, 1);
+    }
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('course', String(courseId)));
+    } catch (error) {}
+    return courseIndex >= 0;
   },
 
   async updateLesson(courseId, lessonId, updater) {
@@ -3026,6 +3523,7 @@ const coursesRepository = {
     userId,
     courseId,
     lessonId,
+    user = null,
     enforceEnrollment = true,
     enforceSequentialUnlock = true,
   }) {
@@ -3034,26 +3532,16 @@ const coursesRepository = {
       throw new ApiError(404, 'Course not found', { code: 'COURSE_NOT_FOUND' });
     }
 
-    const user = await usersRepository.findSafeById(userId);
-    if (!user) {
+    const resolvedUser = user || await usersRepository.findSafeById(userId);
+    if (!resolvedUser) {
       throw new ApiError(401, 'Authorization token required', { code: 'AUTH_REQUIRED' });
     }
 
-    const isAdmin = user.role === 'admin';
+    const isAdmin = resolvedUser.role === 'admin';
     let isEnrolled = isAdmin || !enforceEnrollment;
 
     if (!isEnrolled) {
-      if (isPostgresMode()) {
-        const row = await pgOne(
-          `SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2 AND ${activeEnrollmentSql}`,
-          [String(userId), String(courseId)],
-          (entry) => entry,
-        );
-        isEnrolled = Boolean(row);
-      } else {
-        const data = await loadPlatformData();
-        isEnrolled = data.enrollments.some((entry) => entry.userId === String(userId) && entry.courseId === String(courseId) && isEnrollmentActive(entry));
-      }
+      isEnrolled = await hasActiveEnrollmentForCourse(userId, courseId);
     }
 
     if (!isEnrolled) {
@@ -3065,12 +3553,16 @@ const coursesRepository = {
       throw new ApiError(404, 'Lesson not found', { code: 'LESSON_NOT_FOUND' });
     }
 
-    const data = await loadPlatformData();
-    if (enforceSequentialUnlock && !isAdmin && !isLessonSequentiallyUnlocked(course, userId, lessonId, data)) {
+    const watchHistory = isPostgresMode()
+      ? await getPgWatchHistoryForCourseUser(userId, courseId)
+      : (await loadPlatformData()).watchHistory;
+    const progressMap = buildLessonProgressMap(watchHistory, userId, courseId);
+
+    if (enforceSequentialUnlock && !isAdmin && !isLessonSequentiallyUnlockedForProgressMap(course, lessonId, progressMap)) {
       throw new ApiError(403, 'Finish the previous topic to unlock this lesson', { code: 'SEQUENTIAL_LOCKED' });
     }
 
-    const lessonProgress = lessonProgressMapForCourse(data, userId, courseId).get(String(lessonId));
+    const lessonProgress = progressMap.get(String(lessonId));
 
     if (lesson.type === 'youtube') {
       const decryptedId = decryptVideoId(lesson.youtubeVideoIdCiphertext) || normalizeYouTubeVideoId(lesson.videoUrl);
@@ -3086,7 +3578,7 @@ const coursesRepository = {
         playerType: 'youtube',
         embedUrl,
         streamUrl: null,
-        watermarkText: `${user.email} • ${user._id}`,
+        watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
         resumeSeconds: Number(lessonProgress?.progressSeconds || 0),
         completed: Boolean(lessonProgress?.completed),
         tokenExpiresAt: null,
@@ -3098,14 +3590,43 @@ const coursesRepository = {
       const hlsReady = lesson.deliveryStrategy === 'hls'
         && lesson.hlsProcessingStatus === 'ready'
         && lesson.hlsPlaybackPath;
-      if (!hlsReady && !lesson.storagePath) {
+      const sourceReady = Boolean(lesson.storagePath);
+      const sourceFallbackAllowed = Boolean(lesson.sourceFallbackAllowed ?? appConfig.sourcePlaybackFallbackEnabled);
+
+      if (!hlsReady && !sourceReady) {
         throw new ApiError(500, 'Private video storage path is missing', { code: 'PRIVATE_VIDEO_PATH_MISSING' });
+      }
+
+      if (!hlsReady && !sourceFallbackAllowed) {
+        if (lesson.hlsProcessingStatus === 'queued' || lesson.hlsProcessingStatus === 'processing') {
+          return {
+            playerType: 'private-video',
+            embedUrl: null,
+            streamUrl: null,
+            streamFormat: null,
+            playbackStatus: lesson.hlsProcessingStatus,
+            deliveryProfile: lesson.deliveryProfile || 'cost-saver-hls',
+            availableQualities: Array.isArray(lesson.targetQualities) ? lesson.targetQualities : [],
+            statusMessage: 'Adaptive stream is still preparing. Playback will be available when HLS processing finishes.',
+            watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
+            resumeSeconds: Number(lessonProgress?.progressSeconds || 0),
+            completed: Boolean(lessonProgress?.completed),
+            tokenExpiresAt: null,
+            drmEnabled: Boolean(appConfig.privateVideoDrmEnabled),
+            playbackGrantExpiresAt: null,
+            playbackGrantRemainingViews: null,
+          };
+        }
+
+        throw new ApiError(503, 'Adaptive HLS playback is not ready for this lesson yet', {
+          code: 'PRIVATE_VIDEO_HLS_NOT_READY',
+        });
       }
       const grant = await consumeReplayGrant({
         userId,
         courseId,
         lessonId,
-        sessionId: user.session || null,
+        sessionId: resolvedUser.session || null,
         enforceEnrollment,
         enforceSequentialUnlock,
       });
@@ -3114,22 +3635,32 @@ const coursesRepository = {
       const playbackProvider = hlsReady
         ? (lesson.hlsStorageProvider || lesson.storageProvider || 'local')
         : (lesson.storageProvider || 'local');
+      const playbackBundlePath = String(lesson.hlsManifestRootPath || '').trim();
+      const playbackBundleVersion = String(lesson.hlsManifestVersion || '').trim();
 
-      const issuedToken = issuePlaybackToken({
-        userId: String(userId),
-        sessionId: user.session || null,
-        courseId: String(courseId),
-        lessonId: String(lessonId),
-        storageProvider: playbackProvider,
-        storagePath: playbackPath,
-        mimeType: playbackMimeType,
-        assetKind: hlsReady ? 'hls' : 'source',
-      });
+      const issuedToken = hlsReady
+        ? buildManifestBundleUrl({
+          storageProvider: playbackProvider,
+          bundlePath: playbackBundlePath || path.posix.dirname(playbackPath),
+          version: playbackBundleVersion || 'legacy',
+        }, {
+          assetPath: 'master.m3u8',
+        })
+        : issuePlaybackToken({
+          userId: String(userId),
+          sessionId: resolvedUser.session || null,
+          courseId: String(courseId),
+          lessonId: String(lessonId),
+          storageProvider: playbackProvider,
+          storagePath: playbackPath,
+          mimeType: playbackMimeType,
+          assetKind: 'source',
+        });
 
       return {
         playerType: 'private-video',
         embedUrl: null,
-        streamUrl: `/backend/api/courses/stream/${issuedToken.token}`,
+        streamUrl: hlsReady ? issuedToken.url : `/backend/api/courses/stream/${issuedToken.token}`,
         streamFormat: hlsReady ? 'hls' : 'source',
         playbackStatus: hlsReady ? 'ready' : (lesson.hlsProcessingStatus || 'ready'),
         deliveryProfile: lesson.deliveryProfile || 'private-source',
@@ -3137,11 +3668,11 @@ const coursesRepository = {
         statusMessage: hlsReady
           ? 'Adaptive stream ready.'
           : lesson.hlsProcessingStatus === 'processing' || lesson.hlsProcessingStatus === 'queued'
-            ? 'Adaptive HLS processing is running. Protected source playback is available now.'
+            ? 'Adaptive HLS processing is running. Protected source playback is temporarily available.'
             : lesson.hlsProcessingError
-              ? 'Adaptive HLS processing failed. Protected source playback is available.'
-              : 'Protected source playback is available.',
-        watermarkText: `${user.email} • ${user._id}`,
+              ? 'Adaptive HLS processing failed. Protected source playback is temporarily available.'
+              : 'Protected source playback is temporarily available.',
+        watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
         resumeSeconds: Number(lessonProgress?.progressSeconds || 0),
         completed: Boolean(lessonProgress?.completed),
         tokenExpiresAt: issuedToken.expiresAt,
@@ -3161,15 +3692,32 @@ const testsRepository = {
   async list() {
     await ensurePlatformReady();
 
+    const cacheKeyTests = cacheKey('tests', 'list');
+    const testsCacheTtlMs = Math.max(1000, Number(appConfig.testsCacheTtlMs || platformDataCacheTtlMs));
+
+    try {
+      const cached = await getRedisJson(cacheKeyTests);
+      if (cached) {
+        return cached;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    let tests;
     if (isPostgresMode()) {
-      return getPgTests();
+      tests = await getPgTests();
+    } else if (isMongoMode()) {
+      tests = await Test.find().lean();
+    } else {
+      tests = state.tests.map((test) => clone(test));
     }
 
-    if (isMongoMode()) {
-      return Test.find().lean();
-    }
+    try {
+      await setRedisJson(cacheKeyTests, tests, { ttlSeconds: Math.ceil(testsCacheTtlMs / 1000) });
+    } catch (e) {}
 
-    return state.tests.map((test) => clone(test));
+    return tests;
   },
 
   async listForAttempt() {
@@ -3180,15 +3728,20 @@ const testsRepository = {
   async findById(id) {
     await ensurePlatformReady();
 
-    if (isPostgresMode()) {
-      return pgOne('SELECT * FROM tests WHERE id = $1', [String(id)], mapTestRow);
+    const cacheKeyTest = cacheKey('test', String(id));
+    const ttlSeconds = TEST_LOOKUP_CACHE_TTL_SECONDS;
+
+    if (!isMongoMode()) {
+      return getCachedJsonValue(cacheKeyTest, async () => {
+        if (isPostgresMode()) {
+          return pgOne('SELECT * FROM tests WHERE id = $1', [String(id)], mapTestRow);
+        }
+
+        return clone(state.tests.find((test) => test._id === String(id)) || null);
+      }, ttlSeconds);
     }
 
-    if (isMongoMode()) {
-      return Test.findById(id).lean();
-    }
-
-    return clone(state.tests.find((test) => test._id === String(id)) || null);
+    return Test.findById(id).lean();
   },
 
   async findAttemptById(id) {
@@ -3199,6 +3752,10 @@ const testsRepository = {
   async create(payload) {
     if (isPostgresMode()) {
       const test = await upsertPgTest(payload);
+      invalidateGlobalPlatformCaches();
+      try {
+        await deleteRedisKey(cacheKey('test', String(test._id)));
+      } catch (error) {}
       return clone(test);
     }
 
@@ -3235,6 +3792,10 @@ const testsRepository = {
     };
 
     state.tests.push(createdTest);
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('test', String(createdTest._id)));
+    } catch (error) {}
     return clone(createdTest);
   },
 
@@ -3253,7 +3814,12 @@ const testsRepository = {
     };
 
     if (isPostgresMode()) {
-      return upsertPgTest(nextPayload);
+      const updatedTest = await upsertPgTest(nextPayload);
+      invalidateGlobalPlatformCaches();
+      try {
+        await deleteRedisKey(cacheKey('test', String(testId)));
+      } catch (error) {}
+      return updatedTest;
     }
 
     if (isMongoMode()) {
@@ -3298,6 +3864,10 @@ const testsRepository = {
     };
 
     state.tests[index] = updatedTest;
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('test', String(testId)));
+    } catch (error) {}
     return clone(updatedTest);
   },
 
@@ -3306,6 +3876,10 @@ const testsRepository = {
 
     if (isPostgresMode()) {
       await pgExec('DELETE FROM tests WHERE id = $1', [String(testId)]);
+      invalidateGlobalPlatformCaches();
+      try {
+        await deleteRedisKey(cacheKey('test', String(testId)));
+      } catch (error) {}
       return true;
     }
 
@@ -3321,6 +3895,10 @@ const testsRepository = {
 
     state.tests.splice(index, 1);
     state.testAttempts = state.testAttempts.filter((attempt) => attempt.testId !== String(testId));
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('test', String(testId)));
+    } catch (error) {}
     return true;
   },
 
@@ -3379,12 +3957,21 @@ const testsRepository = {
 
     if (isPostgresMode()) {
       return runInTransaction(async (client) => {
-        const existingScores = await pgMany('SELECT score FROM test_attempts', [], (row) => Number(row.score || 0), client);
-        const rankedAttempts = [...existingScores, score].sort((left, right) => right - left);
-        const rank = rankedAttempts.findIndex((attemptScore) => Number(attemptScore) === score) + 1;
-        const percentile = rankedAttempts.length === 0
+        const ranking = await pgOne(
+          'SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE score > $1)::int AS higher FROM test_attempts',
+          [Number(score)],
+          (row) => ({
+            total: Number(row.total || 0),
+            higher: Number(row.higher || 0),
+          }),
+          client,
+        );
+        const totalAttempts = Number(ranking?.total || 0) + 1;
+        const higherAttempts = Number(ranking?.higher || 0);
+        const rank = higherAttempts + 1;
+        const percentile = totalAttempts === 0
           ? 0
-          : Number((((rankedAttempts.length - rank) / rankedAttempts.length) * 100).toFixed(2));
+          : Number((((totalAttempts - rank) / totalAttempts) * 100).toFixed(2));
 
         const attempt = await insertPgTestAttempt({
           userId: payload.userId,
@@ -3410,20 +3997,20 @@ const testsRepository = {
             ...user,
             points: Number(user.points || 0) + Math.max(Math.round(score), 0),
           }, client);
-
-          await insertPgDeviceActivity({
-            userId: user._id,
-            sessionId: user.session,
-            device: user.device,
-            eventType: 'mock_test_submitted',
-            meta: {
-              testId: test._id,
-              score: attempt.score,
-              percentile: attempt.percentile,
-            },
-          }, client);
         }
 
+        queueBestEffortDeviceActivity({
+          userId: payload.userId,
+          eventType: 'mock_test_submitted',
+          meta: {
+            testId: test._id,
+            score: attempt.score,
+            percentile: attempt.percentile,
+          },
+        });
+
+        invalidateGlobalPlatformCaches();
+        invalidateUserPlatformCaches(payload.userId);
         return attempt;
       });
     }
@@ -3454,25 +4041,22 @@ const testsRepository = {
     };
 
     state.testAttempts.push(attempt);
+    invalidateGlobalPlatformCaches();
 
     const user = state.users.find((item) => item._id === String(payload.userId));
     if (user) {
       user.points += Math.max(Math.round(score), 0);
-      state.deviceActivities.unshift({
-        _id: nextId('activity'),
-        userId: user._id,
-        sessionId: user.session,
-        device: user.device,
-        eventType: 'mock_test_submitted',
-        meta: {
-          testId: test._id,
-          score: attempt.score,
-          percentile: attempt.percentile,
-        },
-        createdAt: nowIso(),
-      });
-      state.deviceActivities = state.deviceActivities.slice(0, 200);
     }
+
+    queueBestEffortDeviceActivity({
+      userId: payload.userId,
+      eventType: 'mock_test_submitted',
+      meta: {
+        testId: test._id,
+        score: attempt.score,
+        percentile: attempt.percentile,
+      },
+    });
 
     return clone(attempt);
   },
@@ -3500,7 +4084,10 @@ const quizzesRepository = {
     await ensurePlatformReady();
 
     if (isPostgresMode()) {
-      return upsertPgQuiz(payload);
+      const quiz = await upsertPgQuiz(payload);
+      invalidateGlobalPlatformCaches();
+      invalidateQuizCaches({ quizId: quiz._id, quizDate: quiz.date });
+      return quiz;
     }
 
     const quizDate = String(payload.date || '').slice(0, 10);
@@ -3519,12 +4106,22 @@ const quizzesRepository = {
     } else {
       state.quizzes.push(createdQuiz);
     }
+    invalidateGlobalPlatformCaches();
+    invalidateQuizCaches({ quizId: createdQuiz._id, quizDate: createdQuiz.date });
 
     return clone(createdQuiz);
   },
 
   async findByDate(date) {
     await ensurePlatformReady();
+    const dateKey = String(date).slice(0, 10);
+    const cacheKeyQuizDate = cacheKey('quiz', `date:${dateKey}`);
+    const quizCacheTtlMs = Math.max(500, Number(appConfig.quizCacheTtlMs || 3000));
+
+    try {
+      const cached = await getRedisJson(cacheKeyQuizDate);
+      if (cached) return cached;
+    } catch (e) {}
 
     if (isPostgresMode()) {
       const quiz = await pgOne(
@@ -3543,7 +4140,11 @@ const quizzesRepository = {
       };
     }
 
-    return clone(state.quizzes.find((quiz) => quiz.date === String(date).slice(0, 10)) || null);
+    const result = clone(state.quizzes.find((quiz) => quiz.date === String(date).slice(0, 10)) || null);
+    try {
+      await setRedisJson(cacheKeyQuizDate, result, { ttlSeconds: Math.ceil(quizCacheTtlMs / 1000) });
+    } catch (e) {}
+    return result;
   },
 
   async findById(id) {
@@ -3614,7 +4215,7 @@ const quizzesRepository = {
             badges: nextBadges,
           }, client);
 
-          await insertPgDeviceActivity({
+          queueBestEffortDeviceActivity({
             userId: user._id,
             sessionId: user.session,
             device: user.device,
@@ -3624,10 +4225,12 @@ const quizzesRepository = {
               score,
               total: quiz.questions.length,
             },
-          }, client);
+          });
         }
 
-        return {
+    invalidateQuizCaches({ quizId: quiz._id, quizDate: quiz.date });
+    invalidateUserPlatformCaches(userId);
+    return {
           score,
           total: quiz.questions.length,
           leaderboardEntry: {
@@ -3650,6 +4253,7 @@ const quizzesRepository = {
     };
 
     state.quizzes[quizIndex].leaderboard.push(entry);
+    invalidateQuizCaches({ quizId: quiz._id, quizDate: quiz.date });
 
     const user = state.users.find((item) => item._id === String(userId));
     if (user) {
@@ -3843,35 +4447,54 @@ const notificationsRepository = {
   async list(userId) {
     await ensurePlatformReady();
 
+    const cacheKeyNotifications = userId ? cacheKey('notifications', `user:${userId}`) : cacheKey('notifications', 'list');
+    const notificationsCacheTtlMs = Math.max(500, Number(appConfig.notificationsCacheTtlMs || 2000));
+
+    try {
+      const cached = await getRedisJson(cacheKeyNotifications);
+      if (cached) return cached;
+    } catch (e) {}
+
     if (isPostgresMode()) {
       if (userId) {
-        return pgMany(
+        const rows = await pgMany(
           'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
           [String(userId)],
           mapNotificationRow,
         );
+        try { await setRedisJson(cacheKeyNotifications, rows, { ttlSeconds: Math.ceil(notificationsCacheTtlMs / 1000) }); } catch (e) {}
+        return rows;
       }
 
-      return getPgNotifications();
+      const all = await getPgNotifications();
+      try { await setRedisJson(cacheKeyNotifications, all, { ttlSeconds: Math.ceil(notificationsCacheTtlMs / 1000) }); } catch (e) {}
+      return all;
     }
 
     const items = userId
       ? state.notifications.filter((notification) => notification.userId === String(userId))
       : state.notifications;
 
-    return items
+    const result = items
       .slice()
       .sort((left, right) => sortNewestFirst(left, right, 'createdAt'))
       .map((item) => clone(item));
+
+    try { await setRedisJson(cacheKeyNotifications, result, { ttlSeconds: Math.ceil(notificationsCacheTtlMs / 1000) }); } catch (e) {}
+    return result;
   },
 
   async create(payload) {
     if (isPostgresMode()) {
-      return insertPgNotification(payload);
+      const notification = await insertPgNotification(payload);
+      invalidateUserPlatformCaches(notification.userId);
+      return notification;
     }
 
+    const notificationId = payload._id || nextId('notification');
+    const existingIndex = state.notifications.findIndex((item) => item._id === String(notificationId));
     const notification = {
-      _id: nextId('notification'),
+      _id: String(notificationId),
       userId: String(payload.userId),
       title: payload.title || 'Notification',
       message: payload.message || '',
@@ -3883,11 +4506,22 @@ const notificationsRepository = {
       createdAt: nowIso(),
     };
 
+    if (existingIndex >= 0) {
+      state.notifications[existingIndex] = {
+        ...state.notifications[existingIndex],
+        ...notification,
+        createdAt: state.notifications[existingIndex].createdAt || notification.createdAt,
+      };
+      invalidateUserPlatformCaches(notification.userId);
+      return clone(state.notifications[existingIndex]);
+    }
+
     state.notifications.push(notification);
+    invalidateUserPlatformCaches(notification.userId);
     return clone(notification);
   },
 
-  async notifyLiveClassStarted(liveClass) {
+  async resolveLiveClassAudience(liveClass) {
     if (!liveClass?._id) {
       return [];
     }
@@ -3912,12 +4546,69 @@ const notificationsRepository = {
         .map((user) => String(user._id));
     }
 
+    return Array.from(new Set(audienceUserIds.filter(Boolean)));
+  },
+
+  async notifyLiveClassScheduled(liveClass, options = {}) {
+    if (!liveClass?._id) {
+      return [];
+    }
+
+    // Public live classes can fan out to the entire student base. Avoid writing
+    // thousands of notification rows on the critical class start/join path.
+    if (liveClass.requiresEnrollment === false || !liveClass.courseId) {
+      return [];
+    }
+
+    const uniqueAudience = await notificationsRepository.resolveLiveClassAudience(liveClass);
     const appBaseUrl = String(appConfig.appUrl || '').replace(/\/$/, '');
     const actionUrl = `${appBaseUrl || ''}/?tab=live&liveClassId=${encodeURIComponent(liveClass._id)}`;
-    const uniqueAudience = Array.from(new Set(audienceUserIds.filter(Boolean)));
+    const startsAt = liveClass.startTime ? new Date(liveClass.startTime).toLocaleString('en-IN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Kolkata',
+    }) : 'soon';
+    const eventLabel = options.updated ? 'updated' : 'scheduled';
 
     return Promise.all(uniqueAudience.map((userId) =>
       notificationsRepository.create({
+        _id: `notification_live_${eventLabel}_${liveClass._id}_${userId}`,
+        userId,
+        title: options.updated ? `${liveClass.title} schedule updated` : `${liveClass.title} scheduled`,
+        message: options.updated
+          ? `The live class schedule changed. It is now set for ${startsAt}.`
+          : `A live class is scheduled for ${startsAt}. Tap to view the class details.`,
+        type: options.updated ? 'live-class-updated' : 'live-class-scheduled',
+        entityId: liveClass._id,
+        actionUrl,
+        actionLabel: 'View class',
+        payload: {
+          tab: 'live',
+          liveClassId: liveClass._id,
+          courseId: liveClass.courseId || null,
+          startTime: liveClass.startTime || null,
+        },
+      })));
+  },
+
+  async notifyLiveClassStarted(liveClass) {
+    if (!liveClass?._id) {
+      return [];
+    }
+
+    // Keep the live start path responsive for open classes instead of fanning
+    // out per-user notification writes during the broadcast start sequence.
+    if (liveClass.requiresEnrollment === false || !liveClass.courseId) {
+      return [];
+    }
+
+    const uniqueAudience = await notificationsRepository.resolveLiveClassAudience(liveClass);
+    const appBaseUrl = String(appConfig.appUrl || '').replace(/\/$/, '');
+    const actionUrl = `${appBaseUrl || ''}/?tab=live&liveClassId=${encodeURIComponent(liveClass._id)}`;
+
+    return Promise.all(uniqueAudience.map((userId) =>
+      notificationsRepository.create({
+        _id: `notification_live_started_${liveClass._id}_${userId}`,
         userId,
         title: `${liveClass.title} is live now`,
         message: 'Tap to open the protected class inside VARONENGLISH and join with your enrolled account.',
@@ -3928,9 +4619,33 @@ const notificationsRepository = {
         payload: {
           liveClassId: liveClass._id,
           courseId: liveClass.courseId || null,
+          tab: 'live',
           provider: liveClass.provider || 'Jitsi Meet',
         },
       })));
+  },
+
+  async notifyAnnouncement(payload) {
+    const audienceUserIds = payload.userId
+      ? [String(payload.userId)]
+      : (await usersRepository.listSafe())
+        .filter((user) => user.role !== 'admin')
+        .map((user) => String(user._id));
+    const uniqueAudience = Array.from(new Set(audienceUserIds.filter(Boolean)));
+
+    const notifications = await Promise.all(uniqueAudience.map((userId) =>
+      notificationsRepository.create({
+        userId,
+        title: payload.title || 'Announcement',
+        message: payload.message || '',
+        type: payload.type || 'announcement',
+        entityId: payload.entityId || null,
+        actionUrl: payload.actionUrl || null,
+        actionLabel: payload.actionLabel || 'Open',
+        payload: asObject(payload.payload),
+      })));
+    uniqueAudience.forEach((userId) => invalidateUserPlatformCaches(userId));
+    return notifications;
   },
 };
 
@@ -3955,6 +4670,8 @@ const engagementRepository = {
           }, client);
         }
 
+        invalidateGlobalPlatformCaches();
+        invalidateUserPlatformCaches(payload.referrerUserId);
         return referral;
       });
     }
@@ -3976,6 +4693,8 @@ const engagementRepository = {
       }
     }
 
+    invalidateGlobalPlatformCaches();
+    invalidateUserPlatformCaches(referral.referrerUserId);
     return clone(referral);
   },
 
@@ -4022,25 +4741,44 @@ const listStoredLiveClasses = async () => {
 const findStoredLiveClassById = async (liveClassId) => {
   await ensurePlatformReady();
 
-  if (isPostgresMode()) {
-    return pgOne('SELECT * FROM live_classes WHERE id = $1', [String(liveClassId)], mapLiveClassRow);
+  const cacheKeyLiveClass = cacheKey('live-class', String(liveClassId));
+  const ttlSeconds = LIVE_CLASS_LOOKUP_CACHE_TTL_SECONDS;
+
+  if (!isMongoMode()) {
+    return getCachedJsonValue(cacheKeyLiveClass, async () => {
+      if (isPostgresMode()) {
+        return pgOne('SELECT * FROM live_classes WHERE id = $1', [String(liveClassId)], mapLiveClassRow);
+      }
+
+      return clone(state.liveClasses.find((item) => item._id === String(liveClassId)) || null);
+    }, ttlSeconds);
   }
 
   return clone(state.liveClasses.find((item) => item._id === String(liveClassId)) || null);
 };
 
-const canUserAccessLiveClass = async ({ liveClass, userId, allowAdmin = true }) => {
-  const user = await usersRepository.findById(userId);
-  if (!user) {
+const canUserAccessLiveClass = async ({ liveClass, userId, user = null, allowAdmin = true }) => {
+  const resolvedUser = user || await usersRepository.findById(userId);
+  if (!resolvedUser) {
     throw new ApiError(404, 'User not found', { code: 'USER_NOT_FOUND' });
   }
 
-  if (allowAdmin && user.role === 'admin') {
-    return { user, hasAccess: true };
+  if (allowAdmin && resolvedUser.role === 'admin') {
+    return { user: resolvedUser, hasAccess: true };
   }
 
   if (!liveClass.requiresEnrollment || !liveClass.courseId) {
-    return { user, hasAccess: true };
+    return { user: resolvedUser, hasAccess: true };
+  }
+
+  const entitlementCacheKey = cacheKey('live-class-entitlement', `${String(liveClass._id)}:${String(userId)}`);
+  try {
+    const cached = await getRedisJson(entitlementCacheKey);
+    if (cached && cached.hasAccess === true) {
+      return { user: resolvedUser, hasAccess: true };
+    }
+  } catch (error) {
+    // Ignore entitlement cache read failures.
   }
 
   let hasAccess = false;
@@ -4061,7 +4799,18 @@ const canUserAccessLiveClass = async ({ liveClass, userId, allowAdmin = true }) 
     throw new ApiError(403, 'Course enrollment is required to access this live class', { code: 'LIVE_CLASS_ACCESS_REQUIRED' });
   }
 
-  return { user, hasAccess };
+  try {
+    await setRedisJson(entitlementCacheKey, {
+      liveClassId: String(liveClass._id),
+      userId: String(userId),
+      hasAccess: true,
+      issuedAt: nowIso(),
+    }, { ttlSeconds: LIVE_CLASS_ENTITLEMENT_CACHE_TTL_SECONDS });
+  } catch (error) {
+    // Ignore entitlement cache write failures.
+  }
+
+  return { user: resolvedUser, hasAccess };
 };
 
 const isLegacyRealtimeBroadcastClass = (liveClass) => {
@@ -4101,6 +4850,21 @@ const extractJitsiRoomName = (value) => {
   }
 };
 
+const slugify = (value) => String(value || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-|-$/g, '')
+  .slice(0, 64);
+
+const buildJitsiTeacherStudioAccess = (liveClass) => {
+  const roomName = extractJitsiRoomName(liveClass?.roomUrl || liveClass?.embedUrl || liveClass?.roomName)
+    || `edumaster-${slugify(liveClass?.title) || 'live-class'}-${String(liveClass?._id || '')}`;
+  const roomUrl = liveClass?.roomUrl || `https://${appConfig.jitsiMeetDomain}/${roomName}`;
+  const embedUrl = liveClass?.embedUrl || `${roomUrl}#config.prejoinPageEnabled=false&config.requireDisplayName=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false&interfaceConfig.DISABLE_JOIN_LEAVE_NOTIFICATIONS=true`;
+
+  return { roomName, roomUrl, embedUrl };
+};
+
 const liveClassesRepository = {
   async list() {
     const liveClasses = await listStoredLiveClasses();
@@ -4124,7 +4888,12 @@ const liveClassesRepository = {
     await ensurePlatformReady();
 
     if (isPostgresMode()) {
-      return insertPgLiveClass(payload);
+      const liveClass = await insertPgLiveClass(payload);
+      invalidateGlobalPlatformCaches();
+      try {
+        await deleteRedisKey(cacheKey('live-class', String(liveClass._id)));
+      } catch (error) {}
+      return liveClass;
     }
 
     const liveClass = {
@@ -4173,6 +4942,10 @@ const liveClassesRepository = {
   };
 
     state.liveClasses.push(liveClass);
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('live-class', String(liveClass._id)));
+    } catch (error) {}
     return clone(liveClass);
   },
 
@@ -4190,11 +4963,20 @@ const liveClassesRepository = {
     };
 
     if (isPostgresMode()) {
-      return insertPgLiveClass(nextLiveClass);
+      const updated = await insertPgLiveClass(nextLiveClass);
+      invalidateGlobalPlatformCaches();
+      try {
+        await deleteRedisKey(cacheKey('live-class', String(liveClassId)));
+      } catch (error) {}
+      return updated;
     }
 
     const index = state.liveClasses.findIndex((item) => item._id === String(liveClassId));
     state.liveClasses[index] = nextLiveClass;
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('live-class', String(liveClassId)));
+    } catch (error) {}
     return clone(nextLiveClass);
   },
 
@@ -4207,6 +4989,7 @@ const liveClassesRepository = {
         [String(liveClassId)],
         mapLiveClassRow,
       );
+      invalidateGlobalPlatformCaches();
       return deleted;
     }
 
@@ -4217,16 +5000,20 @@ const liveClassesRepository = {
 
     const [deleted] = state.liveClasses.splice(index, 1);
     state.liveChatMessages = state.liveChatMessages.filter((item) => item.liveClassId !== String(liveClassId));
+    invalidateGlobalPlatformCaches();
+    try {
+      await deleteRedisKey(cacheKey('live-class', String(liveClassId)));
+    } catch (error) {}
     return clone(deleted);
   },
 
-  async getAccess({ liveClassId, userId }) {
+  async getAccess({ liveClassId, userId, user = null }) {
     const liveClass = await findStoredLiveClassById(liveClassId);
     if (!liveClass) {
       throw new ApiError(404, 'Live class not found', { code: 'LIVE_CLASS_NOT_FOUND' });
     }
 
-    const { user } = await canUserAccessLiveClass({ liveClass, userId });
+    const { user: resolvedUser } = await canUserAccessLiveClass({ liveClass, userId, user });
     const status = deriveLiveClassStatus(liveClass);
     const livePlaybackType = String(getEffectiveLivePlaybackType(liveClass) || '').toLowerCase();
     const hasLivePlayback = Boolean(
@@ -4236,69 +5023,101 @@ const liveClassesRepository = {
     );
     const hasReplayLesson = Boolean(liveClass.replayCourseId && liveClass.replayLessonId);
     const hasReplayLink = Boolean(liveClass.recordingUrl || liveClass.recordingStoragePath);
+    const recordingState = deriveLiveClassRecordingState(liveClass);
+    const replayState = deriveLiveClassReplayState(liveClass);
 
-  if (status === 'live' && livePlaybackType === 'livekit') {
-    return {
-      liveClassId: liveClass._id,
-      title: liveClass.title,
-      provider: liveClass.provider,
-      mode: liveClass.mode,
-      status,
-      accessType: 'livekit-room',
-      streamUrl: null,
-      streamFormat: null,
-      embedUrl: null,
-      roomUrl: null,
-      liveRoomName: `${appConfig.livekitRoomPrefix}-${String(liveClass._id)}`,
-      liveKitUrl: appConfig.livekitUrl || null,
-      replayPlayback: null,
-      replayExternalUrl: null,
-      replayCourseId: liveClass.replayCourseId || null,
-      replayLessonId: liveClass.replayLessonId || null,
-      tokenExpiresAt: null,
-      watermarkText: `${user.email} • ${user._id}`,
-      statusMessage: appConfig.hasLiveKit
-        ? 'Live class is running inside the in-app classroom.'
-        : 'LiveKit is not configured on the server yet. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET.',
-    };
-  }
+    if (status === 'live' && livePlaybackType === 'livekit') {
+      return {
+        liveClassId: liveClass._id,
+        title: liveClass.title,
+        provider: liveClass.provider,
+        mode: liveClass.mode,
+        status,
+        accessType: 'livekit-room',
+        streamUrl: null,
+        streamFormat: null,
+        embedUrl: null,
+        roomUrl: null,
+        liveRoomName: `${appConfig.livekitRoomPrefix}-${String(liveClass._id)}`,
+        liveKitUrl: appConfig.livekitUrl || null,
+        replayPlayback: null,
+        replayExternalUrl: null,
+        replayCourseId: liveClass.replayCourseId || null,
+        replayLessonId: liveClass.replayLessonId || null,
+        recordingState,
+        replayState,
+        tokenExpiresAt: null,
+        watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
+        statusMessage: appConfig.hasLiveKit
+          ? 'Live class is running inside the in-app classroom.'
+          : 'LiveKit is not configured on the server yet. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET.',
+      };
+    }
 
-  if (status === 'live' && livePlaybackType === 'webrtc') {
-    return {
-      liveClassId: liveClass._id,
-      title: liveClass.title,
-      provider: liveClass.provider,
-      mode: liveClass.mode,
-      status,
-      accessType: 'webrtc-live',
-      streamUrl: null,
-      streamFormat: null,
-      embedUrl: null,
-      roomUrl: null,
-      liveKitUrl: null,
-      replayPlayback: null,
-      replayExternalUrl: null,
-      replayCourseId: liveClass.replayCourseId || null,
-      replayLessonId: liveClass.replayLessonId || null,
-      tokenExpiresAt: null,
-      watermarkText: `${user.email} • ${user._id}`,
-      statusMessage: 'Live class is running in the realtime classroom.',
-    };
-  }
+    if (status === 'live' && livePlaybackType === 'webrtc') {
+      return {
+        liveClassId: liveClass._id,
+        title: liveClass.title,
+        provider: liveClass.provider,
+        mode: liveClass.mode,
+        status,
+        accessType: 'webrtc-live',
+        streamUrl: null,
+        streamFormat: null,
+        embedUrl: null,
+        roomUrl: null,
+        liveKitUrl: null,
+        replayPlayback: null,
+        replayExternalUrl: null,
+        replayCourseId: liveClass.replayCourseId || null,
+        replayLessonId: liveClass.replayLessonId || null,
+        recordingState,
+        replayState,
+        tokenExpiresAt: null,
+        watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
+        statusMessage: 'Live class is running in the realtime classroom.',
+      };
+    }
 
-  if (status === 'live' && hasLivePlayback) {
-    const looksLikeJitsi = livePlaybackType === 'jitsi'
-      || /meet\.jit\.si|jitsi/i.test(String(liveClass.roomUrl || ''))
-      || /meet\.jit\.si|jitsi/i.test(String(liveClass.embedUrl || ''));
+    if (status === 'live' && livePlaybackType === 'live-stream' && String(resolvedUser.role || '').toLowerCase() === 'admin') {
+      if (appConfig.hasLiveKit) {
+        const liveKitAccess = await liveKitService.buildToken({
+          liveClass,
+          user: resolvedUser,
+          participant: {
+            canSpeak: true,
+            micMuted: false,
+          },
+        });
 
-    if (looksLikeJitsi) {
-      const liveRoomName = extractJitsiRoomName(liveClass.roomUrl || liveClass.embedUrl)
-        || `VARONENGLISH-${String(liveClass._id)}`
-          .replace(/[^A-Za-z0-9]+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
-      const roomUrl = liveClass.roomUrl || `https://${appConfig.jitsiMeetDomain}/${liveRoomName}`;
-      const embedUrl = liveClass.embedUrl || `${roomUrl}#config.prejoinPageEnabled=false&config.requireDisplayName=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false&interfaceConfig.DISABLE_JOIN_LEAVE_NOTIFICATIONS=true`;
+        return {
+          liveClassId: liveClass._id,
+          title: liveClass.title,
+          provider: liveClass.provider,
+          mode: liveClass.mode,
+          status,
+          accessType: 'livekit-room',
+          streamUrl: null,
+          streamFormat: null,
+          embedUrl: null,
+          roomUrl: null,
+          liveRoomName: liveKitAccess?.roomName || `${appConfig.livekitRoomPrefix}-${String(liveClass._id)}`,
+          liveKitUrl: appConfig.livekitUrl || null,
+          liveKitToken: liveKitAccess?.token || null,
+          liveKitIdentity: liveKitAccess?.identity || null,
+          replayPlayback: null,
+          replayExternalUrl: null,
+          replayCourseId: liveClass.replayCourseId || null,
+          replayLessonId: liveClass.replayLessonId || null,
+          recordingState,
+          replayState,
+          tokenExpiresAt: liveKitAccess?.tokenExpiresAt || null,
+          watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
+          statusMessage: 'Teacher studio is available alongside the broadcast stream.',
+        };
+      }
+
+      const teacherStudio = buildJitsiTeacherStudioAccess(liveClass);
       return {
         liveClassId: liveClass._id,
         title: liveClass.title,
@@ -4308,52 +5127,70 @@ const liveClassesRepository = {
         accessType: 'jitsi-room',
         streamUrl: null,
         streamFormat: null,
-        embedUrl,
-        roomUrl,
-        liveRoomName,
+        embedUrl: teacherStudio.embedUrl,
+        roomUrl: teacherStudio.roomUrl,
+        liveRoomName: teacherStudio.roomName,
         liveKitUrl: null,
         replayPlayback: null,
         replayExternalUrl: null,
         replayCourseId: liveClass.replayCourseId || null,
         replayLessonId: liveClass.replayLessonId || null,
+        recordingState,
+        replayState,
         tokenExpiresAt: null,
-        watermarkText: `${user.email} • ${user._id}`,
-        statusMessage: 'Live class is running inside a Jitsi Meet classroom.',
+        watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
+        statusMessage: 'Teacher studio is available alongside the broadcast stream.',
       };
     }
 
-    if (liveClass.livePlaybackType === 'iframe' || liveClass.embedUrl) {
-      return {
-        liveClassId: liveClass._id,
-        title: liveClass.title,
+    if (status === 'live' && livePlaybackType === 'unsupported') {
+      throw new ApiError(409, 'This live class uses an unsupported legacy room type. Recreate it with LiveKit.', {
+        code: 'LIVE_CLASS_UNSUPPORTED_PLAYBACK',
+      });
+    }
+
+    if (status === 'live' && livePlaybackType === 'live-stream') {
+      const livePlaybackUrl = normalizeOptionalUrl(liveClass.livePlaybackUrl);
+      const publicPlaybackUrl = buildPublicManagedHlsPlaybackUrl(buildManagedHlsStreamName(liveClass));
+      const playbackUrl = publicPlaybackUrl || livePlaybackUrl;
+      if (!playbackUrl) {
+        return {
+          liveClassId: liveClass._id,
+          title: liveClass.title,
           provider: liveClass.provider,
           mode: liveClass.mode,
           status,
-          accessType: 'embedded-room',
+          accessType: 'live-stream',
           streamUrl: null,
           streamFormat: null,
-          embedUrl: liveClass.embedUrl || liveClass.roomUrl || liveClass.livePlaybackUrl,
+          embedUrl: null,
           roomUrl: null,
           replayPlayback: null,
           replayExternalUrl: null,
-        replayCourseId: liveClass.replayCourseId || null,
-        replayLessonId: liveClass.replayLessonId || null,
-        tokenExpiresAt: null,
-        watermarkText: `${user.email} • ${user._id}`,
-        statusMessage: 'Live class is running inside the embedded room now.',
-      };
-    }
+          replayCourseId: liveClass.replayCourseId || null,
+          replayLessonId: liveClass.replayLessonId || null,
+          recordingState,
+          replayState,
+          tokenExpiresAt: null,
+          watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
+          statusMessage: 'Live stream is starting. Playback URL is not ready yet.',
+        };
+      }
 
-      const extension = String(liveClass.livePlaybackUrl).toLowerCase().includes('.m3u8') ? '.m3u8' : '.mp4';
+      const extension = playbackUrl.toLowerCase().includes('.m3u8') ? '.m3u8' : '.mp4';
       const mimeType = extension === '.m3u8' ? 'application/vnd.apple.mpegurl' : 'video/mp4';
-      const issuedToken = issuePlaybackToken({
-        userId: String(user._id),
-        sessionId: user.session || null,
-        liveClassId: String(liveClass._id),
-        upstreamUrl: String(liveClass.livePlaybackUrl),
-        mimeType,
-        assetKind: extension === '.m3u8' ? 'live-hls' : 'live-source',
-      });
+      let issuedToken = null;
+      const streamUrl = publicPlaybackUrl || (() => {
+        issuedToken = issuePlaybackToken({
+          userId: String(resolvedUser._id),
+          sessionId: resolvedUser.session || null,
+          liveClassId: String(liveClass._id),
+          upstreamUrl: playbackUrl,
+          mimeType,
+          assetKind: extension === '.m3u8' ? 'live-hls' : 'live-source',
+        });
+        return `/backend/api/live-classes/stream/${issuedToken.token}`;
+      })();
 
       return {
         liveClassId: liveClass._id,
@@ -4362,7 +5199,7 @@ const liveClassesRepository = {
         mode: liveClass.mode,
         status,
         accessType: 'live-stream',
-        streamUrl: `/backend/api/live-classes/stream/${issuedToken.token}`,
+        streamUrl,
         streamFormat: extension === '.m3u8' ? 'hls' : 'source',
         embedUrl: null,
         roomUrl: null,
@@ -4370,15 +5207,19 @@ const liveClassesRepository = {
         replayExternalUrl: null,
         replayCourseId: liveClass.replayCourseId || null,
         replayLessonId: liveClass.replayLessonId || null,
-        tokenExpiresAt: issuedToken.expiresAt,
-        watermarkText: `${user.email} • ${user._id}`,
-        statusMessage: 'Live class is running with protected in-app playback.',
+        recordingState,
+        replayState,
+        tokenExpiresAt: issuedToken?.expiresAt || null,
+        watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
+        statusMessage: publicPlaybackUrl
+          ? 'Live class is running with public HLS playback through the live domain.'
+          : 'Live class is running with protected in-app playback.',
       };
     }
 
     if (hasReplayLesson) {
       const replayPlayback = await coursesRepository.getProtectedLessonPlayback({
-        userId: String(user._id),
+        userId: String(resolvedUser._id),
         courseId: String(liveClass.replayCourseId),
         lessonId: String(liveClass.replayLessonId),
         enforceEnrollment: false,
@@ -4400,27 +5241,30 @@ const liveClassesRepository = {
         replayExternalUrl: null,
         replayCourseId: liveClass.replayCourseId,
         replayLessonId: liveClass.replayLessonId,
+        recordingState,
+        replayState,
         tokenExpiresAt: replayPlayback.tokenExpiresAt || null,
-        watermarkText: `${user.email} • ${user._id}`,
+        watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
         statusMessage: 'Replay is protected and available inside the app.',
       };
     }
 
     if (hasReplayLink) {
       const access = await consumeLiveReplayGrant({
-        userId: String(user._id),
+        userId: String(resolvedUser._id),
         liveClassId: String(liveClass._id),
-        sessionId: user.session || null,
+        sessionId: resolvedUser.session || null,
       });
 
       const storagePath = liveClass.recordingStoragePath || liveClass.recordingUrl;
       const storageProvider = liveClass.recordingStorageProvider || 'local';
       const extension = String(storagePath || '').toLowerCase().includes('.m3u8') ? '.m3u8' : '.mp4';
       const mimeType = extension === '.m3u8' ? 'application/vnd.apple.mpegurl' : 'video/mp4';
+      const recordingUrl = normalizeOptionalUrl(liveClass.recordingUrl);
       const playbackTokenPayload = liveClass.recordingStoragePath
         ? {
-          userId: String(user._id),
-          sessionId: user.session || null,
+          userId: String(resolvedUser._id),
+          sessionId: resolvedUser.session || null,
           liveClassId: String(liveClass._id),
           storageProvider,
           storagePath,
@@ -4428,10 +5272,10 @@ const liveClassesRepository = {
           assetKind: extension === '.m3u8' ? 'hls' : 'source',
         }
         : {
-          userId: String(user._id),
-          sessionId: user.session || null,
+          userId: String(resolvedUser._id),
+          sessionId: resolvedUser.session || null,
           liveClassId: String(liveClass._id),
-          upstreamUrl: String(liveClass.recordingUrl),
+          upstreamUrl: recordingUrl,
           mimeType,
           assetKind: extension === '.m3u8' ? 'live-hls' : 'live-source',
         };
@@ -4452,8 +5296,10 @@ const liveClassesRepository = {
         replayExternalUrl: null,
         replayCourseId: null,
         replayLessonId: null,
+        recordingState,
+        replayState,
         tokenExpiresAt: issuedToken.expiresAt,
-        watermarkText: `${user.email} • ${user._id}`,
+        watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
         statusMessage: access.grant
           ? hasReplayViewLimit()
             ? `Replay is protected. Remaining views: ${Math.max(Number(access.grant.maxViews || liveReplayMaxViews) - Number(access.grant.usedViews || 0), 0)}`
@@ -4483,12 +5329,18 @@ const liveClassesRepository = {
       replayExternalUrl: null,
       replayCourseId: liveClass.replayCourseId || null,
       replayLessonId: liveClass.replayLessonId || null,
+      recordingState,
+      replayState,
       tokenExpiresAt: null,
-      watermarkText: `${user.email} • ${user._id}`,
+      watermarkText: `${resolvedUser.email} • ${resolvedUser._id}`,
       statusMessage: status === 'cancelled'
         ? 'This live class has been cancelled.'
         : status === 'ended'
-          ? 'Replay is processing or will appear here after the recording is uploaded.'
+          ? replayState === 'replay_ready'
+            ? 'Replay is ready for protected playback.'
+            : recordingState === 'processing' || replayState === 'processing'
+              ? 'Recording is processing and the replay will appear here after upload finishes.'
+              : 'Replay is processing or will appear here after the recording is uploaded.'
         : 'Live playback becomes available when the class starts.',
     };
   },
@@ -4529,7 +5381,7 @@ const liveClassesRepository = {
           message,
         }, client);
 
-        await insertPgDeviceActivity({
+        queueBestEffortDeviceActivity({
           userId: user._id,
           sessionId: user.session,
           device: user.device,
@@ -4537,7 +5389,7 @@ const liveClassesRepository = {
           meta: {
             liveClassId: String(liveClassId),
           },
-        }, client);
+        });
 
         return chatMessage;
       });
@@ -4624,16 +5476,28 @@ const adminRepository = {
   },
 
   async getPlatformAnalytics() {
+    const cacheKeyPlatformAnalytics = cacheKey('analytics', 'platform');
+    const analyticsCacheTtlMs = Math.max(1000, Number(appConfig.analyticsCacheTtlMs || 5_000));
+
+    try {
+      const cached = await getRedisJson(cacheKeyPlatformAnalytics);
+      if (cached) {
+        return cached;
+      }
+    } catch (e) {
+      // ignore
+    }
+
     const data = await loadPlatformData();
     const leaderboardEntries = await quizzesRepository.listLeaderboardEntries();
 
-    return {
+    const result = {
       activeUsers: data.users.length,
       activeSessions: data.users.filter((user) => Boolean(user.session)).length,
       totalCourses: data.courses.length,
       totalTests: data.tests.length,
       liveClasses: data.liveClasses.filter((item) => item.mode === 'live').length,
-      notificationsSent: data.notifications.length,
+      notificationsSent: Number(data.notificationCount ?? data.notifications.length),
       referralCount: data.referrals.length,
       paymentCount: data.payments.length,
       testParticipation: data.testAttempts.length + leaderboardEntries.length,
@@ -4643,12 +5507,30 @@ const adminRepository = {
       concurrentCapacityTarget: '',
       recentDeviceActivity: getRecentDeviceActivity(data),
     };
+
+    try {
+      await setRedisJson(cacheKeyPlatformAnalytics, result, { ttlSeconds: Math.ceil(analyticsCacheTtlMs / 1000) });
+    } catch (e) {}
+
+    return result;
   },
 
 };
 
 const analyticsRepository = {
   async getUserAnalytics(userId) {
+    const cacheKeyUserAnalytics = cacheKey('analytics', `user:${userId}`);
+    const userAnalyticsCacheTtlMs = Math.max(500, Number(appConfig.userAnalyticsCacheTtlMs || 2_000));
+
+    try {
+      const cached = await getRedisJson(cacheKeyUserAnalytics);
+      if (cached) {
+        return cached;
+      }
+    } catch (e) {
+      // ignore
+    }
+
     const data = await loadPlatformData();
     const quizInsights = computeQuizInsights(data, userId);
     const testInsights = computeTestInsights(data, userId);
@@ -4666,7 +5548,7 @@ const analyticsRepository = {
 
     const attempts = quizInsights.attempts + testInsights.attempts.length;
 
-    return {
+    const result = {
       accuracy,
       speed,
       attempts,
@@ -4676,9 +5558,24 @@ const analyticsRepository = {
       trend: buildAnalyticsTrend(data, userId),
       adaptivePlan: computeAdaptivePlan({ accuracy, attempts }),
     };
+
+    try {
+      await setRedisJson(cacheKeyUserAnalytics, result, { ttlSeconds: Math.ceil(userAnalyticsCacheTtlMs / 1000) });
+    } catch (e) {}
+
+    return result;
   },
 
   async getLeaderboard() {
+    try {
+      const cached = await getRedisJson(PLATFORM_LEADERBOARD_REDIS_KEY);
+      if (cached) {
+        return cached;
+      }
+    } catch (error) {
+      // Ignore cache read failures and rebuild the leaderboard.
+    }
+
     const data = await loadPlatformData();
     const userScores = new Map();
 
@@ -4696,7 +5593,7 @@ const analyticsRepository = {
       }
     });
 
-    return Array.from(userScores.entries())
+    const leaderboard = Array.from(userScores.entries())
       .map(([userId, score]) => {
         const user = data.users.find((item) => item._id === userId);
         return {
@@ -4706,9 +5603,77 @@ const analyticsRepository = {
         };
       })
       .sort((left, right) => right.score - left.score);
+
+    try {
+      await setRedisJson(PLATFORM_LEADERBOARD_REDIS_KEY, leaderboard, { ttlSeconds: ANALYTICS_LEADERBOARD_CACHE_TTL_SECONDS });
+    } catch (error) {
+      // Ignore cache write failures.
+    }
+
+    return leaderboard;
   },
 
   async getProgress(userId) {
+    await ensurePlatformReady();
+
+    const cacheKeyUserProgress = getUserProgressCacheKey(userId);
+    if (isPostgresMode()) {
+      return getCachedJsonValue(cacheKeyUserProgress, async () => {
+        const [
+          testSummary,
+          quizSummary,
+          enrollments,
+          watchHistory,
+          courses,
+        ] = await Promise.all([
+          pgOne(
+            `
+              SELECT
+                COUNT(*)::int AS attempts,
+                COALESCE(AVG(score), 0)::numeric(10,2) AS average_score
+              FROM test_attempts
+              WHERE user_id = $1
+            `,
+            [String(userId)],
+            (row) => ({
+              attempts: Number(row.attempts || 0),
+              averageScore: Number(row.average_score || 0),
+            }),
+          ),
+          pgOne(
+            'SELECT COUNT(*)::int AS attempts FROM daily_quiz_attempts WHERE user_id = $1',
+            [String(userId)],
+            (row) => ({ attempts: Number(row.attempts || 0) }),
+          ),
+          getActiveEnrollmentsForUser(userId),
+          pgMany(
+            'SELECT * FROM watch_history WHERE user_id = $1 ORDER BY updated_at DESC',
+            [String(userId)],
+            mapWatchHistoryRow,
+          ),
+          coursesRepository.list(),
+        ]);
+
+        const data = { watchHistory };
+        const coursesInProgress = enrollments
+          .map((enrollment) => courses.find((course) => course._id === enrollment.courseId))
+          .filter(Boolean)
+          .map((course) => ({
+            courseId: course._id,
+            title: course.title,
+            progressPercent: computeCourseProgress(data, userId, course).progressPercent,
+          }));
+
+        return {
+          testsTaken: Number(testSummary?.attempts || 0),
+          quizzesTaken: Number(quizSummary?.attempts || 0),
+          coursesAvailable: courses.length,
+          coursesInProgress,
+          averageScore: Number(testSummary?.averageScore || 0),
+        };
+      }, USER_PROGRESS_CACHE_TTL_SECONDS);
+    }
+
     const data = await loadPlatformData();
     const testInsights = computeTestInsights(data, userId);
     const enrollments = filterActiveEnrollments(data.enrollments.filter((entry) => entry.userId === String(userId)));
@@ -4736,29 +5701,21 @@ const paymentRepository = {
     await ensurePlatformReady();
 
     if (isPostgresMode()) {
-      return runInTransaction(async (client) => {
-        const user = await pgOne('SELECT * FROM users WHERE id = $1', [String(payload.userId || '')], mapUserRow, client);
-        const payment = await insertPgPayment(payload, client);
-
-        if (user) {
-          await insertPgDeviceActivity({
-            userId: user._id,
-            sessionId: user.session,
-            device: user.device,
-            eventType: 'payment_checkout_started',
-            meta: {
-              paymentId: payment._id,
-              item: payment.item,
-              amount: payment.amount,
-            },
-          }, client);
-        }
-
-        return {
-          ...clone(payment),
-          paymentUrl: `https://payment-gateway.com/checkout/${payment._id}`,
-        };
+      const payment = await insertPgPayment(payload);
+      queueBestEffortDeviceActivity({
+        userId: payload.userId,
+        eventType: 'payment_checkout_started',
+        meta: {
+          paymentId: payment._id,
+          item: payment.item,
+          amount: payment.amount,
+        },
       });
+
+      return {
+        ...clone(payment),
+        paymentUrl: `https://payment-gateway.com/checkout/${payment._id}`,
+      };
     }
 
     const user = state.users.find((item) => item._id === String(payload.userId || ''));
@@ -4779,8 +5736,7 @@ const paymentRepository = {
     state.payments.push(payment);
 
     if (user) {
-      state.deviceActivities.unshift({
-        _id: nextId('activity'),
+      queueBestEffortDeviceActivity({
         userId: user._id,
         sessionId: user.session,
         device: user.device,
@@ -4790,9 +5746,7 @@ const paymentRepository = {
           item: payment.item,
           amount: payment.amount,
         },
-        createdAt: nowIso(),
       });
-      state.deviceActivities = state.deviceActivities.slice(0, 200);
     }
 
     return {
@@ -4822,18 +5776,18 @@ const paymentRepository = {
 
           const user = await pgOne('SELECT * FROM users WHERE id = $1', [payment.userId], mapUserRow, client);
           if (user) {
-            await insertPgDeviceActivity({
-              userId: user._id,
-              sessionId: user.session,
-              device: user.device,
-              eventType: webhookRecord.status === 'paid' ? 'payment_completed' : 'payment_failed',
-              meta: {
-                paymentId: payment._id,
-                item: payment.item,
-                amount: payment.amount,
-                status: webhookRecord.status,
-              },
-            }, client);
+          queueBestEffortDeviceActivity({
+            userId: user._id,
+            sessionId: user.session,
+            device: user.device,
+            eventType: webhookRecord.status === 'paid' ? 'payment_completed' : 'payment_failed',
+            meta: {
+              paymentId: payment._id,
+              item: payment.item,
+              amount: payment.amount,
+              status: webhookRecord.status,
+            },
+          });
           }
         }
 
@@ -4907,19 +5861,14 @@ const paymentRepository = {
         };
         await insertPgPayment(updatedPayment, client);
 
-        const user = await pgOne('SELECT * FROM users WHERE id = $1', [String(userId)], mapUserRow, client);
-        if (user) {
-          await insertPgDeviceActivity({
-            userId: user._id,
-            sessionId: user.session,
-            device: user.device,
-            eventType: 'payment_retry_requested',
-            meta: {
-              paymentId: String(paymentId),
-              attempts: updatedPayment.attemptCount,
-            },
-          }, client);
-        }
+        queueBestEffortDeviceActivity({
+          userId,
+          eventType: 'payment_retry_requested',
+          meta: {
+            paymentId: String(paymentId),
+            attempts: updatedPayment.attemptCount,
+          },
+        });
 
         return {
           ...clone(updatedPayment),
@@ -4947,22 +5896,14 @@ const paymentRepository = {
       updatedAt: nowIso(),
     };
 
-    const user = state.users.find((item) => item._id === String(userId));
-    if (user) {
-      state.deviceActivities.unshift({
-        _id: nextId('activity'),
-        userId: user._id,
-        sessionId: user.session,
-        device: user.device,
-        eventType: 'payment_retry_requested',
-        meta: {
-          paymentId: String(paymentId),
-          attempts: state.payments[paymentIndex].attemptCount,
-        },
-        createdAt: nowIso(),
-      });
-      state.deviceActivities = state.deviceActivities.slice(0, 200);
-    }
+    queueBestEffortDeviceActivity({
+      userId,
+      eventType: 'payment_retry_requested',
+      meta: {
+        paymentId: String(paymentId),
+        attempts: state.payments[paymentIndex].attemptCount,
+      },
+    });
 
     return {
       ...clone(state.payments[paymentIndex]),
@@ -4979,7 +5920,7 @@ const platformRepository = {
   async getOverview(userId) {
     const data = await loadPlatformData();
     const safeUser = userId ? await usersRepository.findSafeById(userId) : null;
-    const analytics = userId ? await analyticsRepository.getUserAnalytics(userId) : {
+    const analyticsPromise = userId ? analyticsRepository.getUserAnalytics(userId) : Promise.resolve({
       accuracy: 0,
       speed: 0,
       attempts: 0,
@@ -4988,22 +5929,59 @@ const platformRepository = {
       suggestions: [],
       trend: buildAnalyticsTrend(data, 'guest'),
       adaptivePlan: computeAdaptivePlan({ accuracy: 0, attempts: 0 }),
-    };
+    });
 
-    const dailyQuiz = await quizzesRepository.findByDate(new Date().toISOString().slice(0, 10));
-    const leaderboard = dailyQuiz ? await quizzesRepository.getLeaderboard(dailyQuiz._id) : [];
-    const weeklyLeaderboard = await quizzesRepository.getWeeklyLeaderboard();
-    const gamification = userId ? await engagementRepository.getGamification(userId) : { points: 0, badges: [], streak: 0, referrals: 0 };
-    const courses = await coursesRepository.list();
-    const tests = await testsRepository.listForAttempt();
+    const dailyQuizPromise = quizzesRepository.findByDate(new Date().toISOString().slice(0, 10));
+    const gamificationPromise = userId
+      ? engagementRepository.getGamification(userId)
+      : Promise.resolve({ points: 0, badges: [], streak: 0, referrals: 0 });
+    const coursesPromise = coursesRepository.list();
+    const testsPromise = testsRepository.listForAttempt();
+    const weeklyLeaderboardPromise = quizzesRepository.getWeeklyLeaderboard();
+    const notificationsPromise = userId
+      ? notificationsRepository.list(userId).catch(() => [])
+      : Promise.resolve([]);
+    const testInsightsPromise = userId
+      ? Promise.resolve(computeTestInsights(data, userId))
+      : Promise.resolve({ latestAttempt: null, attempts: [] });
+    const adminOverviewPromise = safeUser?.role === 'admin'
+      ? adminRepository.getPlatformAnalytics()
+      : Promise.resolve(null);
+    const leaderboardPromise = dailyQuizPromise.then((quiz) => (quiz ? quizzesRepository.getLeaderboard(quiz._id) : []));
+
+    const [
+      analytics,
+      dailyQuiz,
+      leaderboard,
+      gamification,
+      courses,
+      tests,
+      weeklyLeaderboard,
+      notifications,
+      testInsights,
+      adminOverview,
+    ] = await Promise.all([
+      analyticsPromise,
+      dailyQuizPromise,
+      leaderboardPromise,
+      gamificationPromise,
+      coursesPromise,
+      testsPromise,
+      weeklyLeaderboardPromise,
+      notificationsPromise,
+      testInsightsPromise,
+      adminOverviewPromise,
+    ]);
+
     const enrollments = userId
       ? filterActiveEnrollments(data.enrollments.filter((entry) => entry.userId === String(userId)))
       : [];
     const enrolledCourseIds = new Set(enrollments.map((entry) => entry.courseId));
+    const userNameById = new Map(data.users.map((user) => [user._id, user.name]));
     const decorateLeaderboard = (entries) =>
       entries.map((entry) => ({
         ...clone(entry),
-        name: data.users.find((user) => user._id === entry.userId)?.name || entry.name || entry.userId,
+        name: userNameById.get(entry.userId) || entry.name || entry.userId,
       }));
 
     const courseCards = courses.map((course) => {
@@ -5025,9 +6003,6 @@ const platformRepository = {
     const liveClasses = clone(data.liveClasses)
       .sort((left, right) => sortOldestFirst(left, right, 'startTime'))
       .map((item) => sanitizeLiveClassForViewer(item));
-    const notifications = userId ? await notificationsRepository.list(userId) : [];
-    const adminOverview = safeUser?.role === 'admin' ? await adminRepository.getPlatformAnalytics() : null;
-    const testInsights = userId ? computeTestInsights(data, userId) : { latestAttempt: null, attempts: [] };
     const activePlanIds = new Set(
       userId
         ? data.userSubscriptions
@@ -5107,22 +6082,20 @@ const platformRepository = {
           validityDays: course.validityDays || courseDefaultValidityDays,
           expiresAt: addDaysIso(course.validityDays || courseDefaultValidityDays),
         }, client);
-        const user = await pgOne('SELECT * FROM users WHERE id = $1', [String(userId)], mapUserRow, client);
-        if (user) {
-          await insertPgDeviceActivity({
-            userId: user._id,
-            sessionId: user.session,
-            device: user.device,
-            eventType: 'course_enrolled',
-            meta: {
-              courseId: String(courseId),
-              source: normalizedSource,
-              accessType,
-            },
-          }, client);
-        }
+        queueBestEffortDeviceActivity({
+          userId,
+          eventType: 'course_enrolled',
+          meta: {
+            courseId: String(courseId),
+            source: normalizedSource,
+            accessType,
+          },
+        });
 
         return enrollment;
+      }).finally(() => {
+        invalidatePlatformDataCache();
+        invalidateUserPlatformCaches(userId);
       });
     }
 
@@ -5145,24 +6118,18 @@ const platformRepository = {
     };
 
     state.enrollments.push(enrollment);
-    const user = state.users.find((item) => item._id === String(userId));
-    if (user) {
-      state.deviceActivities.unshift({
-        _id: nextId('activity'),
-        userId: user._id,
-        sessionId: user.session,
-        device: user.device,
-        eventType: 'course_enrolled',
-        meta: {
-          courseId: String(courseId),
-          source: normalizedSource,
-          accessType,
-        },
-        createdAt: nowIso(),
-      });
-      state.deviceActivities = state.deviceActivities.slice(0, 200);
-    }
+    queueBestEffortDeviceActivity({
+      userId,
+      eventType: 'course_enrolled',
+      meta: {
+        courseId: String(courseId),
+        source: normalizedSource,
+        accessType,
+      },
+    });
 
+    invalidatePlatformDataCache();
+    invalidateUserPlatformCaches(userId);
     return clone(enrollment);
   },
 
@@ -5196,19 +6163,6 @@ const platformRepository = {
           expiresAt: new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString(),
         }, client);
 
-        const user = await pgOne('SELECT * FROM users WHERE id = $1', [String(userId)], mapUserRow, client);
-        if (user) {
-          await insertPgDeviceActivity({
-            userId: user._id,
-            sessionId: user.session,
-            device: user.device,
-            eventType: 'subscription_activated',
-            meta: {
-              planId: String(planId),
-            },
-          }, client);
-        }
-
         await insertPgNotification({
           userId,
           title: `${plan.title} activated`,
@@ -5216,8 +6170,16 @@ const platformRepository = {
           type: 'subscription',
         }, client);
 
+        queueBestEffortDeviceActivity({
+          userId,
+          eventType: 'subscription_activated',
+          meta: {
+            planId: String(planId),
+          },
+        });
+
         return subscription;
-      });
+      }).finally(invalidatePlatformDataCache);
     }
 
     const existing = state.userSubscriptions.find(
@@ -5245,21 +6207,13 @@ const platformRepository = {
 
     state.userSubscriptions.push(subscription);
 
-    const user = state.users.find((item) => item._id === String(userId));
-    if (user) {
-      state.deviceActivities.unshift({
-        _id: nextId('activity'),
-        userId: user._id,
-        sessionId: user.session,
-        device: user.device,
-        eventType: 'subscription_activated',
-        meta: {
-          planId: String(planId),
-        },
-        createdAt: nowIso(),
-      });
-      state.deviceActivities = state.deviceActivities.slice(0, 200);
-    }
+    queueBestEffortDeviceActivity({
+      userId,
+      eventType: 'subscription_activated',
+      meta: {
+        planId: String(planId),
+      },
+    });
 
     await notificationsRepository.create({
       userId,
@@ -5268,6 +6222,8 @@ const platformRepository = {
       type: 'subscription',
     });
 
+    invalidatePlatformDataCache();
+    invalidateUserPlatformCaches(userId);
     return clone(subscription);
   },
 
@@ -5286,18 +6242,7 @@ const platformRepository = {
 
     let hasAccess = Number(course.price || 0) === 0;
     if (!hasAccess) {
-      if (isPostgresMode()) {
-        const enrollment = await pgOne(
-          `SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2 AND ${activeEnrollmentSql}`,
-          [String(userId), String(courseId)],
-          (entry) => entry,
-        );
-        hasAccess = Boolean(enrollment);
-      } else {
-        hasAccess = state.enrollments.some(
-          (entry) => entry.userId === String(userId) && entry.courseId === String(courseId) && isEnrollmentActive(entry),
-        );
-      }
+      hasAccess = await hasActiveEnrollmentForCourse(userId, courseId);
     }
 
     if (!hasAccess) {
@@ -5305,6 +6250,28 @@ const platformRepository = {
     }
 
     if (isPostgresMode()) {
+      if (!completed) {
+        const record = await upsertPgWatchHistory({
+          userId,
+          courseId,
+          lessonId,
+          progressPercent,
+          progressSeconds,
+          completed,
+        });
+        if (shouldInvalidateWatchProgressCaches({
+          userId,
+          courseId,
+          lessonId,
+          progressPercent,
+          progressSeconds,
+          completed,
+        })) {
+          invalidateUserPlatformCaches(userId);
+        }
+        return record;
+      }
+
       return runInTransaction(async (client) => {
         const record = await upsertPgWatchHistory({
           userId,
@@ -5314,22 +6281,18 @@ const platformRepository = {
           progressSeconds,
           completed,
         }, client);
+        queueBestEffortDeviceActivity({
+          userId,
+          eventType: completed ? 'lesson_completed' : 'lesson_progress_updated',
+          meta: {
+            courseId: String(courseId),
+            lessonId: String(lessonId),
+            progressPercent: Number(progressPercent || 0),
+          },
+        });
 
-        const user = await pgOne('SELECT * FROM users WHERE id = $1', [String(userId)], mapUserRow, client);
-        if (user) {
-          await insertPgDeviceActivity({
-            userId: user._id,
-            sessionId: user.session,
-            device: user.device,
-            eventType: completed ? 'lesson_completed' : 'lesson_progress_updated',
-            meta: {
-              courseId: String(courseId),
-              lessonId: String(lessonId),
-              progressPercent: Number(progressPercent || 0),
-            },
-          }, client);
-        }
-
+        invalidatePlatformDataCache();
+        invalidateUserPlatformCaches(userId);
         return record;
       });
     }
@@ -5358,24 +6321,26 @@ const platformRepository = {
       state.watchHistory.push(record);
     }
 
-    const user = state.users.find((item) => item._id === String(userId));
-    if (user) {
-      state.deviceActivities.unshift({
-        _id: nextId('activity'),
-        userId: user._id,
-        sessionId: user.session,
-        device: user.device,
-        eventType: completed ? 'lesson_completed' : 'lesson_progress_updated',
-        meta: {
-          courseId: String(courseId),
-          lessonId: String(lessonId),
-          progressPercent: Number(progressPercent || 0),
-        },
-        createdAt: nowIso(),
-      });
-      state.deviceActivities = state.deviceActivities.slice(0, 200);
-    }
+    queueBestEffortDeviceActivity({
+      userId,
+      eventType: completed ? 'lesson_completed' : 'lesson_progress_updated',
+      meta: {
+        courseId: String(courseId),
+        lessonId: String(lessonId),
+        progressPercent: Number(progressPercent || 0),
+      },
+    });
 
+    if (shouldInvalidateWatchProgressCaches({
+      userId,
+      courseId,
+      lessonId,
+      progressPercent,
+      progressSeconds,
+      completed,
+    })) {
+      invalidateUserPlatformCaches(userId);
+    }
     return clone(record);
   },
 
@@ -5440,7 +6405,7 @@ const platformRepository = {
 
         const user = await pgOne('SELECT * FROM users WHERE id = $1', [String(userId || '')], mapUserRow, client);
         if (user) {
-          await insertPgDeviceActivity({
+          queueBestEffortDeviceActivity({
             userId: user._id,
             sessionId: user.session,
             device: user.device,
@@ -5448,7 +6413,7 @@ const platformRepository = {
             meta: {
               message: String(message || '').slice(0, 120),
             },
-          }, client);
+          });
         }
 
         return thread;

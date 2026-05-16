@@ -96,12 +96,12 @@ This script:
 ## OBS publish settings
 
 - `Server`: `rtmp://live.example.com:1935/live`
-- `Stream Key`: `<liveClassId>__<courseId>__<moduleId>__<chapterId_or_root>?secret=<LIVE_INGEST_PUBLISHER_SECRET>`
+- `Stream Key`: `<liveClassId>__<courseId>__<moduleId>__<chapterId_or_root>`
 - `Keyframe interval`: `2`
 - `FPS`: `30`
 - `Video bitrate`: `2500-3500 kbps`
 
-The first part of the key must be the live class ID. The full key is used for replay import so the recording can be attached back into the correct course/module after the class ends.
+The first part of the key must be the live class ID. The full key is used for replay import so the recording can be attached back into the correct course/module after the class ends. The shared ingest secret is enforced server-side through the RTMP `on_publish` callback and does not need to be appended to the stream key.
 
 ## Real live-class verification
 

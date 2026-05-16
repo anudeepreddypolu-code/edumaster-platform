@@ -24,6 +24,8 @@ import {
   Send,
   MessageSquare,
   Sparkles,
+  Star,
+  AlertTriangle,
   Video,
   Wallet,
 } from 'lucide-react';
@@ -55,6 +57,7 @@ type CourseTab = 'Lessons';
 type LessonTab = 'Video' | 'CBT Exam' | 'Explanation';
 type LessonSupportPanel = 'notes' | 'doubts' | null;
 type MobileSupportTab = Exclude<LessonSupportPanel, null>;
+type MobileWatchPanel = 'rating' | 'chat' | 'report' | null;
 type LessonStage = 'video' | 'exam' | 'explanation';
 type MobileLessonStage = 'watch' | 'completed' | 'exam' | 'exam-complete' | 'explanation' | 'explanation-complete';
 type CatalogTone = 'blue' | 'teal' | 'orange' | 'purple';
@@ -877,10 +880,14 @@ export const CourseFigmaTab = ({
   const [quizSubmitted, setQuizSubmitted] = useState<Record<string, boolean>>({});
   const [lessonDoubtDrafts, setLessonDoubtDrafts] = useState<Record<string, string>>({});
   const [lessonDoubtThreads, setLessonDoubtThreads] = useState<Record<string, LessonDoubtMessage[]>>({});
+  const [lessonRatings, setLessonRatings] = useState<Record<string, number>>({});
+  const [lessonReportDrafts, setLessonReportDrafts] = useState<Record<string, string>>({});
+  const [lessonReportSent, setLessonReportSent] = useState<Record<string, boolean>>({});
   const [busyCourseId, setBusyCourseId] = useState<string | null>(null);
   const [courseAccessMessage, setCourseAccessMessage] = useState<string | null>(null);
   const [expandedSupportPanel, setExpandedSupportPanel] = useState<LessonSupportPanel>(null);
   const [mobileSupportTab, setMobileSupportTab] = useState<MobileSupportTab>('notes');
+  const [mobileWatchPanel, setMobileWatchPanel] = useState<MobileWatchPanel>(null);
   const [protectedLessonPlayback, setProtectedLessonPlayback] = useState<ProtectedLessonPlayback | null>(null);
   const [loadingProtectedLesson, setLoadingProtectedLesson] = useState(false);
   const [protectedLessonError, setProtectedLessonError] = useState<string | null>(null);
@@ -1170,7 +1177,16 @@ export const CourseFigmaTab = ({
   }, [selectedLessonEntry?.lesson.id]);
 
   useEffect(() => {
-    if (!selectedCourse?._id || !selectedLesson?.id || !selectedCourseHasAccess || !selectedLessonHasSecurePlayback) {
+    const shouldLoadProtectedLesson = Boolean(
+      screen === 'lesson'
+      && activeLessonTab === 'Video'
+      && selectedCourse?._id
+      && selectedLesson?.id
+      && selectedCourseHasAccess
+      && selectedLessonHasSecurePlayback,
+    );
+
+    if (!shouldLoadProtectedLesson) {
       setProtectedLessonPlayback(null);
       setProtectedLessonError(null);
       setLoadingProtectedLesson(false);
@@ -1202,7 +1218,7 @@ export const CourseFigmaTab = ({
     return () => {
       cancelled = true;
     };
-  }, [selectedCourse?._id, selectedCourseHasAccess, selectedLesson?.id, selectedLessonHasSecurePlayback]);
+  }, [activeLessonTab, screen, selectedCourse?._id, selectedCourseHasAccess, selectedLesson?.id, selectedLessonHasSecurePlayback]);
 
   const selectedLessonIndex = selectedCourseEntries.findIndex((entry) => entry.lesson.id === selectedLessonEntry?.lesson.id);
   const nextLessonEntry = selectedLessonIndex >= 0 && selectedLessonIndex < selectedCourseEntries.length - 1
@@ -1656,7 +1672,15 @@ export const CourseFigmaTab = ({
         hlsRef.current = null;
       }
     };
-  }, [protectedLessonPlayback?.streamFormat, protectedLessonPlayback?.streamUrl, selectedLesson?.id]);
+  }, [
+    activeLessonTab,
+    isMobileLayout,
+    mobileLessonStageOverride,
+    protectedLessonPlayback?.streamFormat,
+    protectedLessonPlayback?.streamUrl,
+    screen,
+    selectedLesson?.id,
+  ]);
 
   useEffect(() => {
     if (autoplayCountdown === null) {
@@ -2360,9 +2384,9 @@ export const CourseFigmaTab = ({
 
     if (loadingProtectedLesson && selectedLessonHasSecurePlayback) {
       return (
-        <div className="flex min-h-[260px] items-center justify-center gap-3 bg-[#0f1726] px-6 text-center text-white">
-          <LoaderCircle className="h-6 w-6 animate-spin text-white/80" />
-          <span className="text-sm text-white/80">Preparing lesson video...</span>
+        <div className={cn('flex items-center justify-center gap-3 bg-[#0f1726] px-6 text-center text-white', variant === 'mobile' ? 'h-full' : 'min-h-[260px]')}>
+          <LoaderCircle className="h-5 w-5 animate-spin text-white/64" />
+          <span className="text-[13px] font-medium text-white/58">Preparing video...</span>
         </div>
       );
     }
@@ -2394,7 +2418,7 @@ export const CourseFigmaTab = ({
 
     if ((isPrivateVideo || isHostedVideo) && playerUrl) {
       return (
-        <div className="relative bg-black">
+        <div className={cn('relative bg-black', variant === 'mobile' && 'h-full')}>
           <video
             key={`${selectedLesson.id}:${playerUrl}`}
             ref={lessonVideoRef}
@@ -2402,7 +2426,12 @@ export const CourseFigmaTab = ({
             controls
             controlsList="nodownload"
             playsInline
-            className={cn('w-full bg-black object-contain', variant === 'mobile' ? 'aspect-video min-h-[220px]' : 'aspect-video min-h-[420px]')}
+            className={cn(
+              'w-full bg-black',
+              variant === 'mobile'
+                ? 'h-full min-h-0 object-cover'
+                : 'aspect-video min-h-[420px] object-contain',
+            )}
             onPlay={() => setIsVideoPlaying(true)}
             onPause={() => setIsVideoPlaying(false)}
             onLoadedMetadata={(event) => {
@@ -4036,16 +4065,291 @@ export const CourseFigmaTab = ({
     );
 
     const renderWatchCard = () => (
-      <section data-testid="course-figma-player" className="overflow-hidden rounded-[18px] border border-[#d8e2f1] bg-[#d8e8ff] shadow-[0_12px_28px_rgba(46,67,111,0.08)]">
+      <section data-testid="course-figma-player" className="relative h-[238px] overflow-hidden rounded-[22px] border border-[#c9d9ee] bg-white shadow-[0_18px_38px_rgba(47,111,228,0.12)]">
         {actualLessonMedia ? (
-          <div className="bg-black">
+          <div className="h-full bg-black">
             {actualLessonMedia}
           </div>
         ) : (
           renderLessonMediaUnavailable('mobile')
         )}
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between px-[18px] pt-[16px]">
+          <div className="max-w-[190px]">
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#2f6fe4]">Chapter {Math.max(selectedLessonEntry?.sectionIndex || 1, 1)}</p>
+            <p className="!font-sans mt-[8px] line-clamp-2 text-[22px] font-extrabold leading-[1.04] tracking-[-0.025em] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+              {selectedLessonEntry?.lesson.title}
+            </p>
+            <p className="mt-[8px] text-[12px] font-medium text-white/78">
+              By <span className="font-bold text-[#7db3ff]">{selectedCourse?.instructor || userName}</span>
+            </p>
+          </div>
+          <span className="inline-flex h-[38px] min-w-[46px] items-center justify-center rounded-full border border-white/24 bg-[#1d3557]/88 px-[10px] text-[15px] font-extrabold text-white shadow-[0_10px_24px_rgba(0,0,0,0.20)]">
+            {playbackSpeed}x
+          </span>
+        </div>
+        <button
+          type="button"
+          data-testid="course-player-overlay-play"
+          onClick={() => {
+            const video = lessonVideoRef.current;
+            if (!video) {
+              setIsVideoPlaying((current) => !current);
+              return;
+            }
+            if (video.paused) {
+              void video.play();
+            } else {
+              video.pause();
+            }
+          }}
+          className="absolute left-1/2 top-1/2 flex h-[62px] w-[62px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[#5f9cff] bg-[#203b60]/88 text-white shadow-[0_0_0_3px_rgba(47,111,228,0.24),0_18px_42px_rgba(0,0,0,0.32)] backdrop-blur-sm"
+        >
+          {isVideoPlaying ? <Pause className="h-[25px] w-[25px] fill-current" /> : <Play className="ml-[4px] h-[27px] w-[27px] fill-current" />}
+        </button>
       </section>
     );
+
+    const renderWatchActionRow = () => {
+      const openWatchPanel = (panel: Exclude<MobileWatchPanel, null>) => {
+        setMobileWatchPanel((current) => (current === panel ? null : panel));
+      };
+
+      const actions = [
+        {
+          label: 'Save',
+          icon: <Bookmark className={cn('h-[27px] w-[27px]', selectedLessonSaved && 'fill-current')} />,
+          tone: 'text-[#5f9cff]',
+          onClick: () => selectedCourse && selectedLessonEntry && onToggleSavedTopic(selectedCourse._id, selectedLessonEntry.lesson.id),
+        },
+        {
+          label: 'Rate',
+          icon: <Star className="h-[28px] w-[28px]" />,
+          tone: 'text-[#5f9cff]',
+          onClick: () => openWatchPanel('rating'),
+        },
+        {
+          label: 'Chat Replay',
+          icon: <MessageSquare className="h-[27px] w-[27px]" />,
+          tone: 'text-[#5f9cff]',
+          onClick: () => openWatchPanel('chat'),
+        },
+        {
+          label: 'Report Issue',
+          icon: <AlertTriangle className="h-[28px] w-[28px]" />,
+          tone: 'text-[#f47171]',
+          onClick: () => openWatchPanel('report'),
+        },
+      ];
+
+      return (
+        <section className="grid grid-cols-4 overflow-hidden rounded-[16px] border border-[#d7e3f2] bg-white shadow-[0_14px_30px_rgba(47,111,228,0.08)]">
+          {actions.map((action, index) => (
+            <button
+              key={action.label}
+              type="button"
+              aria-label={action.label}
+              onClick={action.onClick}
+              className={cn(
+                'flex h-[72px] min-w-0 flex-col items-center justify-center gap-[6px] px-[6px] text-center',
+                index > 0 && 'border-l border-[#e2ebf6]',
+              )}
+            >
+              <span className={action.tone}>{action.icon}</span>
+              <span className="!font-sans text-[12px] font-semibold leading-[1.15] text-[#17233d]">{action.label}</span>
+            </button>
+          ))}
+        </section>
+      );
+    };
+
+    const renderWatchPanel = () => {
+      if (!selectedLessonEntry || !mobileWatchPanel) {
+        return null;
+      }
+
+      const lessonId = selectedLessonEntry.lesson.id;
+      const thread = lessonDoubtThreads[lessonId] || [];
+      const draft = lessonDoubtDrafts[lessonId] || '';
+      const rating = lessonRatings[lessonId] || 0;
+      const reportDraft = lessonReportDrafts[lessonId] || '';
+      const reportSent = Boolean(lessonReportSent[lessonId]);
+
+      if (mobileWatchPanel === 'rating') {
+        return (
+          <section data-testid="course-player-rating-panel" className="rounded-[16px] border border-[#d7e3f2] bg-white px-[14px] py-[14px] shadow-[0_14px_30px_rgba(47,111,228,0.08)]">
+            <div className="flex items-center justify-between gap-[12px]">
+              <div>
+                <p className="text-[14px] font-extrabold text-[#17233d]">Rate this lesson</p>
+                <p className="mt-[3px] text-[12px] leading-[1.4] text-[#53647d]">{rating ? `${rating}/5 saved for this device.` : 'Tap a star to save your rating.'}</p>
+              </div>
+              <button type="button" onClick={() => setMobileWatchPanel(null)} className="text-[12px] font-semibold text-[#2f6fe4]">Close</button>
+            </div>
+            <div className="mt-[14px] flex items-center gap-[9px]">
+              {Array.from({ length: 5 }).map((_, index) => {
+                const value = index + 1;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-label={`Rate ${value} stars`}
+                    onClick={() => setLessonRatings((current) => ({ ...current, [lessonId]: value }))}
+                    className={cn('text-[#b8c6d8] transition', value <= rating && 'text-[#2f6fe4]')}
+                  >
+                    <Star className={cn('h-[30px] w-[30px]', value <= rating && 'fill-current')} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      }
+
+      if (mobileWatchPanel === 'chat') {
+        return (
+          <section data-testid="course-player-chat-panel" className="rounded-[16px] border border-[#d7e3f2] bg-white px-[14px] py-[14px] shadow-[0_14px_30px_rgba(47,111,228,0.08)]">
+            <div className="flex items-center justify-between gap-[12px]">
+              <div>
+                <p className="text-[14px] font-extrabold text-[#17233d]">Chat Replay</p>
+                <p className="mt-[3px] text-[12px] text-[#53647d]">Lesson conversation stays scrollable.</p>
+              </div>
+              <button type="button" onClick={() => setMobileWatchPanel(null)} className="text-[12px] font-semibold text-[#2f6fe4]">Close</button>
+            </div>
+            <div className="mt-[12px] max-h-[210px] space-y-[10px] overflow-y-auto pr-[4px]">
+              {thread.length === 0 && (
+                <div className="rounded-[14px] border border-dashed border-[#d7e3f2] bg-[#f8fbff] px-[12px] py-[12px] text-[12px] leading-5 text-[#53647d]">
+                  No chat replay yet. Send a message to start this lesson thread.
+                </div>
+              )}
+              {thread.map((message) => (
+                <div
+                  key={message.id}
+                  className={cn(
+                    'rounded-[14px] border px-[12px] py-[10px]',
+                    message.self ? 'ml-[22px] border-[#cfe0ff] bg-[#eef5ff]' : 'border-[#e7edf7] bg-[#fbfdff]',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-[10px]">
+                    <p className="text-[12px] font-bold text-[#17233d]">{message.name}</p>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#7b8da6]">{message.time}</span>
+                  </div>
+                  <p className="mt-[5px] text-[12px] leading-[1.5] text-[#53647d]">{message.message}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-[12px] flex items-center gap-[8px] rounded-[14px] border border-[#d7e3f2] bg-[#f8fbff] px-[10px] py-[9px]">
+              <input
+                type="text"
+                value={draft}
+                onChange={(event) => setLessonDoubtDrafts((current) => ({ ...current, [lessonId]: event.target.value }))}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    submitLessonDoubt();
+                  }
+                }}
+                placeholder="Add message..."
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-[#17233d] outline-none placeholder:text-[#8ba0bb]"
+              />
+              <button
+                type="button"
+                aria-label="Send chat replay message"
+                onClick={submitLessonDoubt}
+                className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-[#2f6fe4] text-white shadow-[0_8px_18px_rgba(47,111,228,0.22)]"
+              >
+                <Send className="h-[15px] w-[15px]" />
+              </button>
+            </div>
+          </section>
+        );
+      }
+
+      return (
+        <section data-testid="course-player-report-panel" className="rounded-[16px] border border-[#d7e3f2] bg-white px-[14px] py-[14px] shadow-[0_14px_30px_rgba(47,111,228,0.08)]">
+          <div className="flex items-center justify-between gap-[12px]">
+            <div>
+              <p className="text-[14px] font-extrabold text-[#17233d]">Report Issue</p>
+              <p className="mt-[3px] text-[12px] text-[#53647d]">{reportSent ? 'Issue noted for review.' : 'Tell us what went wrong.'}</p>
+            </div>
+            <button type="button" onClick={() => setMobileWatchPanel(null)} className="text-[12px] font-semibold text-[#2f6fe4]">Close</button>
+          </div>
+          <textarea
+            value={reportDraft}
+            onChange={(event) => {
+              setLessonReportSent((current) => ({ ...current, [lessonId]: false }));
+              setLessonReportDrafts((current) => ({ ...current, [lessonId]: event.target.value }));
+            }}
+            placeholder="Video not playing, audio issue, wrong lesson..."
+            className="mt-[12px] h-[92px] w-full resize-none rounded-[14px] border border-[#d7e3f2] bg-[#f8fbff] px-[12px] py-[10px] text-[13px] leading-5 text-[#17233d] outline-none placeholder:text-[#8ba0bb] focus:border-[#2f6fe4]"
+          />
+          <button
+            type="button"
+            onClick={() => setLessonReportSent((current) => ({ ...current, [lessonId]: true }))}
+            disabled={!reportDraft.trim()}
+            className="mt-[10px] flex h-[38px] w-full items-center justify-center rounded-[12px] bg-[#2f6fe4] text-[13px] font-bold text-white shadow-[0_10px_20px_rgba(47,111,228,0.20)] disabled:cursor-not-allowed disabled:bg-[#b8c6d8]"
+          >
+            {reportSent ? 'Submitted' : 'Submit report'}
+          </button>
+        </section>
+      );
+    };
+
+    const renderWatchUpNext = () => {
+      const previewTitle = nextLessonEntry?.lesson.title || (isLessonReadyForExam ? selectedLessonCopy.quiz.title : 'Course completed');
+      const previewSubtitle = nextLessonEntry
+        ? `By ${selectedCourse?.instructor || userName}`
+        : isLessonReadyForExam
+          ? 'Chapter CBT is ready'
+          : 'Finish this video to unlock the next step';
+      const previewMeta = nextLessonEntry
+        ? formatDurationLabel(nextLessonEntry.lesson.durationMinutes)
+        : isLessonReadyForExam
+          ? `${selectedLessonCopy.quiz.totalQuestions} questions`
+          : 'Locked';
+
+      return (
+        <section className="border-t border-[#d7e3f2] pt-[18px]">
+          <div className="flex items-center justify-between gap-[14px]">
+            <h2 className="!font-sans text-[18px] font-extrabold tracking-[-0.02em] text-[#17233d]">Up Next</h2>
+            <div className="flex items-center gap-[10px]">
+              <span className="!font-sans text-[13px] font-semibold text-[#53647d]">Autoplay</span>
+              <ToggleSwitch checked={autoplayEnabled} onToggle={() => setAutoplayEnabled((current) => !current)} testId="course-player-autoplay-toggle" />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            data-testid={nextLessonEntry ? 'course-player-continue-next-lesson' : isLessonReadyForExam ? 'course-player-start-cbt' : undefined}
+            onClick={() => {
+              if (nextLessonEntry) {
+                openNextLesson();
+                return;
+              }
+              if (isLessonReadyForExam) {
+                startLessonExam();
+              }
+            }}
+            disabled={!nextLessonEntry && !isLessonReadyForExam}
+            className="mt-[16px] grid w-full grid-cols-[142px_1fr_20px] items-center gap-[12px] text-left disabled:opacity-70"
+          >
+            <div className="relative h-[78px] overflow-hidden rounded-[14px] border border-[#d7e3f2] bg-[#eef6ff] shadow-[0_10px_22px_rgba(47,111,228,0.10)]">
+              <img alt="" aria-hidden="true" src={selectedCourseVisual} className="h-full w-full object-cover opacity-58" />
+              <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(4,10,20,0.82),rgba(4,10,20,0.18))]" />
+              <span className="absolute left-[10px] top-[9px] flex h-[26px] w-[26px] items-center justify-center rounded-full border border-white/24 bg-[#17233d]/86 text-[13px] font-bold text-white">
+                {nextLessonEntry?.lessonIndex || selectedLessonEntry?.lessonIndex || 1}
+              </span>
+              <span className="absolute bottom-[9px] right-[9px] text-[12px] font-bold text-white">{previewMeta}</span>
+              <div className="absolute bottom-0 left-0 h-[4px] w-[52%] rounded-r-full bg-[#2f6fe4]" />
+            </div>
+            <div className="min-w-0">
+              <p className="!font-sans line-clamp-2 text-[16px] font-extrabold leading-[1.14] tracking-[-0.015em] text-[#17233d]">{previewTitle}</p>
+              <p className="!font-sans mt-[7px] text-[13px] leading-none text-[#53647d]">{previewSubtitle}</p>
+              <p className="!font-sans mt-[12px] text-[12px] text-[#7b8da6]">{nextLessonEntry ? 'Next lesson' : isLessonReadyForExam ? 'Next step' : 'Complete current video'}</p>
+            </div>
+            <MoreVertical className="h-[20px] w-[20px] text-[#7b8da6]" />
+          </button>
+        </section>
+      );
+    };
 
     const renderCompletionCard = () => {
       const lessonsCompletedLabel = selectedCourseVideoCompletedDisplayCount;
@@ -4495,87 +4799,12 @@ export const CourseFigmaTab = ({
         return renderCompletionCard();
       }
       return (
-        <div className="space-y-[14px]">
+        <div className="space-y-[24px]">
           {renderWatchCard()}
-          {renderMobileSupportTabs()}
 
-          <section className="rounded-[16px] border border-[#dbe4f3] bg-white px-[13px] py-[11px] shadow-[0_12px_24px_rgba(54,78,123,0.04)]">
-            <div className="flex items-center justify-between gap-[14px]">
-              <div className="min-w-0">
-                <p className="text-[13px] font-semibold text-[#17233f]">Auto play next video</p>
-                <p className="mt-[2px] text-[12px] leading-[1.42] text-[#5d7092]">
-                  Automatically play the next video when the current one ends.
-                </p>
-              </div>
-              <ToggleSwitch checked={autoplayEnabled} onToggle={() => setAutoplayEnabled((current) => !current)} testId="course-player-autoplay-toggle" />
-            </div>
-          </section>
-
-          {nextStepDescriptor && renderNextStepCard('mobile')}
-
-          <section className="rounded-[16px] border border-[#dbe4f3] bg-white px-[14px] py-[12px] shadow-[0_12px_24px_rgba(54,78,123,0.04)]">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-[8px] text-[14px] font-semibold text-[#17233f]">
-                <FileText className="h-[14px] w-[14px] text-[#7a90b7]" />
-                <span>Lesson Playlist</span>
-              </div>
-            </div>
-            <div className="mt-[12px] space-y-[8px]">
-              {filteredCourseSections.map((section, index) => {
-                const expanded = currentExpandedSections.includes(section.id);
-                return (
-                  <div key={section.id} className="overflow-hidden rounded-[14px] border border-[#e7edf7] bg-white">
-                    <button
-                      type="button"
-                      onClick={() => toggleSection(section.id)}
-                      className="flex h-[46px] w-full items-center justify-between px-[12px] text-left"
-                    >
-                      <div className="flex items-center gap-[6px] min-w-0">
-                        <span className="truncate text-[14px] font-semibold text-[#1b2d50]">{section.label}:</span>
-                        <span className="truncate text-[14px] text-[#44597f]">{section.title}</span>
-                      </div>
-                      <ChevronDown className={cn('h-[14px] w-[14px] shrink-0 text-[#7a8eae] transition', expanded ? 'rotate-180' : '')} />
-                    </button>
-                    {expanded && (
-                      <div className={cn(index === 0 ? 'border-l-[4px] border-l-[#4a8ef5]' : 'border-l-[4px] border-l-transparent')}>
-                        {section.lessons.map((entry) => {
-                          const completed = Boolean(selectedCourseProgressMap.get(entry.lesson.id)?.completed);
-                          const unlocked = Boolean(unlockMap.get(entry.lesson.id)?.unlocked);
-                          const active = selectedLessonEntry?.lesson.id === entry.lesson.id;
-                          return (
-                            <button
-                              key={entry.lesson.id}
-                              type="button"
-                              onClick={() => unlocked && openLesson(entry.lesson.id)}
-                              className={cn(
-                                'flex w-full items-center gap-[10px] px-[10px] py-[12px] text-left',
-                                active ? 'bg-[linear-gradient(90deg,rgba(64,125,233,0.09)_0%,rgba(255,255,255,0.98)_100%)]' : 'bg-white',
-                              )}
-                            >
-                              <div className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full border border-[#d1ddf4] bg-[#eef3fe] text-[#7092c8]">
-                                {unlocked ? <Play className="ml-[1px] h-[14px] w-[14px] fill-current" /> : <Lock className="h-[12px] w-[12px]" />}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className={cn('truncate text-[13px] leading-[1.18]', active ? 'font-medium text-[#1b49d6]' : 'text-[#23385f]')}>
-                                  {entry.lesson.title}
-                                </p>
-                                <p className="mt-[3px] text-[12px] text-[#6e80a1]">{formatDurationLabel(entry.lesson.durationMinutes)}</p>
-                              </div>
-                              {completed ? (
-                                <CheckCircle2 className="h-[15px] w-[15px] shrink-0 text-[#26c085]" />
-                              ) : !unlocked ? (
-                                <Lock className="h-[13px] w-[13px] shrink-0 text-[#8fa2c3]" />
-                              ) : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          {renderWatchActionRow()}
+          {renderWatchPanel()}
+          {renderWatchUpNext()}
 
         </div>
       );
@@ -4585,38 +4814,35 @@ export const CourseFigmaTab = ({
       <div
         data-testid="course-figma-page"
         data-course-view="lesson"
-        className="mobile-safe-screen h-[100dvh] overflow-x-hidden overflow-y-auto bg-[linear-gradient(180deg,#f9fbff_0%,#eef3ff_100%)]"
+        className="mobile-safe-screen h-[100dvh] overflow-x-hidden overflow-y-auto bg-[linear-gradient(180deg,#f8fbff_0%,#edf4ff_48%,#f8fbff_100%)] !px-0"
+        style={uiFontStyle}
       >
-        <div className="mobile-safe-content mx-auto pt-[12px]">
+        <div className="mobile-safe-content mx-auto pt-[18px]">
 
-          <div className="flex items-center justify-between gap-[10px]">
+          <div className="flex h-[46px] items-center justify-between gap-[10px]">
             <button
               type="button"
               data-testid="course-back-to-lessons"
               onClick={() => setScreen('course')}
-              className="flex h-[30px] w-[30px] items-center justify-center text-[#17233f]"
+              className="flex h-[42px] w-[42px] items-center justify-center text-[#17233d]"
             >
-              <ChevronLeft className="h-[22px] w-[22px]" />
+              <ChevronLeft className="h-[32px] w-[32px]" />
             </button>
-            <h1 data-testid="course-player-heading" className="max-w-[214px] text-center text-[15px] font-semibold leading-[1.18] tracking-[-0.02em] text-[#17233f]">
-              {selectedLessonEntry?.lesson.title}
+            <h1 data-testid="course-player-heading" className="!font-sans max-w-[214px] text-center text-[22px] font-extrabold leading-none tracking-[-0.02em] text-[#17233d]">
+              {selectedLessonEntry?.lessonIndex || 1}
             </h1>
             <button
               type="button"
               data-testid="course-player-bookmark"
               onClick={() => selectedCourse && selectedLessonEntry && onToggleSavedTopic(selectedCourse._id, selectedLessonEntry.lesson.id)}
-              className="flex h-[30px] w-[30px] items-center justify-center text-[#2d6ee5]"
+              className="flex h-[42px] w-[42px] items-center justify-center text-[#2f6fe4]"
             >
-              <Bookmark className={cn('h-[18px] w-[18px]', selectedLessonSaved && 'fill-current')} />
+              <Bookmark className={cn('h-[28px] w-[28px]', selectedLessonSaved && 'fill-current')} />
             </button>
           </div>
         </div>
 
-        <div className="mt-[12px] px-[14px]">
-          {renderMobileVideoPill()}
-        </div>
-
-        <div className="border-t border-[#e8edf7] px-[14px] py-[14px]">
+        <div className="px-[14px] pb-[42px] pt-[18px]">
           {mobileContent}
         </div>
       </div>
