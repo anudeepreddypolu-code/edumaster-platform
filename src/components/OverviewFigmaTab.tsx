@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   BookOpen,
@@ -43,6 +43,14 @@ const formatClassTime = (value: string) =>
 
 const getCourseSubtitle = (course: CourseCard) =>
   [course.exam, course.subject].filter(Boolean).join(' | ') || course.category || course.level || 'Course';
+
+const getCourseInitials = (course: CourseCard) =>
+  (course.title || course.exam || 'Course')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'EM';
 
 const getCompletedLessonCount = (course: CourseCard) =>
   (course.lessonProgress || []).filter((entry) => entry.completed || Number(entry.progressPercent || 0) >= 90).length;
@@ -266,6 +274,9 @@ export const OverviewFigmaTab = ({
   onOpenNotification,
 }: OverviewFigmaTabProps) => {
   const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [mobileCoursePage, setMobileCoursePage] = useState(0);
+  const mobileCourseRailRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollTouchedAtRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -295,6 +306,22 @@ export const OverviewFigmaTab = ({
   const heroCourse = overview.dashboard.continueLearning[0] || activeCourses[0] || null;
   const secondaryCourse = activeCourses.find((course) => course._id !== heroCourse?._id) || null;
   const activeCourseCards = [heroCourse, secondaryCourse].filter(Boolean) as CourseCard[];
+  const mobileCarouselCourses = useMemo(
+    () => {
+      const seen = new Set<string>();
+      const ordered = overview.courses.filter((course) => {
+        if (!course || seen.has(course._id)) {
+          return false;
+        }
+
+        seen.add(course._id);
+        return true;
+      });
+      return ordered.length > 0 ? ordered : activeCourseCards;
+    },
+    [activeCourseCards, overview.courses],
+  );
+  const mobileCarouselPageCount = Math.max(Math.ceil(mobileCarouselCourses.length / 2), 1);
   const todayClasses = useMemo(
     () => overview.liveClasses
       .filter((item) => ['live', 'scheduled'].includes(String(item.status || 'scheduled')) && isSameLocalDay(item.startTime, today))
@@ -329,6 +356,174 @@ export const OverviewFigmaTab = ({
 
     onContinueLearning(course._id, course.continueLesson?.id || null);
   };
+
+  useEffect(() => {
+    if (!isMobileLayout || mobileCarouselCourses.length <= 2) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      const rail = mobileCourseRailRef.current;
+      if (!rail || Date.now() - autoScrollTouchedAtRef.current < 1800) {
+        return;
+      }
+
+      const nextPage = (mobileCoursePage + 1) % mobileCarouselPageCount;
+      const maxScrollLeft = rail.scrollWidth - rail.clientWidth;
+      rail.scrollTo({
+        left: Math.min(nextPage * rail.clientWidth, maxScrollLeft),
+        behavior: 'smooth',
+      });
+      setMobileCoursePage(nextPage);
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [isMobileLayout, mobileCarouselCourses.length, mobileCarouselPageCount, mobileCoursePage]);
+
+  const handleMobileCourseScroll = () => {
+    const rail = mobileCourseRailRef.current;
+    if (!rail) {
+      return;
+    }
+
+    autoScrollTouchedAtRef.current = Date.now();
+    const nextPage = Math.max(
+      0,
+      Math.min(Math.round(rail.scrollLeft / Math.max(rail.clientWidth, 1)), mobileCarouselPageCount - 1),
+    );
+    setMobileCoursePage(nextPage);
+  };
+
+  const renderMobileCourseArt = (tone: 'purple' | 'blue' | 'green', index: number) => {
+    if (tone === 'blue') {
+      return (
+        <div className="pointer-events-none absolute bottom-[18px] right-[18px] h-[90px] w-[92px] opacity-75">
+          <div className="absolute bottom-0 left-[30px] h-[54px] w-[26px] rounded-b-[12px] bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(42,122,225,0.58))] shadow-[inset_0_-6px_12px_rgba(14,92,190,0.28)]" />
+          <div className="absolute left-[18px] top-[7px] h-[56px] w-[56px] rounded-full bg-[radial-gradient(circle_at_38%_35%,rgba(255,255,255,0.78),rgba(113,184,255,0.72)_42%,rgba(28,107,214,0.42)_78%)] shadow-[0_12px_26px_rgba(24,91,190,0.28)]" />
+          <div className="absolute left-[2px] top-[43px] h-[26px] w-[26px] rounded-full border-[9px] border-[#4aa5ef]/55" />
+          <div className="absolute right-0 top-[43px] h-[26px] w-[26px] rounded-full border-[9px] border-[#4aa5ef]/55" />
+          <div className="absolute left-[42px] top-[31px] h-[35px] w-[4px] rounded-full bg-white/54" />
+          <div className="absolute left-[33px] top-[35px] h-[22px] w-[22px] rounded-full border-[4px] border-white/50 border-t-transparent" />
+        </div>
+      );
+    }
+
+    if (tone === 'green') {
+      return (
+        <div className="pointer-events-none absolute bottom-[18px] right-[20px] h-[86px] w-[94px] opacity-72">
+          <div className="absolute bottom-[10px] left-[16px] h-[44px] w-[60px] rounded-[16px] bg-white/24" />
+          <div className="absolute bottom-[18px] left-[10px] h-[38px] w-[52px] -rotate-12 rounded-[9px] bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(20,157,112,0.38))] shadow-[0_10px_20px_rgba(10,101,86,0.18)]" />
+          <div className="absolute bottom-[18px] right-[8px] h-[38px] w-[38px] rounded-full border-[10px] border-white/32" />
+          <div className="absolute right-[22px] top-[6px] h-[16px] w-[16px] rounded-full bg-white/26" />
+          <div className="absolute right-[42px] top-[17px] h-[10px] w-[10px] rounded-full bg-white/22" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="pointer-events-none absolute bottom-[18px] right-[18px] h-[92px] w-[100px] opacity-76">
+        <div className="absolute bottom-[16px] left-[18px] h-[42px] w-[54px] -rotate-12 rounded-r-full bg-[linear-gradient(90deg,rgba(255,255,255,0.44),rgba(255,255,255,0.18))] shadow-[0_10px_20px_rgba(45,33,145,0.22)]" />
+        <div className="absolute bottom-[24px] left-[48px] h-[42px] w-[22px] rotate-[-18deg] rounded-r-full bg-white/24" />
+        <div className="absolute bottom-[14px] left-[31px] h-[28px] w-[12px] -rotate-12 rounded-[4px] bg-[#3525a3]/28" />
+        <div className="absolute bottom-[14px] right-[8px] h-[58px] w-[58px] rounded-full border-[11px] border-white/24" />
+        <div className="absolute bottom-[29px] right-[23px] h-[28px] w-[28px] rounded-full border-[8px] border-white/28" />
+        <div className="absolute bottom-[40px] right-[5px] h-[8px] w-[30px] -rotate-35 rounded-full bg-[#1f236e]/30" />
+        {index % 2 === 0 && (
+          <div className="absolute right-[31px] top-[6px] h-[28px] w-[34px] rounded-[8px] bg-[#2b237d]/24">
+            <div className="mt-[9px] flex justify-center gap-[4px]">
+              <span className="h-[5px] w-[5px] rounded-full bg-white/55" />
+              <span className="h-[5px] w-[5px] rounded-full bg-white/55" />
+              <span className="h-[5px] w-[5px] rounded-full bg-white/55" />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderMobileCourseCarousel = () => (
+    <section data-testid="overview-active-courses" className="space-y-[10px]">
+      <div className="flex items-center justify-between">
+        <SectionTitle>Courses</SectionTitle>
+        <button
+          type="button"
+          onClick={onOpenCoursesTab}
+          className="shrink-0 text-[13px] font-semibold text-[#2f6fe4]"
+        >
+          View all
+        </button>
+      </div>
+
+      {mobileCarouselCourses.length === 0 ? (
+        <EmptyState title="No active courses" body="Paid and free course enrollments will appear here after the learner is enrolled." />
+      ) : (
+        <>
+          <div
+            ref={mobileCourseRailRef}
+            data-testid="overview-course-carousel"
+            onScroll={handleMobileCourseScroll}
+            onPointerDown={() => { autoScrollTouchedAtRef.current = Date.now(); }}
+            onTouchStart={() => { autoScrollTouchedAtRef.current = Date.now(); }}
+            className="-mx-[2px] flex snap-x snap-mandatory gap-[12px] overflow-x-auto scroll-smooth px-[2px] pb-[2px] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {mobileCarouselCourses.map((course, index) => {
+              const tone = index % 3 === 1 ? 'blue' : index % 3 === 2 ? 'green' : 'purple';
+
+              return (
+                <button
+                  key={course._id}
+                  type="button"
+                  data-testid={`overview-active-course-card-${index}`}
+                  onClick={() => openCourse(course)}
+                  className={`relative h-[148px] shrink-0 snap-start overflow-hidden rounded-[10px] px-[11px] py-[14px] text-left text-white shadow-[0_16px_30px_rgba(22,62,128,0.14)] ${tone === 'blue'
+                    ? 'bg-[linear-gradient(135deg,#1776d8_0%,#35a2ff_100%)]'
+                    : tone === 'green'
+                      ? 'bg-[linear-gradient(135deg,#11966f_0%,#36caa1_100%)]'
+                      : 'bg-[linear-gradient(135deg,#4b39d4_0%,#7d48fb_100%)]'}`}
+                  style={{ flexBasis: mobileCarouselCourses.length > 1 ? 'calc((100% - 12px) / 2)' : '100%' }}
+                >
+                  <div className={`relative z-10 flex h-[32px] w-[32px] items-center justify-center rounded-[7px] text-[16px] font-bold ${tone === 'blue'
+                    ? 'bg-[#20b56f]'
+                    : tone === 'green'
+                      ? 'bg-[#159d72]'
+                      : 'bg-[#7848ee]'}`}
+                  >
+                    {getCourseInitials(course)}
+                  </div>
+                  <p className="relative z-10 mt-[12px] line-clamp-2 max-w-[112px] text-[16px] font-extrabold leading-[1.12] text-white drop-shadow-[0_1px_1px_rgba(16,33,77,0.12)]">
+                    {course.title}
+                  </p>
+                  <p className="relative z-10 mt-[7px] max-w-[112px] truncate text-[12px] font-semibold text-white/92">
+                    {getCourseSubtitle(course)}
+                  </p>
+                  {renderMobileCourseArt(tone, index)}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex h-[18px] items-center justify-center">
+            <div className="flex items-center gap-[8px]">
+              {Array.from({ length: mobileCarouselPageCount }).map((_, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  aria-label={`Show course page ${index + 1}`}
+                  onClick={() => {
+                    const rail = mobileCourseRailRef.current;
+                    autoScrollTouchedAtRef.current = Date.now();
+                    setMobileCoursePage(index);
+                    rail?.scrollTo({ left: index * rail.clientWidth, behavior: 'smooth' });
+                  }}
+                  className={`h-[11px] w-[11px] rounded-full ${mobileCoursePage === index ? 'bg-[#0965e9]' : 'bg-[#d6dde8]'}`}
+                />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
 
   const renderHeader = () => (
     <div data-testid="overview-topbar" className="flex min-w-0 items-start justify-between gap-[12px]">
@@ -673,8 +868,7 @@ export const OverviewFigmaTab = ({
       >
         <div className="mobile-safe-content mx-auto space-y-[14px] pb-[18px] pt-[12px]">
           {renderHeader()}
-          {renderHero()}
-          {renderCourses()}
+          {renderMobileCourseCarousel()}
           {renderPerformance()}
           {renderRecommendation()}
           {renderRevision()}

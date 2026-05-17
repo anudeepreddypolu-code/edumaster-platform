@@ -1,0 +1,23 @@
+[
+  {
+    "runId": "2026-05-15T09-37-01-788Z",
+    "createdAt": "2026-05-15T09:37:01.789Z",
+    "environment": "prod",
+    "playbackHealthScore": 93.56,
+    "playbackHealthLabel": "OK"
+  },
+  {
+    "runId": "2026-05-15T09-37-10-371Z",
+    "createdAt": "2026-05-15T09:37:10.371Z",
+    "environment": "prod",
+    "playbackHealthScore": 51.77,
+    "playbackHealthLabel": "CRITICAL"
+  },
+  {
+    "runId": "2026-05-15T09-38-40-876Z",
+    "createdAt": "2026-05-15T09:38:40.877Z",
+    "environment": "prod",
+    "playbackHealthScore": 93.56,
+    "playbackHealthLabel": "OK"
+  }
+]

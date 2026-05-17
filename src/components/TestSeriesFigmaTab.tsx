@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -90,8 +90,38 @@ type ExamQuestion = {
   section: SectionId;
   prompt: string;
   options: string[];
+  marks: number;
   correctIndex: number;
+  correctIndexes: number[];
   explanation: string;
+  topic: string;
+};
+
+type AttemptQuestionResult = {
+  questionId: string;
+  questionNumber: number;
+  prompt: string;
+  options: string[];
+  selectedIndexes: number[];
+  correctIndexes: number[];
+  explanation: string;
+  marks: number;
+  topic: string;
+  status: 'correct' | 'incorrect' | 'unattempted';
+};
+
+type AttemptStatus = 'not-started' | 'in-progress' | 'completed';
+
+type AttemptSession = {
+  status: AttemptStatus;
+  visitedQuestions: Record<number, boolean>;
+  answers: Record<number, number[]>;
+  review: Record<number, boolean>;
+  currentIndex: number;
+  timeLeft: number;
+  defaultLanguage: string;
+  selectedLanguage: string;
+  confirmationAccepted: boolean;
 };
 
 type SeriesDetailMeta = {
@@ -306,14 +336,30 @@ const questionStateLegend = [
 const buildExamQuestions = (questions: MockQuestion[] = []): ExamQuestion[] =>
   questions
     .filter((question) => question && question.questionText && Array.isArray(question.options) && question.options.length > 0)
-    .map((question, index) => ({
-      id: question.id || `question-${index + 1}`,
-      section: 'PART-A',
-      prompt: question.questionText,
-      options: question.options,
-      correctIndex: Number.isFinite(Number(question.correctOption)) ? Number(question.correctOption) : 0,
-      explanation: question.explanation || 'Explanation will appear after the test author adds it.',
-    }));
+    .map((question, index) => {
+      const correctIndexes = Array.isArray(question.correctOptions) && question.correctOptions.length > 0
+        ? [...new Set(question.correctOptions.map((optionIndex) => Number(optionIndex)).filter((optionIndex) => Number.isInteger(optionIndex) && optionIndex >= 0))].sort((left, right) => left - right)
+        : Number.isFinite(Number(question.correctOption))
+          ? [Number(question.correctOption)]
+          : [0];
+
+      return {
+        id: question.id || `question-${index + 1}`,
+        section: 'PART-A',
+        prompt: question.questionText,
+        options: question.options,
+        marks: Number(question.marks || 1),
+        correctIndex: correctIndexes[0] ?? 0,
+        correctIndexes,
+        explanation: question.explanation || 'Explanation will appear after the test author adds it.',
+        topic: question.topic || 'General Practice',
+      };
+    });
+
+const getAnswerIndexes = (value: number[] | null | undefined) => [...new Set((value || []).filter((optionIndex) => Number.isInteger(optionIndex) && optionIndex >= 0))].sort((left, right) => left - right);
+
+const areAnswerIndexesEqual = (left: number[], right: number[]) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
 
 const formatClock = (seconds: number) => {
   const safe = Math.max(seconds, 0);
@@ -322,13 +368,26 @@ const formatClock = (seconds: number) => {
   return `${String(minutes).padStart(2, '0')} : ${String(remainder).padStart(2, '0')}`;
 };
 
+const formatOptionLabels = (optionIndexes: number[]) => optionIndexes.map((optionIndex) => String.fromCharCode(65 + optionIndex)).join(', ');
+
+const formatMetricValue = (value: number) => {
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+
+  return value.toFixed(2).replace(/\.?0+$/, '');
+};
+
+const getAttemptedAnswerCount = (answers: Record<number, number[]>) =>
+  Object.values(answers).filter((selectedIndexes) => getAnswerIndexes(selectedIndexes).length > 0).length;
+
 const getCommittedState = (
   index: number,
   visitedQuestions: Record<number, boolean>,
-  answers: Record<number, number>,
+  answers: Record<number, number[]>,
   review: Record<number, boolean>,
 ): QuestionState => {
-  const hasAnswer = answers[index] !== undefined;
+  const hasAnswer = getAnswerIndexes(answers[index]).length > 0;
   const markedForReview = Boolean(review[index]);
   const hasVisited = Boolean(visitedQuestions[index]);
 
@@ -350,10 +409,10 @@ const getCommittedState = (
 const getDisplayedState = (
   index: number,
   visitedQuestions: Record<number, boolean>,
-  answers: Record<number, number>,
+  answers: Record<number, number[]>,
   review: Record<number, boolean>,
   currentIndex: number,
-  draftAnswer: number | null,
+  draftAnswer: number[],
   draftReview: boolean,
 ): QuestionState => {
   const committedState = getCommittedState(index, visitedQuestions, answers, review);
@@ -362,22 +421,22 @@ const getDisplayedState = (
     return committedState;
   }
 
-  const committedAnswer = answers[index] ?? null;
+  const committedAnswer = getAnswerIndexes(answers[index]);
   const committedReview = Boolean(review[index]);
-  const isDirty = committedAnswer !== draftAnswer || committedReview !== draftReview;
+  const isDirty = !areAnswerIndexesEqual(committedAnswer, draftAnswer) || committedReview !== draftReview;
 
   if (!isDirty) {
     return committedState;
   }
 
   if (draftReview) {
-    if (committedAnswer !== null) {
-      return draftAnswer === null ? 'review' : 'answered-review';
+    if (draftAnswer.length > 0) {
+      return 'answered-review';
     }
     return 'review';
   }
 
-  if (committedAnswer !== null) {
+  if (draftAnswer.length > 0) {
     return 'answered';
   }
 
@@ -777,7 +836,7 @@ export const TestSeriesFigmaTab = ({
   const [selectedSeriesId, setSelectedSeriesId] = useState('');
   const [savedSeriesIds, setSavedSeriesIds] = useState<string[]>([]);
   const [visitedQuestions, setVisitedQuestions] = useState<Record<number, boolean>>({});
-  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [answers, setAnswers] = useState<Record<number, number[]>>({});
   const [review, setReview] = useState<Record<number, boolean>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -787,8 +846,10 @@ export const TestSeriesFigmaTab = ({
   const [mobilePaletteOpen, setMobilePaletteOpen] = useState(false);
   const [desktopExamPanel, setDesktopExamPanel] = useState<null | 'symbols' | 'instructions' | 'summary' | 'calculator'>(null);
   const [questionZoom, setQuestionZoom] = useState(0);
-  const [draftAnswer, setDraftAnswer] = useState<number | null>(null);
+  const [draftAnswer, setDraftAnswer] = useState<number[]>([]);
   const [draftReview, setDraftReview] = useState(false);
+  const [attemptSessions, setAttemptSessions] = useState<Record<string, AttemptSession>>({});
+  const hydratedTestIdRef = useRef<string | null>(null);
 
   const fullMockTests = useMemo(
     () => (overview.testSeries || []).filter((test) => {
@@ -813,10 +874,12 @@ export const TestSeriesFigmaTab = ({
     section: 'PART-A' as const,
     prompt: 'No question is available for this test yet.',
     options: [],
+    marks: 1,
     correctIndex: 0,
+    correctIndexes: [0],
     explanation: 'Add questions from the admin workspace to enable this test.',
+    topic: 'General Practice',
   };
-  const firstQuestion = questions[0] || currentQuestion;
   const selectedSeriesMeta = useMemo(() => buildSeriesDetailMeta(selectedTest), [selectedTest]);
   const detailTestCards = useMemo<ResolvedDetailTestCard[]>(
     () => {
@@ -910,6 +973,98 @@ export const TestSeriesFigmaTab = ({
   const notAnsweredCount = committedStates.filter((state) => state === 'unvisited' || state === 'unanswered').length;
   const questionTextClass = ['text-[14px] leading-[1.58]', 'text-[16px] leading-[1.68]', 'text-[18px] leading-[1.78]'][questionZoom];
   const isCurrentQuestionMarkedForReview = draftReview;
+  const currentTestId = selectedTest?._id || '';
+  const persistedAttemptStatus = currentTestId ? attemptSessions[currentTestId]?.status : undefined;
+  const currentAttemptedAnswerCount = getAttemptedAnswerCount(answers);
+  const currentAttemptStatus: AttemptStatus = screen === 'result' || screen === 'solutions'
+    ? 'completed'
+    : persistedAttemptStatus === 'completed'
+      ? 'completed'
+    : currentAttemptedAnswerCount > 0 || Object.keys(visitedQuestions).length > 0 || screen === 'exam'
+      ? 'in-progress'
+      : 'not-started';
+  const attemptResults = useMemo<AttemptQuestionResult[]>(
+    () => questions.map((question, index) => {
+      const selectedIndexes = getAnswerIndexes(answers[index]);
+      let status: AttemptQuestionResult['status'] = 'unattempted';
+
+      if (selectedIndexes.length > 0) {
+        status = areAnswerIndexesEqual(selectedIndexes, question.correctIndexes) ? 'correct' : 'incorrect';
+      }
+
+      return {
+        questionId: question.id,
+        questionNumber: index + 1,
+        prompt: question.prompt,
+        options: question.options,
+        selectedIndexes,
+        correctIndexes: question.correctIndexes,
+        explanation: question.explanation,
+        marks: question.marks,
+        topic: question.topic,
+        status,
+      };
+    }),
+    [answers, questions],
+  );
+  const correctCount = useMemo(
+    () => attemptResults.filter((result) => result.status === 'correct').length,
+    [attemptResults],
+  );
+  const incorrectCount = useMemo(
+    () => attemptResults.filter((result) => result.status === 'incorrect').length,
+    [attemptResults],
+  );
+  const unattemptedCount = useMemo(
+    () => attemptResults.filter((result) => result.status === 'unattempted').length,
+    [attemptResults],
+  );
+  const attemptedCount = correctCount + incorrectCount;
+  const resultScore = useMemo(
+    () => attemptResults.reduce((sum, result) => {
+      if (result.status === 'correct') {
+        return sum + Number(result.marks || 1);
+      }
+      if (result.status === 'incorrect') {
+        return sum - Number(selectedTest?.negativeMarking || 0);
+      }
+      return sum;
+    }, 0),
+    [attemptResults, selectedTest?.negativeMarking],
+  );
+  const resultAccuracy = useMemo(
+    () => (attemptedCount > 0 ? Math.round((correctCount / attemptedCount) * 100) : 0),
+    [attemptedCount, correctCount],
+  );
+  const resultTotalMarks = Number(selectedTest?.totalMarks || questions.reduce((sum, question) => sum + Number(question.marks || 1), 0));
+  const resultRank = overview.dashboard.latestMockTest && selectedTest?._id && overview.dashboard.latestMockTest.testId === selectedTest._id
+    ? overview.dashboard.latestMockTest.rank
+    : null;
+  const solutionFilterSummary = [
+    { id: 'all', label: `All (${attemptResults.length})`, tone: 'active' as const },
+    { id: 'correct', label: `Correct (${correctCount})`, tone: 'success' as const },
+    { id: 'incorrect', label: `Incorrect (${incorrectCount})`, tone: 'danger' as const },
+    { id: 'unattempted', label: `Unattempted (${unattemptedCount})`, tone: 'neutral' as const },
+  ];
+  const getSessionForTest = (testId?: string | null) => (testId ? attemptSessions[testId] || null : null);
+  const getAttemptStatusForTest = (testId?: string | null): AttemptStatus => getSessionForTest(testId)?.status || 'not-started';
+  const getAttemptProgressForTest = (testId?: string | null, totalQuestions = 0) => {
+    const session = getSessionForTest(testId);
+    if (!session || totalQuestions <= 0) {
+      return 0;
+    }
+
+    return Math.min(100, Math.round((getAttemptedAnswerCount(session.answers) / totalQuestions) * 100));
+  };
+  const getAttemptActionLabel = (status: AttemptStatus) => {
+    if (status === 'completed') {
+      return 'Completed';
+    }
+    if (status === 'in-progress') {
+      return 'Resume';
+    }
+    return 'Start Now';
+  };
 
   useEffect(() => {
     if (!selectedSeriesId && fullMockTests[0]?._id) {
@@ -918,12 +1073,53 @@ export const TestSeriesFigmaTab = ({
   }, [fullMockTests, selectedSeriesId]);
 
   useEffect(() => {
+    const nextTestId = selectedTest?._id;
+    if (!nextTestId) {
+      hydratedTestIdRef.current = null;
+      return;
+    }
+
+    if (hydratedTestIdRef.current === nextTestId) {
+      return;
+    }
+
+    hydratedTestIdRef.current = nextTestId;
+
+    const session = attemptSessions[nextTestId];
+    if (session) {
+      setVisitedQuestions(session.visitedQuestions);
+      setAnswers(session.answers);
+      setReview(session.review);
+      setCurrentIndex(session.currentIndex);
+      setTimeLeft(session.timeLeft);
+      setDefaultLanguage(session.defaultLanguage);
+      setSelectedLanguage(session.selectedLanguage);
+      setConfirmationAccepted(session.confirmationAccepted);
+      setMobilePaletteOpen(false);
+      setDesktopExamPanel(null);
+      setQuestionZoom(0);
+      setDraftAnswer([]);
+      setDraftReview(false);
+      return;
+    }
+
+    setVisitedQuestions({});
+    setAnswers({});
+    setReview({});
     setCurrentIndex(0);
     setTimeLeft(Math.max(Number(selectedTest?.durationMinutes || 0), 0) * 60);
-  }, [selectedTest?._id, selectedTest?.durationMinutes]);
+    setDefaultLanguage('English');
+    setSelectedLanguage('English');
+    setConfirmationAccepted(false);
+    setMobilePaletteOpen(false);
+    setDesktopExamPanel(null);
+    setQuestionZoom(0);
+    setDraftAnswer([]);
+    setDraftReview(false);
+  }, [attemptSessions, selectedTest?._id, selectedTest?.durationMinutes]);
 
   useEffect(() => {
-    setDraftAnswer(answers[currentIndex] ?? null);
+    setDraftAnswer(answers[currentIndex] ?? []);
     setDraftReview(Boolean(review[currentIndex]));
   }, [answers, currentIndex, review]);
 
@@ -951,6 +1147,38 @@ export const TestSeriesFigmaTab = ({
     return () => window.clearInterval(timer);
   }, [screen]);
 
+  useEffect(() => {
+    if (!currentTestId) {
+      return;
+    }
+
+    setAttemptSessions((current) => ({
+      ...current,
+      [currentTestId]: {
+        status: currentAttemptStatus,
+        visitedQuestions,
+        answers,
+        review,
+        currentIndex,
+        timeLeft,
+        defaultLanguage,
+        selectedLanguage,
+        confirmationAccepted,
+      },
+    }));
+  }, [
+    answers,
+    confirmationAccepted,
+    currentAttemptStatus,
+    currentIndex,
+    currentTestId,
+    defaultLanguage,
+    review,
+    selectedLanguage,
+    timeLeft,
+    visitedQuestions,
+  ]);
+
   const resetAttemptState = () => {
     setVisitedQuestions({});
     setAnswers({});
@@ -963,17 +1191,62 @@ export const TestSeriesFigmaTab = ({
     setMobilePaletteOpen(false);
     setDesktopExamPanel(null);
     setQuestionZoom(0);
-    setDraftAnswer(null);
+    setDraftAnswer([]);
     setDraftReview(false);
+  };
+
+  const clearAttemptSession = (testId?: string | null) => {
+    if (!testId) {
+      return;
+    }
+
+    if (hydratedTestIdRef.current === testId) {
+      hydratedTestIdRef.current = null;
+    }
+
+    setAttemptSessions((current) => {
+      const next = { ...current };
+      delete next[testId];
+      return next;
+    });
   };
 
   const openSeries = (seriesId: string) => {
     if (!seriesId) {
       return;
     }
+    if (selectedSeriesId !== seriesId) {
+      hydratedTestIdRef.current = null;
+    }
     setSelectedSeriesId(seriesId);
-    resetAttemptState();
     setScreen('detail');
+  };
+
+  const openAttemptFlow = (testId?: string | null) => {
+    if (!testId) {
+      return;
+    }
+
+    if (selectedSeriesId !== testId) {
+      hydratedTestIdRef.current = null;
+    }
+    setSelectedSeriesId(testId);
+    const status = getAttemptStatusForTest(testId);
+    if (status === 'completed') {
+      setScreen('result');
+      return;
+    }
+    if (status === 'in-progress') {
+      setScreen('exam');
+      return;
+    }
+    setScreen('instructions');
+  };
+
+  const restartCurrentAttempt = () => {
+    clearAttemptSession(currentTestId);
+    resetAttemptState();
+    setScreen('instructions');
   };
 
   const toggleSavedSeries = (seriesId: string) => {
@@ -1002,7 +1275,17 @@ export const TestSeriesFigmaTab = ({
 
   const selectOption = (index: number) => {
     setVisitedQuestions((current) => ({ ...current, [currentIndex]: true }));
-    setDraftAnswer((current) => (current === index ? null : index));
+    setDraftAnswer((current) => {
+      const allowMultipleAnswers = currentQuestion.correctIndexes.length > 1;
+      const currentIndexes = getAnswerIndexes(current);
+      if (!allowMultipleAnswers) {
+        return currentIndexes.length === 1 && currentIndexes[0] === index ? [] : [index];
+      }
+
+      return currentIndexes.includes(index)
+        ? currentIndexes.filter((value) => value !== index)
+        : [...currentIndexes, index].sort((left, right) => left - right);
+    });
   };
 
   const toggleReview = () => {
@@ -1012,7 +1295,7 @@ export const TestSeriesFigmaTab = ({
   const commitCurrentDraft = () => {
     setAnswers((current) => {
       const next = { ...current };
-      if (draftAnswer === null) {
+      if (draftAnswer.length === 0) {
         delete next[currentIndex];
       } else {
         next[currentIndex] = draftAnswer;
@@ -1051,6 +1334,7 @@ export const TestSeriesFigmaTab = ({
   };
 
   const submitExam = () => {
+    commitCurrentDraft();
     setDesktopExamPanel(null);
     setMobilePaletteOpen(false);
     setScreen('result');
@@ -1088,11 +1372,21 @@ export const TestSeriesFigmaTab = ({
                   </div>
                   <div className="px-[12px] pb-[12px] pt-[10px]">
                     <p className="min-h-[48px] text-[12px] font-semibold leading-[1.45] text-[#273248]">{series.title}</p>
+                    {(() => {
+                      const test = fullMockTests.find((entry) => entry._id === series.id);
+                      const progress = getAttemptProgressForTest(series.id, test?.questions?.length || 0);
+                      const actionLabel = getAttemptActionLabel(getAttemptStatusForTest(series.id));
+
+                      return (
+                        <>
                     <div className="mt-[10px] flex items-center justify-between text-[11px] text-[#98a2b3]">
                       <span>{series.testsLabel}</span>
-                      <span>{series.progressText}</span>
+                      <span>{progress}%</span>
                     </div>
-                    <span className="mt-[12px] inline-flex h-[28px] items-center rounded-[5px] bg-[#23aaf0] px-[12px] text-[10px] font-semibold text-white">Go To Test Series</span>
+                    <span className="mt-[12px] inline-flex h-[28px] items-center rounded-[5px] bg-[#23aaf0] px-[12px] text-[10px] font-semibold text-white">{actionLabel}</span>
+                        </>
+                      );
+                    })()}
                   </div>
                 </button>
               ))}
@@ -1215,10 +1509,10 @@ export const TestSeriesFigmaTab = ({
                     <button
                       type="button"
                       data-testid="tests-open-instructions"
-                      onClick={() => setScreen('instructions')}
+                      onClick={() => openAttemptFlow(selectedTest?._id)}
                       className="flex h-[28px] min-w-[92px] items-center justify-center rounded-[4px] bg-[#23aaf0] px-[12px] text-[11px] font-semibold text-white"
                     >
-                      Resume Now
+                      {getAttemptActionLabel(getAttemptStatusForTest(selectedTest?._id))}
                     </button>
                   </div>
                   <div className="mt-[8px] flex gap-[10px] text-[11px] text-[#4d93ef]">
@@ -1271,8 +1565,8 @@ export const TestSeriesFigmaTab = ({
                             </div>
                           </div>
                           <div className="flex min-w-[164px] flex-col items-end gap-[8px]">
-                            <button type="button" onClick={() => setScreen('instructions')} className="flex h-[28px] min-w-[90px] items-center justify-center rounded-[4px] bg-[#23aaf0] px-[12px] text-[11px] font-semibold text-white">
-                              {card.button}
+                            <button type="button" onClick={() => openAttemptFlow(card.mockTestId || card.id)} className="flex h-[28px] min-w-[90px] items-center justify-center rounded-[4px] bg-[#23aaf0] px-[12px] text-[11px] font-semibold text-white">
+                              {getAttemptActionLabel(getAttemptStatusForTest(card.mockTestId || card.id))}
                             </button>
                             <button
                               type="button"
@@ -1353,7 +1647,7 @@ export const TestSeriesFigmaTab = ({
           </button>
           <button
             type="button"
-            data-testid="tests-instructions-next"
+            data-testid="tests-instructions-next-desktop"
             onClick={() => setScreen('confirmation')}
             className="rounded-[3px] bg-[#7db3ec] px-8 py-2 text-[12px] font-semibold text-white"
           >
@@ -1386,14 +1680,14 @@ export const TestSeriesFigmaTab = ({
             <li>Try not to guess the answer as there is negative marking.</li>
             <li>You will be awarded 3 mark for each correct answer and 1 will be deducted for each wrong answer.</li>
             <li>There is no negative marking for the questions that you have not attempted.</li>
-            <li>You can write this test only once. Make sure that you complete the test before you submit the test and/or close the browser.</li>
+            <li>You can submit this test and reattempt it later if needed. Make sure you complete or submit the current attempt before leaving.</li>
           </ol>
 
           <div className="mt-8 border-y border-slate-200 py-6">
             <div className="flex flex-wrap items-center gap-3">
               <label className="text-[13px] font-semibold text-slate-900">Choose your default language:</label>
               <select
-                data-testid="tests-confirmation-language"
+                data-testid="tests-confirmation-language-desktop"
                 value={defaultLanguage}
                 onChange={(event) => setDefaultLanguage(event.target.value)}
                 className="h-[35px] border border-slate-300 bg-white px-3 text-[12px] text-slate-900 outline-none"
@@ -1410,9 +1704,11 @@ export const TestSeriesFigmaTab = ({
 
           <div className="mt-6">
             <p className="text-[15px] font-semibold text-slate-900">Declaration:</p>
-            <label className="mt-3 flex items-start gap-3 text-[13px] leading-7 text-slate-800">
+            <label
+              data-testid="tests-confirmation-checkbox-desktop"
+              className="mt-3 flex cursor-pointer items-start gap-3 text-[13px] leading-7 text-slate-800"
+            >
               <input
-                data-testid="tests-confirmation-checkbox"
                 type="checkbox"
                 checked={confirmationAccepted}
                 onChange={(event) => setConfirmationAccepted(event.target.checked)}
@@ -1439,7 +1735,7 @@ export const TestSeriesFigmaTab = ({
           <div className="flex justify-center">
             <button
               type="button"
-              data-testid="tests-confirmation-begin"
+              data-testid="tests-confirmation-begin-desktop"
               onClick={beginExam}
               disabled={!confirmationAccepted || !defaultLanguage}
               className="rounded-[3px] bg-[#72d0e9] px-8 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
@@ -1629,6 +1925,13 @@ export const TestSeriesFigmaTab = ({
             <button
               key={tab.id}
               type="button"
+              data-testid={tab.id === 'symbols'
+                ? 'tests-desktop-open-symbols'
+                : tab.id === 'instructions'
+                  ? 'tests-desktop-open-instructions'
+                  : tab.id === 'summary'
+                    ? 'tests-desktop-open-summary'
+                    : undefined}
               onClick={() => setDesktopExamPanel((current) => (current === tab.id ? null : tab.id as 'symbols' | 'instructions' | 'summary' | 'calculator'))}
               className={cn('text-[11px] font-semibold uppercase underline underline-offset-4', tab.tone)}
             >
@@ -1676,7 +1979,7 @@ export const TestSeriesFigmaTab = ({
                 </button>
                 <button
                   type="button"
-                  data-testid="tests-exam-submit"
+                  data-testid="tests-exam-submit-desktop"
                   onClick={submitExam}
                   className="min-w-[114px] rounded-[4px] bg-[#2f69d9] px-4 py-[8px] text-[12px] font-semibold text-white"
                 >
@@ -1726,22 +2029,31 @@ export const TestSeriesFigmaTab = ({
 
                     <div className="divide-y divide-[#e2e7ee]">
                       {currentQuestion.options.map((option, optionIndex) => {
-                        const isSelected = draftAnswer === optionIndex;
+                        const isSelected = draftAnswer.includes(optionIndex);
+                        const allowsMultipleAnswers = currentQuestion.correctIndexes.length > 1;
+                        const optionInputId = `tests-desktop-option-${currentQuestion.id}-${optionIndex}`;
 
                         return (
                           <label
                             key={`${currentQuestion.id}-${option}`}
+                            htmlFor={optionInputId}
                             className="grid w-full cursor-pointer grid-cols-[58px_minmax(0,1fr)] items-center text-left"
                           >
                             <div className="flex h-full items-center justify-center border-r border-[#e2e7ee] py-6">
                               <input
-                                type="radio"
+                                id={optionInputId}
+                                type={allowsMultipleAnswers ? 'checkbox' : 'radio'}
                                 checked={isSelected}
                                 onChange={() => selectOption(optionIndex)}
                                 className="sr-only"
                               />
-                              <div className={cn('flex h-[19px] w-[19px] items-center justify-center rounded-full border border-slate-400 bg-white', isSelected && 'border-[#1e88e5]')}>
-                                {isSelected && <div className="h-[8px] w-[8px] rounded-full bg-[#1e88e5]" />}
+                              <div className={cn(
+                                allowsMultipleAnswers
+                                  ? 'flex h-[19px] w-[19px] items-center justify-center rounded-[4px] border border-slate-400 bg-white'
+                                  : 'flex h-[19px] w-[19px] items-center justify-center rounded-full border border-slate-400 bg-white',
+                                isSelected && 'border-[#1e88e5]',
+                              )}>
+                                {isSelected && <div className={cn(allowsMultipleAnswers ? 'h-[9px] w-[9px] rounded-[2px] bg-[#1e88e5]' : 'h-[8px] w-[8px] rounded-full bg-[#1e88e5]')} />}
                               </div>
                             </div>
                             <div className="px-[28px] py-[20px]">
@@ -1817,7 +2129,7 @@ export const TestSeriesFigmaTab = ({
       className="mobile-safe-screen flex min-h-dvh flex-1 flex-col overflow-x-hidden bg-white pb-[108px] pt-[10px] lg:hidden"
       style={{ fontFamily: uiFontStack }}
     >
-      <div className="mobile-safe-content mx-auto flex flex-1 flex-col overflow-x-hidden">{content}</div>
+      <div className="mobile-safe-content mx-auto flex w-full max-w-[390px] flex-1 flex-col overflow-x-hidden px-[16px]">{content}</div>
     </div>
   );
 
@@ -1843,29 +2155,33 @@ export const TestSeriesFigmaTab = ({
 
       <button
         type="button"
-        onClick={() => openSeries(selectedTest?._id || fullMockTests[0]?._id || '')}
+        onClick={() => openAttemptFlow(selectedTest?._id || fullMockTests[0]?._id || '')}
         className="mt-[14px] overflow-hidden rounded-[22px] border border-[#dfe8fb] bg-[linear-gradient(135deg,#f5f9ff_0%,#ffffff_52%,#eef4ff_100%)] p-[14px] text-left shadow-[0_16px_34px_rgba(45,110,229,0.08)]"
       >
         <div className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-[8px] min-[390px]:grid-cols-[minmax(0,1fr)_118px]">
           <div className="min-w-0">
             <span className="inline-flex rounded-full bg-[#eaf1ff] px-[10px] py-[4px] text-[11px] font-semibold text-[#2f78eb]">
-              Resume where you left
+              {getAttemptStatusForTest(selectedTest?._id || fullMockTests[0]?._id || '') === 'completed'
+                ? 'Test completed'
+                : getAttemptStatusForTest(selectedTest?._id || fullMockTests[0]?._id || '') === 'in-progress'
+                  ? 'Resume where you left'
+                  : 'Ready to start'}
             </span>
             <p className="mt-[10px] text-[18px] font-semibold leading-[1.18] tracking-[-0.03em] text-[#1e2f5a]">
               {selectedTest?.title || 'No mock test available'}
             </p>
             <p className="mt-[4px] text-[13px] text-[#526987]">{selectedTest?.category || selectedTest?.type || 'Mock Test'}</p>
-            <p className="mt-[12px] text-[12px] font-medium text-[#526987]">Ready</p>
+            <p className="mt-[12px] text-[12px] font-medium text-[#526987]">{getAttemptActionLabel(getAttemptStatusForTest(selectedTest?._id || fullMockTests[0]?._id || ''))}</p>
             <div className="mt-[8px] h-[4px] w-[118px] rounded-full bg-[#dfe8fb]">
-              <div className="h-full w-[0%] rounded-full bg-[linear-gradient(90deg,#3d94f4_0%,#2b83e6_100%)]" />
+              <div className="h-full rounded-full bg-[linear-gradient(90deg,#3d94f4_0%,#2b83e6_100%)]" style={{ width: `${getAttemptProgressForTest(selectedTest?._id || fullMockTests[0]?._id || '', selectedTest?.questions?.length || 0)}%` }} />
             </div>
             <span className="mt-[14px] inline-flex h-[38px] items-center gap-[8px] rounded-[12px] bg-[linear-gradient(90deg,#2d8cf1,#315df9)] px-[14px] text-[12px] font-semibold text-white shadow-[0_12px_24px_rgba(49,99,255,0.24)]">
-              Continue Test
+              {getAttemptStatusForTest(selectedTest?._id || fullMockTests[0]?._id || '') === 'completed' ? 'Open Result' : getAttemptActionLabel(getAttemptStatusForTest(selectedTest?._id || fullMockTests[0]?._id || ''))}
               <ArrowRight className="h-[16px] w-[16px]" />
             </span>
           </div>
-          <div className="flex origin-right scale-[0.68] justify-end min-[390px]:scale-[0.78]">
-            <HeroIllustration />
+          <div className="flex shrink-0 justify-end pl-[10px]">
+            <HeroIllustration compact />
           </div>
         </div>
       </button>
@@ -2048,12 +2364,12 @@ export const TestSeriesFigmaTab = ({
               <span>Syllabus</span>
               <span>English, Hindi</span>
             </div>
-            <button type="button" data-testid="tests-open-instructions" onClick={() => setScreen('instructions')} className="mt-[10px] inline-flex h-[40px] min-w-[150px] items-center justify-center gap-[12px] rounded-[12px] bg-[linear-gradient(90deg,#2d8cf1,#315df9)] px-[20px] text-[12px] font-semibold text-white shadow-[0_12px_22px_rgba(49,99,255,0.24)]">
-              Resume Now
+            <button type="button" data-testid="tests-open-instructions" onClick={() => openAttemptFlow(selectedTest?._id)} className="mt-[10px] inline-flex h-[40px] min-w-[150px] items-center justify-center gap-[12px] rounded-[12px] bg-[linear-gradient(90deg,#2d8cf1,#315df9)] px-[20px] text-[12px] font-semibold text-white shadow-[0_12px_22px_rgba(49,99,255,0.24)]">
+              {getAttemptActionLabel(getAttemptStatusForTest(selectedTest?._id))}
               <ArrowRight className="h-[18px] w-[18px]" />
             </button>
           </div>
-          <div className="flex scale-[0.76] justify-end origin-top pt-[10px]">
+          <div className="flex shrink-0 justify-end pt-[10px]">
             <HeroIllustration compact />
           </div>
         </div>
@@ -2121,13 +2437,13 @@ export const TestSeriesFigmaTab = ({
             <div className="mt-[12px] grid grid-cols-[116px_minmax(0,1fr)] items-end gap-[12px]">
               <button
                 type="button"
-                onClick={() => setScreen('instructions')}
+                onClick={() => openAttemptFlow(card.mockTestId || card.id)}
                 className={cn(
                   'flex h-[38px] items-center justify-center self-end rounded-[10px] px-[12px] text-[10px] font-semibold text-white shadow-[0_10px_18px_rgba(49,99,255,0.18)]',
-                  card.button === 'Start Now' ? 'bg-[linear-gradient(90deg,#30bf67,#24a957)]' : 'bg-[linear-gradient(90deg,#2d8cf1,#315df9)]',
+                  getAttemptStatusForTest(card.mockTestId || card.id) === 'not-started' ? 'bg-[linear-gradient(90deg,#30bf67,#24a957)]' : 'bg-[linear-gradient(90deg,#2d8cf1,#315df9)]',
                 )}
               >
-                {card.button}
+                {getAttemptActionLabel(getAttemptStatusForTest(card.mockTestId || card.id))}
               </button>
               {card.companionTone === 'emerald' ? (
                 <div className="rounded-[14px] border border-[#edf2f7] bg-[#fbfdff] px-[12px] py-[9px]">
@@ -2202,7 +2518,7 @@ export const TestSeriesFigmaTab = ({
       <div className="mt-[16px] rounded-[18px] border border-[#ebeef6] bg-white p-[18px] shadow-[0_10px_24px_rgba(18,39,74,0.06)]">
         {renderMobileInstructionBody()}
       </div>
-      <button type="button" data-testid="tests-instructions-next" onClick={() => setScreen('confirmation')} className="mt-[16px] flex h-[42px] items-center justify-center rounded-[8px] bg-[#2f8df4] text-[14px] font-semibold text-white">Next</button>
+      <button type="button" data-testid="tests-instructions-next-mobile" onClick={() => setScreen('confirmation')} className="mt-[16px] flex h-[42px] items-center justify-center rounded-[8px] bg-[#2f8df4] text-[14px] font-semibold text-white">Next</button>
       <button type="button" onClick={() => setScreen('detail')} className="mt-[12px] text-center text-[14px] font-semibold text-[#2f8df4]">Go to Tests</button>
     </>
   ));
@@ -2228,19 +2544,21 @@ export const TestSeriesFigmaTab = ({
           <li>Try not to guess the answer as there is negative marking.</li>
           <li>You will be awarded 3 mark for each correct answer and 1 will be deducted for each wrong answer.</li>
           <li>There is no negative marking for the questions that you have not attempted.</li>
-          <li>You can write this test only once.</li>
+          <li>You can reattempt this test later if you want to improve your score.</li>
         </ol>
         <div className="mt-[16px]">
           <label className="text-[12px] font-semibold text-[#1f2737]">Choose your default language:</label>
-          <select data-testid="tests-confirmation-language" value={defaultLanguage} onChange={(event) => setDefaultLanguage(event.target.value)} className="mt-[8px] h-[38px] w-full rounded-[8px] border border-[#d9e1eb] px-[12px] text-[13px] text-[#1f2737]">
+          <select data-testid="tests-confirmation-language-mobile" value={defaultLanguage} onChange={(event) => setDefaultLanguage(event.target.value)} className="mt-[8px] h-[38px] w-full rounded-[8px] border border-[#d9e1eb] px-[12px] text-[13px] text-[#1f2737]">
             <option value="">-- Select --</option>
             <option value="English">English</option>
             <option value="Hindi">Hindi</option>
           </select>
         </div>
-        <label className="mt-[16px] flex items-start gap-[10px] text-[12px] leading-[1.7] text-[#1f2737]">
+        <label
+          data-testid="tests-confirmation-checkbox-mobile"
+          className="mt-[16px] flex cursor-pointer items-start gap-[10px] text-[12px] leading-[1.7] text-[#1f2737]"
+        >
           <input
-            data-testid="tests-confirmation-checkbox"
             type="checkbox"
             checked={confirmationAccepted}
             onChange={(event) => setConfirmationAccepted(event.target.checked)}
@@ -2250,7 +2568,7 @@ export const TestSeriesFigmaTab = ({
         </label>
         <button
           type="button"
-          data-testid="tests-confirmation-begin"
+          data-testid="tests-confirmation-begin-mobile"
           disabled={!confirmationAccepted || !defaultLanguage}
           onClick={beginExam}
           className="mt-[18px] flex h-[42px] w-full items-center justify-center rounded-[8px] bg-[#2f8df4] text-[14px] font-semibold text-white disabled:opacity-50"
@@ -2266,7 +2584,7 @@ export const TestSeriesFigmaTab = ({
       <MobileStatusBar />
       <div className="mt-[10px] flex items-center justify-between">
         <p className="max-w-[270px] truncate text-[17px] font-semibold text-[#1f2737]">{examMeta.examTitle}</p>
-        <button type="button" data-testid="tests-palette-open" onClick={() => setMobilePaletteOpen(true)} className="text-[#1f2737]"><List className="h-5 w-5" /></button>
+        <button type="button" data-testid="tests-palette-open-mobile" onClick={() => setMobilePaletteOpen(true)} className="text-[#1f2737]"><List className="h-5 w-5" /></button>
       </div>
       <div className="mt-[12px] flex items-center gap-[18px] border-b border-[#edf2f7] pb-[10px] text-[12px] font-semibold">
         <button className="text-[#17a53b]">PART-A</button>
@@ -2276,45 +2594,48 @@ export const TestSeriesFigmaTab = ({
         </div>
       </div>
 
-      <div className="mt-[12px] flex min-h-0 flex-1 gap-[12px] overflow-hidden">
-        <div className="min-w-0 flex-1 overflow-y-auto pr-[2px]">
-          <p className="text-[13px] font-semibold text-[#1f2737]">Question {currentIndex + 1}</p>
-          <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.7] text-[#1f2737]">{currentQuestion.prompt}</p>
-          <div className="mt-[12px] space-y-[10px]">
-            {currentQuestion.options.map((option, optionIndex) => (
-              <label key={option} className="flex items-start gap-[8px] text-[12px] leading-[1.55] text-[#1f2737]">
+      <div className="mt-[12px] grid grid-cols-3 gap-[8px]">
+        <div className="rounded-[12px] border border-[#edf2f7] bg-[#f9fbff] px-[10px] py-[8px] text-center">
+          <p className="text-[10px] text-[#7c889d]">Answered</p>
+          <p className="mt-[4px] text-[16px] font-semibold text-[#2dbb6a]">{answeredCount}</p>
+        </div>
+        <div className="rounded-[12px] border border-[#edf2f7] bg-[#f9fbff] px-[10px] py-[8px] text-center">
+          <p className="text-[10px] text-[#7c889d]">Pending</p>
+          <p className="mt-[4px] text-[16px] font-semibold text-[#59667f]">{notAnsweredCount}</p>
+        </div>
+        <div className="rounded-[12px] border border-[#edf2f7] bg-[#f9fbff] px-[10px] py-[8px] text-center">
+          <p className="text-[10px] text-[#7c889d]">Review</p>
+          <p className="mt-[4px] text-[16px] font-semibold text-[#8f51d9]">{markReviewCount}</p>
+        </div>
+      </div>
+
+      <div className="mt-[10px] flex items-center justify-between rounded-[12px] border border-[#edf2f7] bg-white px-[12px] py-[10px] text-[11px] text-[#526987] shadow-[0_8px_18px_rgba(18,39,74,0.04)]">
+        <span>Question {currentIndex + 1} of {questions.length}</span>
+        <button type="button" onClick={() => setMobilePaletteOpen(true)} className="font-semibold text-[#2f8df4]">
+          Open Palette
+        </button>
+      </div>
+
+      <div className="mt-[12px] min-h-0 flex-1 overflow-y-auto pr-[2px]">
+        <p className="text-[13px] font-semibold text-[#1f2737]">Question {currentIndex + 1}</p>
+        <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.7] text-[#1f2737]">{currentQuestion.prompt}</p>
+        <div className="mt-[12px] space-y-[10px]">
+          {currentQuestion.options.map((option, optionIndex) => {
+            const optionInputId = `tests-mobile-option-${currentQuestion.id}-${optionIndex}`;
+
+            return (
+              <label htmlFor={optionInputId} key={option} className="flex cursor-pointer items-start gap-[8px] rounded-[12px] border border-[#edf2f7] bg-white px-[10px] py-[10px] text-[12px] leading-[1.55] text-[#1f2737]">
                 <input
-                  type="radio"
-                  checked={draftAnswer === optionIndex}
-                  readOnly
-                  onClick={() => selectOption(optionIndex)}
+                  id={optionInputId}
+                  type={currentQuestion.correctIndexes.length > 1 ? 'checkbox' : 'radio'}
+                  checked={draftAnswer.includes(optionIndex)}
+                  onChange={() => selectOption(optionIndex)}
                   className="mt-[4px] h-[14px] w-[14px]"
                 />
                 <span>{option}</span>
               </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="w-[60px] shrink-0 space-y-[8px]">
-          {[0, 1, 2, 3, 4, 5, 18, 11, 16, 14].map((index) => (
-            <button
-              key={`mini-${index}`}
-              type="button"
-              data-testid={`tests-mobile-jump-${index + 1}`}
-              onClick={() => goToQuestion(index)}
-              className={paletteButtonClass(displayStates[index], index === currentIndex)}
-            >
-              {index + 1}
-            </button>
-          ))}
-          <div className="rounded-[12px] border border-[#ebeef6] bg-white p-[8px] text-[10px] text-[#47556d] shadow-[0_8px_18px_rgba(18,39,74,0.05)]">
-            <div className="space-y-[8px]">
-              <div className="flex items-center justify-between gap-[6px]"><span className="flex items-center gap-[6px]"><span className="h-[8px] w-[8px] rounded-[2px] bg-[#60be79]" />Answered</span><span className="font-semibold text-[#2dbb6a]">{answeredCount}</span></div>
-              <div className="flex items-center justify-between gap-[6px]"><span className="flex items-center gap-[6px]"><span className="h-[8px] w-[8px] rounded-[2px] bg-[#c7cfdd]" />Not Answered</span><span className="font-semibold text-[#59667f]">{notAnsweredCount}</span></div>
-              <div className="flex items-center justify-between gap-[6px]"><span className="flex items-center gap-[6px]"><span className="h-[8px] w-[8px] rounded-[2px] bg-[#8f51d9]" />Mark</span><span className="font-semibold text-[#8f51d9]">{markReviewCount}</span></div>
-            </div>
-          </div>
+            );
+          })}
         </div>
       </div>
 
@@ -2322,7 +2643,10 @@ export const TestSeriesFigmaTab = ({
         <button type="button" onClick={() => goToQuestion(currentIndex - 1)} className="flex h-[38px] items-center rounded-[8px] border border-[#d9e1eb] px-[14px] text-[12px] font-semibold text-[#2f8df4]">Previous</button>
         <button type="button" onClick={toggleReview} className="flex h-[38px] items-center rounded-[8px] border border-[#2f8df4] px-[16px] text-[12px] font-semibold text-[#2f8df4]">{draftReview ? 'Unmark' : 'Mark Review'}</button>
         <button type="button" onClick={saveAndNext} className="flex h-[38px] flex-1 items-center justify-center rounded-[8px] bg-[#2f8df4] text-[12px] font-semibold text-white">Save &amp; Next</button>
-        <button type="button" data-testid="tests-exam-submit" onClick={submitExam} className="hidden" />
+      </div>
+      <div className="mt-[10px] grid grid-cols-2 gap-[10px]">
+        <button type="button" onClick={() => setScreen('detail')} className="flex h-[40px] items-center justify-center rounded-[8px] border border-[#d9e1eb] text-[12px] font-semibold text-[#47556d]">Go to Tests</button>
+        <button type="button" data-testid="tests-exam-submit-mobile" onClick={submitExam} className="flex h-[40px] items-center justify-center rounded-[8px] bg-[#1f9c5a] text-[12px] font-semibold text-white">Submit Test</button>
       </div>
     </>
   ));
@@ -2333,10 +2657,10 @@ export const TestSeriesFigmaTab = ({
       <div className="mt-[12px] flex items-center justify-between">
         <button type="button" onClick={() => setMobilePaletteOpen(false)} className="text-[#1f2737]"><ChevronLeft className="h-5 w-5" /></button>
         <p className="text-[16px] font-semibold text-[#1f2737]">Question Palette</p>
-        <button type="button" data-testid="tests-palette-close" onClick={() => setMobilePaletteOpen(false)} className="text-[#1f2737]"><X className="h-4 w-4" /></button>
+        <button type="button" data-testid="tests-palette-close-mobile" onClick={() => setMobilePaletteOpen(false)} className="text-[#1f2737]"><X className="h-4 w-4" /></button>
       </div>
       <div className="mt-[18px] grid grid-cols-4 gap-[12px]">
-        {Array.from({ length: 20 }, (_, index) => (
+        {questions.map((_, index) => (
           <button
             key={`mobile-palette-${index}`}
             type="button"
@@ -2353,7 +2677,11 @@ export const TestSeriesFigmaTab = ({
         <div className="flex items-center justify-between"><span className="flex items-center gap-[8px]"><span className="h-[10px] w-[10px] rounded-[2px] bg-[#c7cfdd]" />Not Answered</span><span className="font-semibold text-[#59667f]">{notAnsweredCount}</span></div>
         <div className="flex items-center justify-between"><span className="flex items-center gap-[8px]"><span className="h-[10px] w-[10px] rounded-[2px] bg-[#8f51d9]" />Mark for Review</span><span className="font-semibold text-[#8f51d9]">{markReviewCount}</span></div>
       </div>
-      <button type="button" data-testid="tests-palette-close" onClick={() => setMobilePaletteOpen(false)} className="mt-auto flex h-[42px] w-full items-center justify-center rounded-[8px] bg-[#2f8df4] text-[14px] font-semibold text-white">Close</button>
+      <div className="mt-[18px] grid grid-cols-2 gap-[10px]">
+        <button type="button" onClick={() => setScreen('detail')} className="flex h-[40px] items-center justify-center rounded-[8px] border border-[#d9e1eb] text-[12px] font-semibold text-[#47556d]">Go to Tests</button>
+        <button type="button" onClick={submitExam} className="flex h-[40px] items-center justify-center rounded-[8px] bg-[#1f9c5a] text-[12px] font-semibold text-white">Submit Test</button>
+      </div>
+      <button type="button" data-testid="tests-palette-close-mobile" onClick={() => setMobilePaletteOpen(false)} className="mt-auto flex h-[42px] w-full items-center justify-center rounded-[8px] bg-[#2f8df4] text-[14px] font-semibold text-white">Close</button>
     </>
   ));
 
@@ -2361,7 +2689,7 @@ export const TestSeriesFigmaTab = ({
     <>
       <MobileStatusBar />
       <div className="mt-[12px] flex items-center">
-        <button type="button" onClick={() => setScreen('exam')} className="text-[#1f2737]"><ChevronLeft className="h-5 w-5" /></button>
+        <button type="button" onClick={() => setScreen('detail')} className="text-[#1f2737]"><ChevronLeft className="h-5 w-5" /></button>
       </div>
       <div className="mt-[14px] rounded-[18px] border border-[#ebeef6] bg-white px-[18px] py-[22px] text-center shadow-[0_10px_24px_rgba(18,39,74,0.06)]">
         <div className="mx-auto flex h-[84px] w-[84px] items-center justify-center rounded-full bg-[linear-gradient(180deg,#7bd98b_0%,#48bf6b_100%)] text-white shadow-[0_14px_28px_rgba(72,191,107,0.26)]">
@@ -2370,9 +2698,9 @@ export const TestSeriesFigmaTab = ({
         <p className="mt-[16px] text-[24px] font-semibold text-[#1f2737]">Congratulations!</p>
         <p className="mt-[6px] text-[14px] text-[#7c889d]">You have completed the test.</p>
         <div className="mt-[18px] grid grid-cols-3 gap-[10px]">
-          <div className="rounded-[12px] border border-[#edf2f7] p-[10px]"><p className="text-[11px] text-[#7c889d]">Score</p><p className="mt-[6px] text-[18px] font-semibold text-[#1f2737]">156 / 200</p></div>
-          <div className="rounded-[12px] border border-[#edf2f7] p-[10px]"><p className="text-[11px] text-[#7c889d]">Accuracy</p><p className="mt-[6px] text-[18px] font-semibold text-[#1f2737]">78%</p></div>
-          <div className="rounded-[12px] border border-[#edf2f7] p-[10px]"><p className="text-[11px] text-[#7c889d]">Rank</p><p className="mt-[6px] text-[18px] font-semibold text-[#1f2737]">241 / 10217</p></div>
+          <div className="rounded-[12px] border border-[#edf2f7] p-[10px]"><p className="text-[11px] text-[#7c889d]">Score</p><p className="mt-[6px] text-[18px] font-semibold text-[#1f2737]">{formatMetricValue(resultScore)} / {formatMetricValue(resultTotalMarks)}</p></div>
+          <div className="rounded-[12px] border border-[#edf2f7] p-[10px]"><p className="text-[11px] text-[#7c889d]">Accuracy</p><p className="mt-[6px] text-[18px] font-semibold text-[#1f2737]">{resultAccuracy}%</p></div>
+          <div className="rounded-[12px] border border-[#edf2f7] p-[10px]"><p className="text-[11px] text-[#7c889d]">Correct / Wrong</p><p className="mt-[6px] text-[18px] font-semibold text-[#1f2737]">{correctCount} / {incorrectCount}</p></div>
         </div>
         <div className="mt-[18px] grid grid-cols-2 gap-[10px]">
           <button type="button" data-testid="tests-view-solutions" onClick={() => setScreen('solutions')} className="flex h-[40px] items-center justify-center rounded-[8px] border border-[#2f8df4] text-[13px] font-semibold text-[#2f8df4]">View Solutions</button>
@@ -2381,11 +2709,11 @@ export const TestSeriesFigmaTab = ({
       </div>
       <div className="mt-[18px] rounded-[18px] border border-[#ebeef6] bg-white px-[18px] py-[18px] shadow-[0_10px_24px_rgba(18,39,74,0.06)]">
         <p className="text-[15px] font-semibold text-[#1f2737]">Other Actions</p>
-        <button type="button" className="mt-[14px] flex w-full items-center justify-between rounded-[12px] border border-[#edf2f7] px-[14px] py-[12px] text-[13px] text-[#47556d]">
+        <button type="button" onClick={restartCurrentAttempt} className="mt-[14px] flex w-full items-center justify-between rounded-[12px] border border-[#edf2f7] px-[14px] py-[12px] text-[13px] text-[#47556d]">
           <span>Attempt Again</span>
           <ChevronRight className="h-4 w-4" />
         </button>
-        <button type="button" className="mt-[10px] flex w-full items-center justify-between rounded-[12px] border border-[#edf2f7] px-[14px] py-[12px] text-[13px] text-[#47556d]">
+        <button type="button" onClick={() => { resetAttemptState(); setScreen('home'); }} className="mt-[10px] flex w-full items-center justify-between rounded-[12px] border border-[#edf2f7] px-[14px] py-[12px] text-[13px] text-[#47556d]">
           <span>Go to Test Series</span>
           <ChevronRight className="h-4 w-4" />
         </button>
@@ -2399,31 +2727,64 @@ export const TestSeriesFigmaTab = ({
       <div className="mt-[12px] flex items-center justify-between">
         <button type="button" onClick={() => setScreen('result')} className="text-[#1f2737]"><ChevronLeft className="h-5 w-5" /></button>
         <p className="text-[16px] font-semibold text-[#1f2737]">Solutions</p>
-        <div className="w-[20px]" />
+        <button type="button" onClick={() => setScreen('detail')} className="text-[11px] font-semibold text-[#2f8df4]">Tests</button>
       </div>
-      <div className="mt-[16px] flex gap-[8px] text-[11px] font-semibold">
-        <button className="rounded-[6px] bg-[#2f8df4] px-[10px] py-[6px] text-white">All (200)</button>
-        <button className="rounded-[6px] bg-[#f5f7fb] px-[10px] py-[6px] text-[#5d6b84]">Correct (120)</button>
-        <button className="rounded-[6px] bg-[#f5f7fb] px-[10px] py-[6px] text-[#5d6b84]">Incorrect (50)</button>
-        <button className="rounded-[6px] bg-[#f5f7fb] px-[10px] py-[6px] text-[#5d6b84]">Unattempted (30)</button>
-      </div>
-      <div className="mt-[16px] rounded-[18px] border border-[#ebeef6] bg-white px-[18px] py-[18px] shadow-[0_10px_24px_rgba(18,39,74,0.06)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[14px] font-semibold text-[#1f2737]">Question 1</p>
-            <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.8] text-[#1f2737]">{firstQuestion.prompt}</p>
+        <div className="mt-[16px] flex gap-[8px] text-[11px] font-semibold">
+        {solutionFilterSummary.map((item) => (
+          <button
+            key={item.id}
+            className={cn(
+              'rounded-[6px] px-[10px] py-[6px]',
+              item.tone === 'active' && 'bg-[#2f8df4] text-white',
+              item.tone === 'success' && 'bg-[#f4fff7] text-[#2ebf6c]',
+              item.tone === 'danger' && 'bg-[#fff7f7] text-[#e85555]',
+              item.tone === 'neutral' && 'bg-[#f5f7fb] text-[#5d6b84]',
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+        </div>
+        <div className="mt-[12px] grid grid-cols-2 gap-[10px]">
+          <button type="button" onClick={restartCurrentAttempt} className="flex h-[40px] items-center justify-center rounded-[8px] border border-[#2f8df4] text-[12px] font-semibold text-[#2f8df4]">Reattempt</button>
+          <button type="button" onClick={() => setScreen('detail')} className="flex h-[40px] items-center justify-center rounded-[8px] bg-[#2f8df4] text-[12px] font-semibold text-white">Go to Tests</button>
+        </div>
+      <div className="mt-[16px] space-y-[16px]">
+        {attemptResults.map((result) => (
+          <div key={result.questionId} className="rounded-[18px] border border-[#ebeef6] bg-white px-[18px] py-[18px] shadow-[0_10px_24px_rgba(18,39,74,0.06)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[14px] font-semibold text-[#1f2737]">Question {result.questionNumber}</p>
+                <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.8] text-[#1f2737]">{result.prompt}</p>
+              </div>
+              <span className={cn(
+                'rounded-full px-[10px] py-[4px] text-[10px] font-semibold',
+                result.status === 'correct' && 'bg-[#ebfff1] text-[#2ebf6c]',
+                result.status === 'incorrect' && 'bg-[#fff7f7] text-[#e85555]',
+                result.status === 'unattempted' && 'bg-[#f5f7fb] text-[#5d6b84]',
+              )}>
+                {result.status === 'correct' ? 'Correct' : result.status === 'incorrect' ? 'Incorrect' : 'Unattempted'}
+              </span>
+            </div>
+            <div className={cn(
+              'mt-[12px] rounded-[12px] p-[12px]',
+              result.status === 'incorrect' && 'border border-[#ffd2d2] bg-[#fff7f7]',
+              result.status !== 'incorrect' && 'border border-[#e6ebf3] bg-[#fafcff]',
+            )}>
+              <p className="text-[11px] font-semibold text-[#47556d]">Your Answer</p>
+              <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">
+                {result.selectedIndexes.length > 0
+                  ? `${formatOptionLabels(result.selectedIndexes)}. ${result.selectedIndexes.map((optionIndex) => result.options[optionIndex]).filter(Boolean).join(' / ')}`
+                  : 'Not answered'}
+              </p>
+            </div>
+            <div className="mt-[12px] rounded-[12px] border border-[#c7efd3] bg-[#f4fff7] p-[12px]">
+              <p className="text-[11px] font-semibold text-[#2ebf6c]">Correct Answer</p>
+              <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">{formatOptionLabels(result.correctIndexes)}. {result.correctIndexes.map((optionIndex) => result.options[optionIndex]).filter(Boolean).join(' / ')}</p>
+            </div>
+            <p className="mt-[14px] text-[12px] leading-[1.8] text-[#47556d]">{result.explanation}</p>
           </div>
-          <span className="rounded-full bg-[#ebfff1] px-[10px] py-[4px] text-[10px] font-semibold text-[#2ebf6c]">Correct</span>
-        </div>
-        <div className="mt-[12px] rounded-[12px] border border-[#ffd2d2] bg-[#fff7f7] p-[12px]">
-          <p className="text-[11px] font-semibold text-[#e85555]">Your Answer</p>
-          <p className="mt-[6px] text-[12px] leading-[1.6] text-[#e85555]">C. (iii) Parc Mail - Batiment D 523 Cours du Troisieme Millenaire, 69800 Saint-Priest, France +33 4 37 49 49 50</p>
-        </div>
-        <div className="mt-[12px] rounded-[12px] border border-[#c7efd3] bg-[#f4fff7] p-[12px]">
-          <p className="text-[11px] font-semibold text-[#2ebf6c]">Correct Answer</p>
-          <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">{firstQuestion.options[firstQuestion.correctIndex]}</p>
-        </div>
-        <p className="mt-[14px] text-[12px] leading-[1.8] text-[#47556d]">{firstQuestion.explanation}</p>
+        ))}
       </div>
     </>
   ));
@@ -2439,13 +2800,16 @@ export const TestSeriesFigmaTab = ({
           <p className="mt-[6px] text-[14px] text-[#7c889d]">You have completed the test.</p>
         </div>
         <div className="mt-[20px] grid grid-cols-3 gap-[14px]">
-          <div className="rounded-[14px] border border-[#edf2f7] p-[14px]"><p className="text-[11px] text-[#7c889d]">Score</p><p className="mt-[8px] text-[22px] font-semibold text-[#1f2737]">156 / 200</p></div>
-          <div className="rounded-[14px] border border-[#edf2f7] p-[14px]"><p className="text-[11px] text-[#7c889d]">Accuracy</p><p className="mt-[8px] text-[22px] font-semibold text-[#1f2737]">78%</p></div>
-          <div className="rounded-[14px] border border-[#edf2f7] p-[14px]"><p className="text-[11px] text-[#7c889d]">Rank</p><p className="mt-[8px] text-[22px] font-semibold text-[#1f2737]">241 / 10217</p></div>
+          <div className="rounded-[14px] border border-[#edf2f7] p-[14px]"><p className="text-[11px] text-[#7c889d]">Score</p><p className="mt-[8px] text-[22px] font-semibold text-[#1f2737]">{formatMetricValue(resultScore)} / {formatMetricValue(resultTotalMarks)}</p></div>
+          <div className="rounded-[14px] border border-[#edf2f7] p-[14px]"><p className="text-[11px] text-[#7c889d]">Accuracy</p><p className="mt-[8px] text-[22px] font-semibold text-[#1f2737]">{resultAccuracy}%</p></div>
+          <div className="rounded-[14px] border border-[#edf2f7] p-[14px]"><p className="text-[11px] text-[#7c889d]">Rank</p><p className="mt-[8px] text-[22px] font-semibold text-[#1f2737]">{resultRank ? `#${resultRank}` : `${correctCount} / ${questions.length} correct`}</p></div>
         </div>
         <div className="mt-[20px] flex justify-center gap-[10px]">
           <button type="button" data-testid="tests-view-solutions-desktop" onClick={() => setScreen('solutions')} className="flex h-[42px] items-center justify-center rounded-[8px] border border-[#2f8df4] px-[18px] text-[13px] font-semibold text-[#2f8df4]">View Solutions</button>
-          <button type="button" onClick={() => { resetAttemptState(); setScreen('home'); }} className="flex h-[42px] items-center justify-center rounded-[8px] bg-[#2f8df4] px-[18px] text-[13px] font-semibold text-white">Go to Test Series</button>
+          <button type="button" onClick={() => setScreen('detail')} className="flex h-[42px] items-center justify-center rounded-[8px] bg-[#2f8df4] px-[18px] text-[13px] font-semibold text-white">Go to Tests</button>
+        </div>
+        <div className="mt-[14px] flex justify-center">
+          <button type="button" onClick={restartCurrentAttempt} className="flex h-[42px] items-center justify-center rounded-[8px] border border-[#2f8df4] px-[18px] text-[13px] font-semibold text-[#2f8df4]">Attempt Again</button>
         </div>
       </div>
     </div>
@@ -2456,16 +2820,60 @@ export const TestSeriesFigmaTab = ({
       <div className="mx-auto max-w-[920px] rounded-[18px] border border-[#dde5f0] bg-white px-[24px] py-[22px] shadow-[0_12px_24px_rgba(18,39,74,0.05)]">
         <div className="flex items-center justify-between">
           <p className="text-[24px] font-semibold text-[#1f2737]">Solutions</p>
-          <button type="button" onClick={() => setScreen('result')} className="text-[13px] font-semibold text-[#2f8df4]">Back to result</button>
-        </div>
-        <div className="mt-[18px] rounded-[14px] border border-[#ebeef6] p-[18px]">
-          <p className="text-[15px] font-semibold text-[#1f2737]">Question 1</p>
-          <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.8] text-[#1f2737]">{firstQuestion.prompt}</p>
-          <div className="mt-[12px] rounded-[12px] border border-[#c7efd3] bg-[#f4fff7] p-[12px]">
-            <p className="text-[11px] font-semibold text-[#2ebf6c]">Correct Answer</p>
-            <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">B. {firstQuestion.options[firstQuestion.correctIndex]}</p>
+          <div className="flex items-center gap-[12px]">
+            <button type="button" onClick={restartCurrentAttempt} className="text-[13px] font-semibold text-[#2f8df4]">Reattempt</button>
+            <button type="button" onClick={() => setScreen('detail')} className="text-[13px] font-semibold text-[#2f8df4]">Go to tests</button>
+            <button type="button" onClick={() => setScreen('result')} className="text-[13px] font-semibold text-[#2f8df4]">Back to result</button>
           </div>
-          <p className="mt-[14px] text-[12px] leading-[1.8] text-[#47556d]">{firstQuestion.explanation}</p>
+        </div>
+        <div className="mt-[14px] flex flex-wrap gap-[8px] text-[11px] font-semibold">
+          {solutionFilterSummary.map((item) => (
+            <span
+              key={item.id}
+              className={cn(
+                'rounded-[999px] px-[10px] py-[6px]',
+                item.tone === 'active' && 'bg-[#2f8df4] text-white',
+                item.tone === 'success' && 'bg-[#f4fff7] text-[#2ebf6c]',
+                item.tone === 'danger' && 'bg-[#fff7f7] text-[#e85555]',
+                item.tone === 'neutral' && 'bg-[#f5f7fb] text-[#5d6b84]',
+              )}
+            >
+              {item.label}
+            </span>
+          ))}
+        </div>
+        <div className="mt-[18px] space-y-[16px]">
+          {attemptResults.map((result) => (
+            <div key={result.questionId} className="rounded-[14px] border border-[#ebeef6] p-[18px]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[15px] font-semibold text-[#1f2737]">Question {result.questionNumber}</p>
+                  <p className="mt-[10px] whitespace-pre-line text-[13px] leading-[1.8] text-[#1f2737]">{result.prompt}</p>
+                </div>
+                <span className={cn(
+                  'rounded-full px-[10px] py-[4px] text-[10px] font-semibold',
+                  result.status === 'correct' && 'bg-[#ebfff1] text-[#2ebf6c]',
+                  result.status === 'incorrect' && 'bg-[#fff7f7] text-[#e85555]',
+                  result.status === 'unattempted' && 'bg-[#f5f7fb] text-[#5d6b84]',
+                )}>
+                  {result.status === 'correct' ? 'Correct' : result.status === 'incorrect' ? 'Incorrect' : 'Unattempted'}
+                </span>
+              </div>
+              <div className="mt-[12px] rounded-[12px] border border-[#e6ebf3] bg-[#fafcff] p-[12px]">
+                <p className="text-[11px] font-semibold text-[#47556d]">Your Answer</p>
+                <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">
+                  {result.selectedIndexes.length > 0
+                    ? `${formatOptionLabels(result.selectedIndexes)}. ${result.selectedIndexes.map((optionIndex) => result.options[optionIndex]).filter(Boolean).join(' / ')}`
+                    : 'Not answered'}
+                </p>
+              </div>
+              <div className="mt-[12px] rounded-[12px] border border-[#c7efd3] bg-[#f4fff7] p-[12px]">
+                <p className="text-[11px] font-semibold text-[#2ebf6c]">Correct Answer</p>
+                <p className="mt-[6px] text-[12px] leading-[1.6] text-[#1f2737]">{formatOptionLabels(result.correctIndexes)}. {result.correctIndexes.map((optionIndex) => result.options[optionIndex]).filter(Boolean).join(' / ')}</p>
+              </div>
+              <p className="mt-[14px] text-[12px] leading-[1.8] text-[#47556d]">{result.explanation}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

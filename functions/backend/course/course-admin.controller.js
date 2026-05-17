@@ -133,11 +133,22 @@ const attachLessonCbt = asyncHandler(async (req, res) => {
       throw new ApiError(400, `Question ${index + 1} needs at least two options`, { code: 'CBT_OPTIONS_REQUIRED' });
     }
 
+    const correctOptions = Array.isArray(question?.correctOptions) && question.correctOptions.length > 0
+      ? [...new Set(question.correctOptions.map((option) => Number(option)).filter((option) => Number.isInteger(option) && option >= 0))].sort((left, right) => left - right)
+      : Number.isFinite(Number(question?.correctOption))
+        ? [Number(question.correctOption)]
+        : [0];
+
+    if (correctOptions.length === 0 || correctOptions.some((optionIndex) => optionIndex >= options.length)) {
+      throw new ApiError(400, `Question ${index + 1} needs one or more valid correct options`, { code: 'CBT_CORRECT_OPTIONS_REQUIRED' });
+    }
+
     return {
       id: String(question?.id || `cbt_${Date.now()}_${index + 1}`),
       questionText,
       options,
-      correctOption: Number.isFinite(Number(question?.correctOption)) ? Number(question.correctOption) : 0,
+      correctOption: correctOptions[0],
+      correctOptions,
       explanation: optionalString(question?.explanation, '', { maxLength: 3000 }),
       marks: Number(question?.marks || 1),
       topic: optionalString(question?.topic, title, { maxLength: 160 }),

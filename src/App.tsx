@@ -60,6 +60,7 @@ import {
   YAxis,
 } from 'recharts';
 import { AuthProvider, useAuth } from './AuthContext';
+import { appleProvider, auth as firebaseAuth, googleProvider } from './firebase';
 import { BrandLogo } from './components/BrandLogo';
 import { CourseFigmaTab } from './components/CourseFigmaTab';
 import { OverviewFigmaTab } from './components/OverviewFigmaTab';
@@ -70,8 +71,10 @@ import { AdminCourseManager } from './components/AdminCourseManager';
 import { AdminModuleManager } from './components/AdminModuleManager';
 import { AdminVideoUpload } from './components/AdminVideoUpload';
 import Hls from 'hls.js';
+import { signInWithPopup } from 'firebase/auth';
 import {
   AiResponse,
+  AuthOtpChallenge,
   MockTest,
   MockQuestion,
   NotificationItem,
@@ -166,6 +169,7 @@ const formatPlaybackTime = (seconds: number) => {
 
 const CBT_BRAND_NAME = 'VARONENGLISH';
 const LIVE_FONT_STACK = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const smsOtpEnabled = String((import.meta.env as Record<string, string | undefined>).VITE_AUTH_SMS_OTP_ENABLED || 'false').trim().toLowerCase() === 'true';
 const getInitials = (value: string) =>
   value
     .split(' ')
@@ -345,7 +349,7 @@ type EditableAssessmentQuestion = {
   id: string;
   questionText: string;
   options: string[];
-  correctOption: number;
+  correctOptions: number[];
   explanation: string;
   marks: number;
   topic: string;
@@ -362,7 +366,13 @@ const createEditableAssessmentQuestion = (seed?: Partial<MockQuestion>): Editabl
     id: String(seed?.id || `question_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
     questionText: String(seed?.questionText || ''),
     options,
-    correctOption: Number.isFinite(Number(seed?.correctOption)) ? Number(seed?.correctOption) : 0,
+    correctOptions: Array.isArray(seed?.correctOptions) && seed.correctOptions.length > 0
+      ? seed.correctOptions
+        .map((optionIndex) => Number(optionIndex))
+        .filter((optionIndex) => Number.isInteger(optionIndex) && optionIndex >= 0)
+      : Number.isFinite(Number(seed?.correctOption))
+        ? [Number(seed?.correctOption)]
+        : [0],
     explanation: String(seed?.explanation || ''),
     marks: Number(seed?.marks || 1),
     topic: String(seed?.topic || ''),
@@ -906,18 +916,14 @@ const AssessmentQuestionBuilder = ({
       }
 
       const nextOptions = question.options.filter((_, index) => index !== optionIndex);
-      const nextCorrect = question.correctOption >= nextOptions.length
-        ? Math.max(nextOptions.length - 1, 0)
-        : question.correctOption === optionIndex
-          ? 0
-          : question.correctOption > optionIndex
-            ? question.correctOption - 1
-            : question.correctOption;
+      const nextCorrectOptions = question.correctOptions
+        .filter((correctOptionIndex) => correctOptionIndex !== optionIndex)
+        .map((correctOptionIndex) => (correctOptionIndex > optionIndex ? correctOptionIndex - 1 : correctOptionIndex));
 
       return {
         ...question,
         options: nextOptions,
-        correctOption: nextCorrect,
+        correctOptions: nextCorrectOptions.length > 0 ? nextCorrectOptions : [0],
       };
     }));
   };
@@ -1009,10 +1015,13 @@ const AssessmentQuestionBuilder = ({
                     />
                     <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm text-[var(--ink)]">
                       <input
-                        type="radio"
-                        name={`correct-option-${question.id}`}
-                        checked={question.correctOption === optionIndex}
-                        onChange={() => updateQuestion(question.id, { correctOption: optionIndex })}
+                        type="checkbox"
+                        checked={question.correctOptions.includes(optionIndex)}
+                        onChange={(event) => updateQuestion(question.id, {
+                          correctOptions: event.target.checked
+                            ? [...new Set([...question.correctOptions, optionIndex])].sort((left, right) => left - right)
+                            : question.correctOptions.filter((correctOptionIndex) => correctOptionIndex !== optionIndex),
+                        })}
                       />
                       Correct
                     </label>
@@ -1320,6 +1329,72 @@ const ReviewToggleButton = ({
   </button>
 );
 
+const normalizeOptionIndexes = (value: unknown): number[] => {
+  const list = Array.isArray(value) ? value : value === null || value === undefined ? [] : [value];
+  return [...new Set(
+    list
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item >= 0),
+  )].sort((left, right) => left - right);
+};
+
+const getQuestionCorrectOptionIndexes = (question: Partial<MockQuestion> & { answer?: unknown }): number[] => {
+  const explicitIndexes = normalizeOptionIndexes(question.correctOptions);
+  if (explicitIndexes.length > 0) {
+    return explicitIndexes;
+  }
+
+  const fallbackIndexes = normalizeOptionIndexes(question.correctOption ?? question.answer);
+  return fallbackIndexes.length > 0 ? fallbackIndexes : [0];
+};
+
+const areOptionIndexesEqual = (left: number[], right: number[]) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
+
+const isQuestionSelectionCorrect = (selectedOptionIndexes: number[], correctOptionIndexes: number[]) =>
+  selectedOptionIndexes.length > 0 && areOptionIndexesEqual(selectedOptionIndexes, correctOptionIndexes);
+
+const toggleSelectedOptionValue = (
+  currentValue: number | number[] | undefined,
+  optionIndex: number,
+  allowMultipleAnswers: boolean,
+): number | number[] => {
+  const currentIndexes = normalizeOptionIndexes(currentValue);
+  if (!allowMultipleAnswers) {
+    return currentIndexes.length === 1 && currentIndexes[0] === optionIndex ? [] : optionIndex;
+  }
+
+  return currentIndexes.includes(optionIndex)
+    ? currentIndexes.filter((value) => value !== optionIndex)
+    : [...currentIndexes, optionIndex].sort((left, right) => left - right);
+};
+
+const formatOptionIndexLabel = (optionIndex: number) => String.fromCharCode(65 + optionIndex);
+
+const formatOptionIndexLabels = (optionIndexes: number[]) =>
+  optionIndexes.length > 0 ? optionIndexes.map((optionIndex) => formatOptionIndexLabel(optionIndex)).join(', ') : 'Skipped';
+
+const getSolutionSelectedOptionIndexes = (solution: TestAttemptResult['solutions'][number]) => {
+  const explicitIndexes = normalizeOptionIndexes(solution.selectedOptions);
+  if (explicitIndexes.length > 0) {
+    return explicitIndexes;
+  }
+
+  return solution.selectedOption === null ? [] : normalizeOptionIndexes(solution.selectedOption);
+};
+
+const getSolutionCorrectOptionIndexes = (solution: TestAttemptResult['solutions'][number]) => {
+  const explicitIndexes = normalizeOptionIndexes(solution.correctOptions);
+  if (explicitIndexes.length > 0) {
+    return explicitIndexes;
+  }
+
+  return normalizeOptionIndexes(solution.correctOption);
+};
+
+const isSolutionCorrect = (solution: TestAttemptResult['solutions'][number]) =>
+  isQuestionSelectionCorrect(getSolutionSelectedOptionIndexes(solution), getSolutionCorrectOptionIndexes(solution));
+
 const MockSolutionCard = ({
   solution,
   index,
@@ -1331,9 +1406,11 @@ const MockSolutionCard = ({
   open: boolean;
   onToggle: () => void;
 }) => {
-  const status = solution.selectedOption === null
+  const selectedOptionIndexes = getSolutionSelectedOptionIndexes(solution);
+  const correctOptionIndexes = getSolutionCorrectOptionIndexes(solution);
+  const status = selectedOptionIndexes.length === 0
     ? 'skipped'
-    : solution.selectedOption === solution.correctOption
+    : isQuestionSelectionCorrect(selectedOptionIndexes, correctOptionIndexes)
       ? 'correct'
       : 'incorrect';
 
@@ -1361,8 +1438,8 @@ const MockSolutionCard = ({
           </div>
           <p className="mt-3 text-base font-semibold leading-7 text-[var(--ink)]">{solution.questionText}</p>
           <p className="mt-3 text-sm text-[var(--ink-soft)]">
-            Your answer: <span className="font-semibold text-[var(--ink)]">{solution.selectedOption === null ? 'Skipped' : String.fromCharCode(65 + solution.selectedOption)}</span>
-            {' '}• Correct: <span className="font-semibold text-[var(--success)]">{String.fromCharCode(65 + solution.correctOption)}</span>
+            Your answer: <span className="font-semibold text-[var(--ink)]">{formatOptionIndexLabels(selectedOptionIndexes)}</span>
+            {' '}• Correct: <span className="font-semibold text-[var(--success)]">{formatOptionIndexLabels(correctOptionIndexes)}</span>
           </p>
         </div>
         <ReviewToggleButton open={open} onClick={onToggle} />
@@ -1386,11 +1463,22 @@ const MockSolutionCard = ({
   );
 };
 
-const buildLocalTestAttemptResult = (
+type AttemptEvaluationSnapshot = {
+  score: number;
+  totalMarks: number;
+  correctCount: number;
+  incorrectCount: number;
+  unattemptedCount: number;
+  percentile: number;
+  weakTopics: string[];
+  strongTopics: string[];
+  solutions: TestAttemptResult['solutions'];
+};
+
+const buildAttemptEvaluationSnapshot = (
   test: MockTest,
-  answers: Record<string, number>,
-  startedAt?: string | null,
-): TestAttemptResult => {
+  answers: Record<string, number | number[]>,
+): AttemptEvaluationSnapshot => {
   let score = 0;
   let correctCount = 0;
   let incorrectCount = 0;
@@ -1398,17 +1486,16 @@ const buildLocalTestAttemptResult = (
   const topicStats = new Map<string, { correct: number; total: number }>();
 
   const solutions = test.questions.map((question) => {
-    const selectedOptionRaw = answers[question.id];
-    const selectedOption = selectedOptionRaw === undefined ? null : Number(selectedOptionRaw);
-    const correctOption = Number(question.correctOption ?? 0);
+    const selectedOptionIndexes = normalizeOptionIndexes(answers[question.id]);
+    const correctOptionIndexes = getQuestionCorrectOptionIndexes(question);
     const marks = Number(question.marks || 1);
     const topic = question.topic || 'General Practice';
     const stats = topicStats.get(topic) || { correct: 0, total: 0 };
     stats.total += 1;
 
-    if (selectedOption === null) {
+    if (selectedOptionIndexes.length === 0) {
       unattemptedCount += 1;
-    } else if (selectedOption === correctOption) {
+    } else if (isQuestionSelectionCorrect(selectedOptionIndexes, correctOptionIndexes)) {
       correctCount += 1;
       score += marks;
       stats.correct += 1;
@@ -1422,8 +1509,10 @@ const buildLocalTestAttemptResult = (
     return {
       questionId: question.id,
       questionText: question.questionText,
-      selectedOption,
-      correctOption,
+      selectedOption: selectedOptionIndexes.length === 1 ? selectedOptionIndexes[0] : null,
+      selectedOptions: selectedOptionIndexes,
+      correctOption: correctOptionIndexes[0] ?? 0,
+      correctOptions: correctOptionIndexes,
       explanation: question.explanation || 'Explanation will appear here after review.',
       topic,
     };
@@ -1441,31 +1530,48 @@ const buildLocalTestAttemptResult = (
   });
 
   return {
-    _id: `local-attempt:${test._id}:${Date.now()}`,
-    userId: 'local-user',
-    testId: test._id,
     score: Number(score.toFixed(2)),
     totalMarks: Number(test.totalMarks || test.questions.reduce((sum, question) => sum + Number(question.marks || 1), 0)),
     correctCount,
     incorrectCount,
     unattemptedCount,
     percentile: correctCount + incorrectCount + unattemptedCount > 0 ? Math.round((correctCount / Math.max(test.questions.length, 1)) * 100) : 0,
-    rank: 1,
     weakTopics,
     strongTopics,
     solutions,
+  };
+};
+
+const buildLocalTestAttemptResult = (
+  test: MockTest,
+  answers: Record<string, number | number[]>,
+  startedAt?: string | null,
+): TestAttemptResult => {
+  const evaluation = buildAttemptEvaluationSnapshot(test, answers);
+
+  return {
+    _id: `local-attempt:${test._id}:${Date.now()}`,
+    userId: 'local-user',
+    testId: test._id,
+    ...evaluation,
+    rank: 1,
     completedAt: startedAt || new Date().toISOString(),
   };
 };
 
 const AuthScreen = () => {
   const { login, register, refreshSession } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'register-otp' | 'login-otp' | 'forgot-password' | 'reset-password'>('login');
+  const [loginMethod, setLoginMethod] = useState<'password' | 'otp'>('password');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [sessionConflict, setSessionConflict] = useState<{
-    email: string;
+    authMethod: 'password' | 'social';
+    identifier: string;
     password: string;
+    socialProvider?: 'google' | 'apple';
+    socialIdToken?: string;
     activeDevice: string;
     activeSessions: Array<{
       sessionId: string;
@@ -1478,11 +1584,12 @@ const AuthScreen = () => {
     device: string;
     loggedOutAt: string;
   } | null>(null);
-  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [loginForm, setLoginForm] = useState({ identifier: '', password: '', channel: 'email' as 'email' | 'sms' });
   const [registerForm, setRegisterForm] = useState<RegisterPayload & {
     mobileNumber: string;
     confirmPassword: string;
     agreeToTerms: boolean;
+    channel: 'email' | 'sms';
   }>({
     name: '',
     email: '',
@@ -1490,11 +1597,22 @@ const AuthScreen = () => {
     mobileNumber: '',
     confirmPassword: '',
     agreeToTerms: false,
+    channel: 'email',
+  });
+  const [otpCode, setOtpCode] = useState('');
+  const [activeChallenge, setActiveChallenge] = useState<AuthOtpChallenge | null>(null);
+  const [forgotPasswordForm, setForgotPasswordForm] = useState({
+    identifier: '',
+    channel: 'email' as 'email' | 'sms',
+    password: '',
+    confirmPassword: '',
   });
   const [rememberMe, setRememberMe] = useState(true);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
   const passwordStrength = useMemo(() => {
     const password = registerForm.password;
     if (!password) {
@@ -1520,6 +1638,14 @@ const AuthScreen = () => {
   }, [registerForm.password]);
 
   const takeOverDevice = sessionConflict?.activeSessions[0]?.device || sessionConflict?.activeDevice || 'another device';
+  const resetFeedback = () => {
+    setError(null);
+    setNotice(null);
+  };
+  const switchMode = (nextMode: 'login' | 'register' | 'register-otp' | 'login-otp' | 'forgot-password' | 'reset-password') => {
+    resetFeedback();
+    setMode(nextMode);
+  };
   const formatDeviceLabel = (value: string) => {
     const label = value.trim();
     const normalized = label.toLowerCase();
@@ -1545,16 +1671,19 @@ const AuthScreen = () => {
   const socialButtonClassName = 'flex h-[48px] w-full items-center justify-center gap-3 rounded-[14px] border border-[#d7e3f2] bg-white px-4 text-[15px] font-bold text-[#17233d] shadow-[0_10px_24px_rgba(37,73,125,0.06)] transition hover:border-[#b9cbe3] hover:bg-[#f7fbff]';
   const primaryButtonClassName = 'relative flex h-[50px] w-full items-center justify-center gap-3 rounded-[14px] bg-[linear-gradient(90deg,#2f6fe4_0%,#1698d4_100%)] px-4 text-[16px] font-bold text-white shadow-[0_16px_32px_rgba(47,111,228,0.28)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60';
   const renderPhoneStatusBar = () => null;
+  const otpHint = activeChallenge
+    ? `We sent a 6-digit OTP to ${activeChallenge.destination}. It expires in ${Math.max(Math.round(activeChallenge.expiresInSeconds / 60), 1)} minute${activeChallenge.expiresInSeconds >= 120 ? 's' : ''}.`
+    : null;
 
   const submitLogin = async (
-    email = loginForm.email,
+    identifier = loginForm.identifier,
     password = loginForm.password,
     options?: { forceLogoutOtherSessions?: boolean },
   ) => {
     setSubmitting(true);
-    setError(null);
+    resetFeedback();
     try {
-      await login(email, password, options);
+      await login(identifier, password, options);
       setSessionConflict(null);
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'SESSION_ACTIVE') {
@@ -1568,7 +1697,8 @@ const AuthScreen = () => {
             }))
           : [{ sessionId: 'active-0', device: activeDevice, lastSeenAt: null }];
         setSessionConflict({
-          email,
+          authMethod: 'password',
+          identifier,
           password,
           activeDevice,
           activeSessions,
@@ -1596,18 +1726,201 @@ const AuthScreen = () => {
       setError('Please accept the Terms & Conditions and Privacy Policy.');
       return;
     }
+    if (registerForm.channel === 'sms' && !registerForm.mobileNumber.trim()) {
+      setError('Add a mobile number to receive OTP by SMS.');
+      return;
+    }
 
     setSubmitting(true);
-    setError(null);
+    resetFeedback();
     try {
-      await register({
+      const response = await register({
         name: registerForm.name,
         email: registerForm.email,
         mobileNumber: registerForm.mobileNumber,
         password: registerForm.password,
+        channel: registerForm.channel,
       });
+      setActiveChallenge(response.challenge);
+      setOtpCode('');
+      setNotice(`OTP sent to ${response.challenge.destination}. Verify it to activate your account.`);
+      setMode('register-otp');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create account');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitRegistrationOtp = async () => {
+    if (!activeChallenge) {
+      setError('Registration OTP session expired. Please start registration again.');
+      setMode('register');
+      return;
+    }
+    if (!otpCode.trim()) {
+      setError('Enter the OTP you received.');
+      return;
+    }
+
+    setSubmitting(true);
+    resetFeedback();
+    try {
+      await EduService.verifyRegistrationOtp(activeChallenge.challengeId, otpCode.trim());
+      await refreshSession();
+      setActiveChallenge(null);
+      setOtpCode('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to verify OTP');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitLoginOtpRequest = async () => {
+    if (!loginForm.identifier.trim()) {
+      setError('Enter your email or mobile number.');
+      return;
+    }
+    if (loginForm.channel === 'sms' && !/\d/.test(loginForm.identifier)) {
+      setError('Enter your mobile number to receive OTP by SMS.');
+      return;
+    }
+
+    setSubmitting(true);
+    resetFeedback();
+    try {
+      const response = await EduService.requestLoginOtp(loginForm.identifier, loginForm.channel);
+      setActiveChallenge(response.challenge);
+      setOtpCode('');
+      setNotice(`OTP sent to ${response.challenge.destination}.`);
+      setMode('login-otp');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send OTP');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitLoginOtpVerification = async () => {
+    if (!activeChallenge) {
+      setError('Login OTP session expired. Please request a new OTP.');
+      setMode('login');
+      return;
+    }
+    if (!otpCode.trim()) {
+      setError('Enter the OTP you received.');
+      return;
+    }
+
+    setSubmitting(true);
+    resetFeedback();
+    try {
+      await EduService.loginWithOtp(activeChallenge.challengeId, otpCode.trim());
+      await refreshSession();
+      setActiveChallenge(null);
+      setOtpCode('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to log in with OTP');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitForgotPasswordRequest = async () => {
+    if (!forgotPasswordForm.identifier.trim()) {
+      setError('Enter your email or mobile number.');
+      return;
+    }
+    if (forgotPasswordForm.channel === 'sms' && !/\d/.test(forgotPasswordForm.identifier)) {
+      setError('Enter your mobile number to receive OTP by SMS.');
+      return;
+    }
+
+    setSubmitting(true);
+    resetFeedback();
+    try {
+      const response = await EduService.requestPasswordResetOtp(forgotPasswordForm.identifier, forgotPasswordForm.channel);
+      setActiveChallenge(response.challenge);
+      setOtpCode('');
+      setNotice(`Password reset OTP sent to ${response.challenge.destination}.`);
+      setMode('reset-password');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send reset OTP');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitPasswordReset = async () => {
+    if (!activeChallenge) {
+      setError('Reset session expired. Please request a fresh OTP.');
+      setMode('forgot-password');
+      return;
+    }
+    if (!otpCode.trim()) {
+      setError('Enter the OTP you received.');
+      return;
+    }
+    if (!forgotPasswordForm.password) {
+      setError('Enter a new password.');
+      return;
+    }
+    if (forgotPasswordForm.password !== forgotPasswordForm.confirmPassword) {
+      setError('Password and confirm password must match.');
+      return;
+    }
+
+    setSubmitting(true);
+    resetFeedback();
+    try {
+      await EduService.resetPasswordWithOtp(activeChallenge.challengeId, otpCode.trim(), forgotPasswordForm.password, true);
+      await refreshSession();
+      setActiveChallenge(null);
+      setOtpCode('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to reset password');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitSocialLogin = async (provider: 'google' | 'apple') => {
+    setSubmitting(true);
+    resetFeedback();
+    let socialIdToken = '';
+    let socialIdentifier: string = provider;
+    try {
+      const credential = await signInWithPopup(firebaseAuth, provider === 'google' ? googleProvider : appleProvider);
+      socialIdToken = await credential.user.getIdToken(true);
+      socialIdentifier = credential.user.email || provider;
+      await EduService.socialLogin(provider, socialIdToken);
+      await refreshSession();
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.code === 'SESSION_ACTIVE') {
+        const activeDevice = typeof err.details?.activeDevice === 'string' ? err.details.activeDevice : 'another device';
+        const activeSessions = Array.isArray(err.details?.activeSessions)
+          ? err.details.activeSessions
+            .map((session: any, index: number) => ({
+              sessionId: typeof session?.sessionId === 'string' ? session.sessionId : `active-${index}`,
+              device: typeof session?.device === 'string' ? session.device : activeDevice,
+              lastSeenAt: typeof session?.lastSeenAt === 'string' ? session.lastSeenAt : null,
+            }))
+          : [{ sessionId: 'active-0', device: activeDevice, lastSeenAt: null }];
+        setSessionConflict({
+          authMethod: 'social',
+          identifier: socialIdentifier,
+          password: '',
+          socialProvider: provider,
+          socialIdToken,
+          activeDevice,
+          activeSessions,
+          sessionLimit: Number(err.details?.sessionLimit || 1),
+        });
+        return;
+      }
+      const message = err instanceof Error ? err.message : `Unable to continue with ${provider}.`;
+      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -1619,9 +1932,16 @@ const AuthScreen = () => {
     }
 
     setSubmitting(true);
-    setError(null);
+    resetFeedback();
     try {
-      await EduService.login(sessionConflict.email, sessionConflict.password, { forceLogoutOtherSessions: true });
+      if (sessionConflict.authMethod === 'social') {
+        if (!sessionConflict.socialProvider || !sessionConflict.socialIdToken) {
+          throw new Error('Social login session expired. Please try again.');
+        }
+        await EduService.socialLogin(sessionConflict.socialProvider, sessionConflict.socialIdToken, { forceLogoutOtherSessions: true });
+      } else {
+        await EduService.login(sessionConflict.identifier, sessionConflict.password, { forceLogoutOtherSessions: true });
+      }
       setTakeoverSuccess({
         device: takeOverDevice,
         loggedOutAt: new Date().toISOString(),
@@ -1636,7 +1956,7 @@ const AuthScreen = () => {
 
   const continueAfterTakeover = async () => {
     setSubmitting(true);
-    setError(null);
+    resetFeedback();
     try {
       await refreshSession();
     } catch (err) {
@@ -1673,12 +1993,19 @@ const AuthScreen = () => {
           <span key={index} className="h-1 w-1 rounded-full bg-[#2f6fe4]" />
         ))}
       </div>
-      {mode === 'register' && (
+      {mode !== 'login' && (
         <button
           type="button"
           onClick={() => {
-            setMode('login');
-            setError(null);
+            if (mode === 'register-otp') {
+              switchMode('register');
+              return;
+            }
+            if (mode === 'login-otp' || mode === 'forgot-password' || mode === 'reset-password') {
+              switchMode('login');
+              return;
+            }
+            switchMode('login');
           }}
           className="absolute left-6 top-8 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#d7e3f2] bg-white text-[#17233d] shadow-[0_8px_18px_rgba(47,111,228,0.08)]"
         >
@@ -1689,6 +2016,98 @@ const AuthScreen = () => {
     </div>
   );
 
+  const renderOtpChannelSelector = (
+    value: 'email' | 'sms',
+    onChange: (channel: 'email' | 'sms') => void,
+    smsDisabled = false,
+  ) => (
+    <div className="grid grid-cols-2 gap-2">
+      {[
+        { key: 'email' as const, label: 'Email OTP', icon: Mail, disabled: false },
+        { key: 'sms' as const, label: 'SMS OTP', icon: Phone, disabled: smsDisabled },
+      ].map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          disabled={option.disabled}
+          onClick={() => onChange(option.key)}
+          className={cn(
+            'flex h-11 items-center justify-center gap-2 rounded-[14px] border text-[13px] font-semibold transition',
+            value === option.key
+              ? 'border-[#2f6fe4] bg-[#eef4ff] text-[#2f6fe4]'
+              : 'border-[#d7e3f2] bg-white text-[#53647d]',
+            option.disabled && 'cursor-not-allowed opacity-50',
+          )}
+        >
+          <option.icon className="h-4 w-4" />
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderOtpVerificationForm = ({
+    title,
+    body,
+    submitLabel,
+    onSubmit,
+    onResend,
+  }: {
+    title: string;
+    body: string;
+    submitLabel: string;
+    onSubmit: () => Promise<void>;
+    onResend?: () => Promise<void>;
+  }) => (
+    <>
+      <div>
+        <h1 className="!font-sans max-w-[320px] text-[24px] font-bold leading-[1.18] text-[#17233d] sm:max-w-none sm:text-[28px]">{title}</h1>
+        <p className="mt-2 text-[14px] leading-6 text-[#53647d] sm:text-[15px]">{body}</p>
+      </div>
+
+      {otpHint && (
+        <div className="mt-4 rounded-[14px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3 text-[13px] leading-6 text-[#1d4ed8]">
+          {otpHint}
+        </div>
+      )}
+
+      <form
+        className="mt-4 space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSubmit();
+        }}
+      >
+        <div>
+          <label className="text-[13px] font-bold text-[#17233d]">One-Time Password</label>
+          <div className="relative mt-2">
+            <ShieldCheck className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
+            <input
+              type="text"
+              inputMode="numeric"
+              value={otpCode}
+              onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              className={authInputClassName}
+              placeholder="Enter 6-digit OTP"
+              autoComplete="one-time-code"
+            />
+          </div>
+        </div>
+
+        <button type="submit" disabled={submitting} className={primaryButtonClassName}>
+          <span>{submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : submitLabel}</span>
+          {!submitting && <ArrowRight className="absolute right-6 h-5 w-5" />}
+        </button>
+      </form>
+
+      {onResend && (
+        <button type="button" onClick={() => void onResend()} disabled={submitting} className="mt-4 text-[13px] font-bold text-[#2f6fe4]">
+          Resend OTP
+        </button>
+      )}
+    </>
+  );
+
   const renderLoginForm = () => (
     <>
       <div>
@@ -1696,10 +2115,36 @@ const AuthScreen = () => {
         <p className="mt-2 text-[14px] leading-6 text-[#53647d] sm:text-[15px]">Login to continue your exam preparation.</p>
       </div>
 
+      <div className="mt-4 grid grid-cols-2 gap-2 rounded-[16px] border border-[#dbe6f3] bg-[#f8fbff] p-1">
+        {[
+          { key: 'password' as const, label: 'Password' },
+          { key: 'otp' as const, label: 'OTP Login' },
+        ].map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => {
+              setLoginMethod(option.key);
+              resetFeedback();
+            }}
+            className={cn(
+              'rounded-[12px] px-3 py-2 text-[13px] font-semibold transition',
+              loginMethod === option.key ? 'bg-white text-[#17233d] shadow-[0_10px_20px_rgba(47,111,228,0.10)]' : 'text-[#53647d]',
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
       <form
         className="mt-4 space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
+          if (loginMethod === 'otp') {
+            void submitLoginOtpRequest();
+            return;
+          }
           void submitLogin();
         }}
       >
@@ -1710,8 +2155,8 @@ const AuthScreen = () => {
             <input
               data-testid="auth-login-email"
               type="text"
-              value={loginForm.email}
-              onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
+              value={loginForm.identifier}
+              onChange={(event) => setLoginForm((current) => ({ ...current, identifier: event.target.value }))}
               className={authInputClassName}
               placeholder="Enter your email or mobile number"
               autoComplete="username"
@@ -1719,48 +2164,57 @@ const AuthScreen = () => {
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between gap-3">
-            <label className="text-[13px] font-bold text-[#17233d]">Password</label>
-            <button type="button" className="text-[12px] font-bold text-[#2f6fe4]">Forgot Password?</button>
+        {loginMethod === 'password' ? (
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-[13px] font-bold text-[#17233d]">Password</label>
+              <button type="button" onClick={() => switchMode('forgot-password')} className="text-[12px] font-bold text-[#2f6fe4]">Forgot Password?</button>
+            </div>
+            <div className="relative mt-2">
+              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
+              <input
+                data-testid="auth-login-password"
+                type={showLoginPassword ? 'text' : 'password'}
+                value={loginForm.password}
+                onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
+                className={authInputClassName}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
+                onClick={() => setShowLoginPassword((current) => !current)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7b8da6]"
+              >
+                {showLoginPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
-          <div className="relative mt-2">
-            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
-            <input
-              data-testid="auth-login-password"
-              type={showLoginPassword ? 'text' : 'password'}
-              value={loginForm.password}
-              onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
-              className={authInputClassName}
-              placeholder="Enter your password"
-              autoComplete="current-password"
-            />
+        ) : (
+          <div className="space-y-2">
+            <label className="text-[13px] font-bold text-[#17233d]">Where should we send the OTP?</label>
+            {renderOtpChannelSelector(loginForm.channel, (channel) => setLoginForm((current) => ({ ...current, channel })), !smsOtpEnabled)}
+          </div>
+        )}
+
+        {loginMethod === 'password' && (
+          <label className="flex items-center gap-3 text-[13px] font-medium text-[#53647d]">
             <button
               type="button"
-              aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
-              onClick={() => setShowLoginPassword((current) => !current)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7b8da6]"
+              aria-pressed={rememberMe}
+              aria-label="Remember me"
+              onClick={() => setRememberMe((current) => !current)}
+              className={cn(
+                'flex h-5 w-5 items-center justify-center rounded-[6px] border transition',
+                rememberMe ? 'border-[#2f6fe4] bg-[#2f6fe4] text-white' : 'border-[#c8d6ea] bg-white text-transparent',
+              )}
             >
-              {showLoginPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              <Check className="h-3.5 w-3.5" />
             </button>
-          </div>
-        </div>
-
-        <label className="flex items-center gap-3 text-[13px] font-medium text-[#53647d]">
-          <button
-            type="button"
-            aria-pressed={rememberMe}
-            aria-label="Remember me"
-            onClick={() => setRememberMe((current) => !current)}
-            className={cn(
-              'flex h-5 w-5 items-center justify-center rounded-[6px] border transition',
-              rememberMe ? 'border-[#2f6fe4] bg-[#2f6fe4] text-white' : 'border-[#c8d6ea] bg-white text-transparent',
-            )}
-          >
-            <Check className="h-3.5 w-3.5" />
-          </button>
-          Remember me
-        </label>
+            Remember me
+          </label>
+        )}
 
         <button
           data-testid="auth-login-submit"
@@ -1768,7 +2222,7 @@ const AuthScreen = () => {
           disabled={submitting}
           className={primaryButtonClassName}
         >
-          <span>{submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : 'Login'}</span>
+          <span>{submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : loginMethod === 'password' ? 'Login' : 'Send OTP'}</span>
           {!submitting && <ArrowRight className="absolute right-6 h-5 w-5" />}
         </button>
       </form>
@@ -1780,11 +2234,11 @@ const AuthScreen = () => {
       </div>
 
       <div className="space-y-2.5">
-        <button type="button" className={socialButtonClassName}>
+        <button type="button" disabled={submitting} onClick={() => void submitSocialLogin('google')} className={socialButtonClassName}>
           <span className="text-[24px] font-bold text-[#ea4335]">G</span>
           Continue with Google
         </button>
-        <button type="button" className={socialButtonClassName}>
+        <button type="button" disabled={submitting} onClick={() => void submitSocialLogin('apple')} className={socialButtonClassName}>
           <span className="text-[24px] leading-none text-[#111827]"></span>
           Continue with Apple
         </button>
@@ -1795,8 +2249,7 @@ const AuthScreen = () => {
         <button
           type="button"
           onClick={() => {
-            setMode('register');
-            setError(null);
+            switchMode('register');
           }}
           className="font-bold text-[#2f6fe4]"
         >
@@ -1865,6 +2318,15 @@ const AuthScreen = () => {
               autoComplete="tel"
             />
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[13px] font-bold text-[#17233d]">Send verification OTP via</label>
+          {renderOtpChannelSelector(
+            registerForm.channel,
+            (channel) => setRegisterForm((current) => ({ ...current, channel })),
+            !smsOtpEnabled || !registerForm.mobileNumber.trim(),
+          )}
         </div>
 
         <div>
@@ -1965,14 +2427,133 @@ const AuthScreen = () => {
         <button
           type="button"
           onClick={() => {
-            setMode('login');
-            setError(null);
+            switchMode('login');
           }}
           className="font-bold text-[#2f6fe4]"
         >
           Login
         </button>
       </p>
+    </>
+  );
+
+  const renderForgotPasswordForm = () => (
+    <>
+      <div>
+        <h1 className="!font-sans max-w-[320px] text-[24px] font-bold leading-[1.18] text-[#17233d] sm:max-w-none sm:text-[28px]">Reset your password</h1>
+        <p className="mt-2 text-[14px] leading-6 text-[#53647d] sm:text-[15px]">We&apos;ll verify your email or mobile number with an OTP before changing the password.</p>
+      </div>
+
+      <form
+        className="mt-4 space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitForgotPasswordRequest();
+        }}
+      >
+        <div>
+          <label className="text-[13px] font-bold text-[#17233d]">Email or Mobile Number</label>
+          <div className="relative mt-2">
+            <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
+            <input
+              type="text"
+              value={forgotPasswordForm.identifier}
+              onChange={(event) => setForgotPasswordForm((current) => ({ ...current, identifier: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Enter your email or mobile number"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[13px] font-bold text-[#17233d]">Send reset OTP via</label>
+          {renderOtpChannelSelector(forgotPasswordForm.channel, (channel) => setForgotPasswordForm((current) => ({ ...current, channel })), !smsOtpEnabled)}
+        </div>
+
+        <button type="submit" disabled={submitting} className={primaryButtonClassName}>
+          <span>{submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : 'Send Reset OTP'}</span>
+          {!submitting && <ArrowRight className="absolute right-6 h-5 w-5" />}
+        </button>
+      </form>
+    </>
+  );
+
+  const renderResetPasswordForm = () => (
+    <>
+      <div>
+        <h1 className="!font-sans max-w-[320px] text-[24px] font-bold leading-[1.18] text-[#17233d] sm:max-w-none sm:text-[28px]">Create a new password</h1>
+        <p className="mt-2 text-[14px] leading-6 text-[#53647d] sm:text-[15px]">Verify the OTP and set a new password. We&apos;ll log you in right after a successful reset.</p>
+      </div>
+
+      {otpHint && (
+        <div className="mt-4 rounded-[14px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3 text-[13px] leading-6 text-[#1d4ed8]">
+          {otpHint}
+        </div>
+      )}
+
+      <form
+        className="mt-4 space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitPasswordReset();
+        }}
+      >
+        <div>
+          <label className="text-[13px] font-bold text-[#17233d]">OTP</label>
+          <div className="relative mt-2">
+            <ShieldCheck className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
+            <input
+              type="text"
+              inputMode="numeric"
+              value={otpCode}
+              onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              className={authInputClassName}
+              placeholder="Enter 6-digit OTP"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[13px] font-bold text-[#17233d]">New Password</label>
+          <div className="relative mt-2">
+            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
+            <input
+              type={showResetPassword ? 'text' : 'password'}
+              value={forgotPasswordForm.password}
+              onChange={(event) => setForgotPasswordForm((current) => ({ ...current, password: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Enter your new password"
+              autoComplete="new-password"
+            />
+            <button type="button" onClick={() => setShowResetPassword((current) => !current)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7b8da6]">
+              {showResetPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[13px] font-bold text-[#17233d]">Confirm Password</label>
+          <div className="relative mt-2">
+            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7b8da6]" />
+            <input
+              type={showResetConfirmPassword ? 'text' : 'password'}
+              value={forgotPasswordForm.confirmPassword}
+              onChange={(event) => setForgotPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+              className={authInputClassName}
+              placeholder="Confirm your new password"
+              autoComplete="new-password"
+            />
+            <button type="button" onClick={() => setShowResetConfirmPassword((current) => !current)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7b8da6]">
+              {showResetConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" disabled={submitting} className={primaryButtonClassName}>
+          <span>{submitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : 'Verify OTP & Reset Password'}</span>
+          {!submitting && <ArrowRight className="absolute right-6 h-5 w-5" />}
+        </button>
+      </form>
     </>
   );
 
@@ -2017,7 +2598,30 @@ const AuthScreen = () => {
             >
               {renderAuthHeader()}
               <div className="px-6 pb-6 pt-5 sm:px-8 sm:pb-8 sm:pt-7">
-                {mode === 'login' ? renderLoginForm() : renderRegisterForm()}
+                {mode === 'login' && renderLoginForm()}
+                {mode === 'register' && renderRegisterForm()}
+                {mode === 'register-otp' && renderOtpVerificationForm({
+                  title: 'Verify your account',
+                  body: 'Enter the OTP we sent to activate your account and continue into the platform.',
+                  submitLabel: 'Verify & Continue',
+                  onSubmit: submitRegistrationOtp,
+                  onResend: submitRegister,
+                })}
+                {mode === 'login-otp' && renderOtpVerificationForm({
+                  title: 'Login with OTP',
+                  body: 'Enter the OTP from your email or phone to continue without using a password.',
+                  submitLabel: 'Verify & Login',
+                  onSubmit: submitLoginOtpVerification,
+                  onResend: submitLoginOtpRequest,
+                })}
+                {mode === 'forgot-password' && renderForgotPasswordForm()}
+                {mode === 'reset-password' && renderResetPasswordForm()}
+
+                {notice && (
+                  <div className="mt-5 rounded-[14px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3 text-[14px] font-medium text-[#1d4ed8]">
+                    {notice}
+                  </div>
+                )}
 
                 {error && (
                   <div className="mt-5 rounded-[14px] border border-[#fecaca] bg-[#fff1f2] px-4 py-3 text-[14px] font-medium text-[#b42318]">
@@ -3595,7 +4199,7 @@ const buildRevisionPlan = (overview: PlatformOverview, savedTopics: SavedTopic[]
   const strongTopics = overview.dashboard.strongTopics.slice(0, 2);
   const continueCourse = overview.dashboard.continueLearning[0];
   const prioritySaved = savedTopics.slice(0, 3);
-  const latestMistakes = latestMock?.solutions.filter((solution) => solution.selectedOption !== solution.correctOption).slice(0, 3) || [];
+  const latestMistakes = latestMock?.solutions.filter((solution) => !isSolutionCorrect(solution)).slice(0, 3) || [];
 
   const templates = [
     {
@@ -3669,7 +4273,7 @@ const RevisionTab = ({
 }) => {
   const revisionPlan = useMemo(() => buildRevisionPlan(overview, savedTopics), [overview, savedTopics]);
   const latestMock = overview.dashboard.latestMockTest;
-  const recoveryItems = latestMock?.solutions.filter((solution) => solution.selectedOption !== solution.correctOption).slice(0, 6) || [];
+  const recoveryItems = latestMock?.solutions.filter((solution) => !isSolutionCorrect(solution)).slice(0, 6) || [];
   const completedSavedTopics = savedTopics.filter((topic) => topic.completed).length;
 
   return (
@@ -3762,12 +4366,12 @@ const RevisionTab = ({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-[var(--ink)]">{item.topic}</p>
                     <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--danger)]">
-                      {item.selectedOption === null ? 'Skipped' : 'Incorrect'}
+                      {getSolutionSelectedOptionIndexes(item).length === 0 ? 'Skipped' : 'Incorrect'}
                     </span>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">{item.questionText}</p>
                   <p className="mt-3 text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-                    Correct option: {String.fromCharCode(65 + item.correctOption)}
+                    Correct option: {formatOptionIndexLabels(getSolutionCorrectOptionIndexes(item))}
                   </p>
                 </div>
               )) : (
@@ -4009,7 +4613,7 @@ const getDeclarationChecklist = (test: MockTest) => [
 
 const getExamQuestionState = (
   questionId: string,
-  answers: Record<string, number>,
+  answers: Record<string, number | number[]>,
   visitedQuestions: Record<string, boolean>,
   reviewQuestions: Record<string, boolean>,
 ): ExamQuestionState => {
@@ -4060,7 +4664,7 @@ const TestPlayer = ({
   const examMainRef = useRef<HTMLElement | null>(null);
   const [stage, setStage] = useState<ExamStage>('instructions');
   const [workspaceTab, setWorkspaceTab] = useState<ExamWorkspaceTab>('question');
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [answers, setAnswers] = useState<Record<string, number | number[]>>({});
   const [visitedQuestions, setVisitedQuestions] = useState<Record<string, boolean>>({});
   const [reviewQuestions, setReviewQuestions] = useState<Record<string, boolean>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -4079,6 +4683,8 @@ const TestPlayer = ({
   const instructionChecklist = useMemo(() => getExamInstructionChecklist(test), [test]);
   const declarationChecklist = useMemo(() => getDeclarationChecklist(test), [test]);
   const currentQuestion = test.questions[currentIndex];
+  const currentQuestionCorrectOptionIndexes = currentQuestion ? getQuestionCorrectOptionIndexes(currentQuestion) : [];
+  const currentQuestionAllowsMultipleAnswers = currentQuestionCorrectOptionIndexes.length > 1;
   const questionTextClass = ['text-lg leading-8', 'text-xl leading-9', 'text-2xl leading-10'][questionZoom];
 
   const currentSection = useMemo(() => (
@@ -4394,13 +5000,23 @@ const TestPlayer = ({
 
               <div className="divide-y divide-slate-200">
                 {currentQuestion.options.map((option, optionIndex) => {
-                  const isSelected = answers[currentQuestion.id] === optionIndex;
+                  const selectedOptionIndexes = normalizeOptionIndexes(answers[currentQuestion.id]);
+                  const isSelected = selectedOptionIndexes.includes(optionIndex);
 
                   return (
                     <button
                       key={`${currentQuestion.id}-${option}`}
                       onClick={() => {
-                        setAnswers((current) => ({ ...current, [currentQuestion.id]: optionIndex }));
+                        setAnswers((current) => {
+                          const nextValue = toggleSelectedOptionValue(current[currentQuestion.id], optionIndex, currentQuestionAllowsMultipleAnswers);
+                          const nextAnswers = { ...current };
+                          if (Array.isArray(nextValue) && nextValue.length === 0) {
+                            delete nextAnswers[currentQuestion.id];
+                          } else {
+                            nextAnswers[currentQuestion.id] = nextValue;
+                          }
+                          return nextAnswers;
+                        });
                         setVisitedQuestions((current) => ({ ...current, [currentQuestion.id]: true }));
                         setWorkspaceTab('question');
                       }}
@@ -4411,7 +5027,9 @@ const TestPlayer = ({
                     >
                       <div className="flex h-full items-center justify-center border-r border-slate-200 py-6">
                         <div className={cn(
-                          'flex h-11 w-11 items-center justify-center rounded-full border text-lg font-semibold',
+                          currentQuestionAllowsMultipleAnswers
+                            ? 'flex h-11 w-11 items-center justify-center rounded-[12px] border text-lg font-semibold'
+                            : 'flex h-11 w-11 items-center justify-center rounded-full border text-lg font-semibold',
                           isSelected
                             ? 'border-sky-500 bg-sky-500 text-white'
                             : 'border-slate-300 bg-white text-slate-600',
@@ -5068,14 +5686,14 @@ const ExactCbtTestPlayer = ({
   test: MockTest;
   onClose: () => void;
   onSubmitted: (result: TestAttemptResult) => void;
-  onSubmitAttempt?: (test: MockTest, answers: Record<string, number>, startedAt: string) => Promise<TestAttemptResult>;
+  onSubmitAttempt?: (test: MockTest, answers: Record<string, number | number[]>, startedAt: string) => Promise<TestAttemptResult>;
 }) => {
   const { user } = useAuth();
   const stageContentRef = useRef<HTMLElement | null>(null);
   const examMainRef = useRef<HTMLElement | null>(null);
   const [stage, setStage] = useState<ExamStage>('instructions');
   const [workspaceTab, setWorkspaceTab] = useState<ExamWorkspaceTab>('question');
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [answers, setAnswers] = useState<Record<string, number | number[]>>({});
   const [visitedQuestions, setVisitedQuestions] = useState<Record<string, boolean>>({});
   const [reviewQuestions, setReviewQuestions] = useState<Record<string, boolean>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -5101,6 +5719,8 @@ const ExactCbtTestPlayer = ({
   const rollNumber = useMemo(() => buildMockRollNumber(user?._id, test._id), [test._id, user?._id]);
   const candidateName = user?.name || 'Candidate';
   const currentQuestion = test.questions[currentIndex];
+  const currentQuestionCorrectOptionIndexes = currentQuestion ? getQuestionCorrectOptionIndexes(currentQuestion) : [];
+  const currentQuestionAllowsMultipleAnswers = currentQuestionCorrectOptionIndexes.length > 1;
   const questionTextClass = ['text-[14px] leading-7', 'text-[16px] leading-8', 'text-[19px] leading-9'][questionZoom];
   const timerLabel = formatTimeLeft(timeLeft).replace(':', ' : ');
 
@@ -5144,6 +5764,11 @@ const ExactCbtTestPlayer = ({
 
   const answeredCount = overallCounts.answered + overallCounts.answeredReview;
   const isCurrentQuestionMarkedForReview = currentQuestion ? Boolean(reviewQuestions[currentQuestion.id]) : false;
+  const liveEvaluation = useMemo(() => buildAttemptEvaluationSnapshot(test, answers), [answers, test]);
+  const liveAttemptedCount = liveEvaluation.correctCount + liveEvaluation.incorrectCount;
+  const liveAccuracy = liveAttemptedCount > 0
+    ? Math.round((liveEvaluation.correctCount / liveAttemptedCount) * 100)
+    : 0;
 
   const currentSectionCounts = useMemo(() => {
     if (!currentSection) {
@@ -5696,23 +6321,39 @@ const ExactCbtTestPlayer = ({
 
                 <div className="divide-y divide-[#e2e7ee]">
                   {currentQuestion.options.map((option, optionIndex) => {
-                    const isSelected = answers[currentQuestion.id] === optionIndex;
+                    const selectedOptionIndexes = normalizeOptionIndexes(answers[currentQuestion.id]);
+                    const isSelected = selectedOptionIndexes.includes(optionIndex);
 
                     return (
                       <button
                         key={`${currentQuestion.id}-${option}`}
                         onClick={() => {
-                          setAnswers((current) => ({ ...current, [currentQuestion.id]: optionIndex }));
+                          setAnswers((current) => {
+                            const nextValue = toggleSelectedOptionValue(current[currentQuestion.id], optionIndex, currentQuestionAllowsMultipleAnswers);
+                            const nextAnswers = { ...current };
+                            if (Array.isArray(nextValue) && nextValue.length === 0) {
+                              delete nextAnswers[currentQuestion.id];
+                            } else {
+                              nextAnswers[currentQuestion.id] = nextValue;
+                            }
+                            return nextAnswers;
+                          });
                           setVisitedQuestions((current) => ({ ...current, [currentQuestion.id]: true }));
                         }}
                         className="grid w-full grid-cols-[58px_minmax(0,1fr)] items-center text-left transition hover:bg-slate-50"
                       >
                         <div className="flex h-full items-center justify-center border-r border-[#e2e7ee] py-6">
                           <div className={cn(
-                            'flex h-[19px] w-[19px] items-center justify-center rounded-full border border-slate-400 bg-white',
+                            currentQuestionAllowsMultipleAnswers
+                              ? 'flex h-[19px] w-[19px] items-center justify-center rounded-[4px] border border-slate-400 bg-white'
+                              : 'flex h-[19px] w-[19px] items-center justify-center rounded-full border border-slate-400 bg-white',
                             isSelected && 'border-[#1e88e5]',
                           )}>
-                            {isSelected && <div className="h-[8px] w-[8px] rounded-full bg-[#1e88e5]" />}
+                            {isSelected && (
+                              <div className={cn(
+                                currentQuestionAllowsMultipleAnswers ? 'h-[9px] w-[9px] rounded-[2px] bg-[#1e88e5]' : 'h-[8px] w-[8px] rounded-full bg-[#1e88e5]',
+                              )} />
+                            )}
                           </div>
                         </div>
                         <div className="px-[28px] py-[20px]">
@@ -5807,6 +6448,36 @@ const ExactCbtTestPlayer = ({
             <div className="border border-slate-200 bg-slate-50 p-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Time Left</p>
               <p className="mt-2 text-[18px] font-semibold text-slate-900">{timerLabel}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="border border-slate-300 bg-white p-5">
+          <p className="text-[15px] font-semibold text-slate-900">Live Scoring</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Score</p>
+              <p className="mt-2 text-[18px] font-semibold text-slate-900">{liveEvaluation.score} / {liveEvaluation.totalMarks}</p>
+            </div>
+            <div className="border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Correct</p>
+              <p className="mt-2 text-[18px] font-semibold text-emerald-600">{liveEvaluation.correctCount}</p>
+            </div>
+            <div className="border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Incorrect</p>
+              <p className="mt-2 text-[18px] font-semibold text-rose-600">{liveEvaluation.incorrectCount}</p>
+            </div>
+            <div className="border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Attempted</p>
+              <p className="mt-2 text-[18px] font-semibold text-slate-900">{liveAttemptedCount}</p>
+            </div>
+            <div className="border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Unattempted</p>
+              <p className="mt-2 text-[18px] font-semibold text-slate-900">{liveEvaluation.unattemptedCount}</p>
+            </div>
+            <div className="border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Accuracy</p>
+              <p className="mt-2 text-[18px] font-semibold text-slate-900">{liveAccuracy}%</p>
             </div>
           </div>
         </div>
@@ -6197,6 +6868,40 @@ const ExactCbtTestPlayer = ({
 
             <div className="mt-3 shrink-0 border border-slate-400 bg-white">
               <div className="border-b border-slate-400 bg-slate-100 px-3 py-[8px] text-center text-[13px] font-semibold text-slate-900">
+                Live Scoring
+              </div>
+              <div className="grid grid-cols-2 gap-px bg-slate-200">
+                <div className="bg-white px-3 py-3 text-center">
+                  <p className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Score</p>
+                  <p className="mt-1 text-[18px] font-semibold text-slate-900">{liveEvaluation.score}</p>
+                </div>
+                <div className="bg-white px-3 py-3 text-center">
+                  <p className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Accuracy</p>
+                  <p className="mt-1 text-[18px] font-semibold text-slate-900">{liveAccuracy}%</p>
+                </div>
+                <div className="bg-white px-3 py-3 text-center">
+                  <p className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Correct</p>
+                  <p className="mt-1 text-[18px] font-semibold text-emerald-600">{liveEvaluation.correctCount}</p>
+                </div>
+                <div className="bg-white px-3 py-3 text-center">
+                  <p className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Incorrect</p>
+                  <p className="mt-1 text-[18px] font-semibold text-rose-600">{liveEvaluation.incorrectCount}</p>
+                </div>
+              </div>
+              <div className="divide-y divide-slate-200">
+                <div className="grid grid-cols-[minmax(0,1fr)_52px] text-[12px]">
+                  <span className="px-4 py-[9px] text-slate-700">Attempted</span>
+                  <span className="flex items-center justify-center border-l border-slate-200 bg-[#fff36d] font-semibold text-[#ff1b00]">{liveAttemptedCount}</span>
+                </div>
+                <div className="grid grid-cols-[minmax(0,1fr)_52px] text-[12px]">
+                  <span className="px-4 py-[9px] text-slate-700">Unattempted</span>
+                  <span className="flex items-center justify-center border-l border-slate-200 bg-[#fff36d] font-semibold text-[#ff1b00]">{liveEvaluation.unattemptedCount}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 shrink-0 border border-slate-400 bg-white">
+              <div className="border-b border-slate-400 bg-slate-100 px-3 py-[8px] text-center text-[13px] font-semibold text-slate-900">
                 {currentSectionLabel} Analysis
               </div>
               <div className="divide-y divide-slate-200">
@@ -6361,11 +7066,12 @@ const TestsTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
     }
 
     if (solutionFilter === 'skipped') {
-      return solution.selectedOption === null;
+      return getSolutionSelectedOptionIndexes(solution).length === 0;
     }
 
-    const isCorrect = solution.selectedOption !== null && solution.selectedOption === solution.correctOption;
-    return solutionFilter === 'correct' ? isCorrect : !isCorrect && solution.selectedOption !== null;
+    const hasSelection = getSolutionSelectedOptionIndexes(solution).length > 0;
+    const correct = isSolutionCorrect(solution);
+    return solutionFilter === 'correct' ? correct : !correct && hasSelection;
   });
 
   return (
@@ -6823,20 +7529,23 @@ const AdminTab = ({ overview, onRefresh }: { overview: PlatformOverview; onRefre
       const options = Array.isArray(question?.options)
         ? question.options.map((item: unknown) => String(item || '').trim()).filter(Boolean)
         : [];
-      const correctOption = Number(question?.correctOption);
+      const correctOptions = normalizeOptionIndexes(question?.correctOptions);
       const marks = Number(question?.marks || 1);
       const questionText = String(question?.questionText || '').trim();
       const topic = String(question?.topic || '').trim();
 
-      if (!questionText || options.length < 2 || Number.isNaN(correctOption) || correctOption < 0 || correctOption >= options.length || !topic) {
-        throw new Error(`Question ${index + 1} must include questionText, at least two options, a valid correctOption index, and a topic.`);
+      const hasValidCorrectOptions = correctOptions.length > 0 && correctOptions.every((correctOption) => correctOption >= 0 && correctOption < options.length);
+
+      if (!questionText || options.length < 2 || !hasValidCorrectOptions || !topic) {
+        throw new Error(`Question ${index + 1} must include questionText, at least two options, one or more valid correct options, and a topic.`);
       }
 
       return {
         id: String(question?.id || `question_${Date.now()}_${index + 1}`),
         questionText,
         options,
-        correctOption,
+        correctOption: correctOptions[0],
+        correctOptions,
         explanation: String(question?.explanation || '').trim(),
         marks: Number.isFinite(marks) && marks > 0 ? marks : 1,
         topic,
@@ -7910,9 +8619,15 @@ const AppContent = () => {
 
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
+    const courseId = params.get('courseId');
+    const lessonId = params.get('lessonId');
 
     if (tab && tab in shellTabMeta) {
       setActiveTab(tab as TabKey);
+    }
+
+    if (tab === 'courses' && courseId) {
+      setResumeTarget({ courseId, lessonId: lessonId || null });
     }
   }, []);
 

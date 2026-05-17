@@ -1,5 +1,6 @@
 import {
   AiResponse,
+  AuthOtpChallenge,
   AuthResponse,
   AuthUser,
   CourseCard,
@@ -17,6 +18,7 @@ import {
   PlatformOverview,
   ProtectedLessonPlayback,
   RegisterPayload,
+  RegisterOtpResponse,
   SubscriptionPlan,
   TestAttemptResult,
 } from './types';
@@ -43,6 +45,7 @@ const TOKEN_KEY = 'edumaster.jwt';
 const AUTH_EVENT_KEY = 'edumaster.auth.event';
 
 let authToken: string | null = null;
+const authRequestInflight = new Map<string, Promise<unknown>>();
 
 type RequestOptions = RequestInit & {
   includeAuth?: boolean;
@@ -52,6 +55,8 @@ type RequestOptions = RequestInit & {
 type LoginOptions = {
   forceLogoutOtherSessions?: boolean;
 };
+
+type OtpChannel = 'email' | 'sms';
 
 export type CoursePaymentProvider = 'stripe' | 'phonepe';
 
@@ -129,6 +134,8 @@ const normalizeLiveClassResource = (resource: LiveClassResource): LiveClassResou
   ...resource,
   url: resolveAbsoluteUrl(resource.url || null) || resource.url || null,
 });
+
+const isPresent = <T,>(value: T | null | undefined): value is T => value != null;
 
 const normalizeLiveClass = (liveClass: LiveClass): LiveClass => ({
   ...liveClass,
@@ -274,6 +281,24 @@ const handleUnauthorized = (payload?: any) => {
   }
 };
 
+const runDedupedAuthRequest = async <T>(
+  key: string,
+  requestFn: () => Promise<T>,
+): Promise<T> => {
+  const existing = authRequestInflight.get(key);
+  if (existing) {
+    return existing as Promise<T>;
+  }
+
+  const promise = requestFn().finally(() => {
+    if (authRequestInflight.get(key) === promise) {
+      authRequestInflight.delete(key);
+    }
+  });
+  authRequestInflight.set(key, promise);
+  return promise;
+};
+
 const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -331,16 +356,37 @@ export const EduService = {
   setToken: (token: string | null) => saveToken(token),
   clearToken: () => saveToken(null),
 
-  register: async (payload: RegisterPayload): Promise<AuthResponse> => {
-    await request<{ user: AuthUser }>('/auth/register', {
+  register: async (payload: RegisterPayload & { channel?: OtpChannel }): Promise<RegisterOtpResponse> => {
+    const normalizedEmail = String(payload.email || '').trim().toLowerCase();
+    return runDedupedAuthRequest(`register:${normalizedEmail}`, async () => {
+      return request<RegisterOtpResponse>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...payload,
+          role: 'student',
+        }),
+      });
+    });
+  },
+
+  verifyRegistrationOtp: async (challengeId: string, otp: string): Promise<AuthResponse> => {
+    const response = await request<AuthResponse>('/auth/register/verify-otp', {
       method: 'POST',
+      includeAuth: false,
+      expireSessionOn401: false,
       body: JSON.stringify({
-        ...payload,
-        role: 'student',
+        challengeId,
+        otp,
+        device: getClientDeviceLabel(),
       }),
     });
-
-    return EduService.login(payload.email, payload.password);
+    saveToken(response.token);
+    emitAuthEvent({
+      type: 'login',
+      userId: response.user._id,
+      sessionId: response.user.session || null,
+    });
+    return response;
   },
 
   updateProfile: async (payload: { name: string; email: string; mobileNumber?: string | null }) => {
@@ -351,14 +397,46 @@ export const EduService = {
   },
 
   login: async (email: string, password: string, options: LoginOptions = {}): Promise<AuthResponse> => {
-    const response = await request<AuthResponse>('/auth/login', {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const passwordKey = String(password || '');
+    const forceLogoutOtherSessions = options.forceLogoutOtherSessions ?? false;
+    const device = getClientDeviceLabel();
+    return runDedupedAuthRequest(
+      `login:${normalizedEmail}:${passwordKey}:${device}:${forceLogoutOtherSessions ? 'force' : 'single'}`,
+      async () => {
+        const response = await request<AuthResponse>('/auth/login', {
+          method: 'POST',
+          includeAuth: false,
+          expireSessionOn401: false,
+          body: JSON.stringify({
+            identifier: email,
+            password,
+            device,
+            forceLogoutOtherSessions,
+          }),
+        });
+
+        saveToken(response.token);
+        emitAuthEvent({
+          type: 'login',
+          userId: response.user._id,
+          sessionId: response.user.session || null,
+        });
+        return response;
+      },
+    );
+  },
+
+  socialLogin: async (provider: 'google' | 'apple', idToken: string, options: LoginOptions = {}): Promise<AuthResponse> => {
+    const device = getClientDeviceLabel();
+    const response = await request<AuthResponse>('/auth/social', {
       method: 'POST',
       includeAuth: false,
       expireSessionOn401: false,
       body: JSON.stringify({
-        email,
-        password,
-        device: getClientDeviceLabel(),
+        provider,
+        idToken,
+        device,
         forceLogoutOtherSessions: options.forceLogoutOtherSessions ?? false,
       }),
     });
@@ -369,6 +447,87 @@ export const EduService = {
       userId: response.user._id,
       sessionId: response.user.session || null,
     });
+    return response;
+  },
+
+  requestLoginOtp: async (identifier: string, channel?: OtpChannel): Promise<{ challenge: AuthOtpChallenge }> => {
+    return request<{ challenge: AuthOtpChallenge }>('/auth/login/request-otp', {
+      method: 'POST',
+      includeAuth: false,
+      expireSessionOn401: false,
+      body: JSON.stringify({
+        identifier,
+        channel,
+      }),
+    });
+  },
+
+  loginWithOtp: async (
+    challengeId: string,
+    otp: string,
+    options: LoginOptions = {},
+  ): Promise<AuthResponse> => {
+    const device = getClientDeviceLabel();
+    const response = await request<AuthResponse>('/auth/login/verify-otp', {
+      method: 'POST',
+      includeAuth: false,
+      expireSessionOn401: false,
+      body: JSON.stringify({
+        challengeId,
+        otp,
+        device,
+        forceLogoutOtherSessions: options.forceLogoutOtherSessions ?? false,
+      }),
+    });
+    saveToken(response.token);
+    emitAuthEvent({
+      type: 'login',
+      userId: response.user._id,
+      sessionId: response.user.session || null,
+    });
+    return response;
+  },
+
+  requestPasswordResetOtp: async (identifier: string, channel?: OtpChannel): Promise<{ challenge: AuthOtpChallenge }> => {
+    return request<{ challenge: AuthOtpChallenge }>('/auth/forgot-password/request-otp', {
+      method: 'POST',
+      includeAuth: false,
+      expireSessionOn401: false,
+      body: JSON.stringify({
+        identifier,
+        channel,
+      }),
+    });
+  },
+
+  resetPasswordWithOtp: async (
+    challengeId: string,
+    otp: string,
+    password: string,
+    loginAfterReset = true,
+  ): Promise<AuthResponse | { message: string }> => {
+    const response = await request<AuthResponse | { message: string }>('/auth/forgot-password/reset', {
+      method: 'POST',
+      includeAuth: false,
+      expireSessionOn401: false,
+      body: JSON.stringify({
+        challengeId,
+        otp,
+        password,
+        loginAfterReset,
+        device: getClientDeviceLabel(),
+      }),
+    });
+
+    if ('token' in response) {
+      saveToken(response.token);
+      emitAuthEvent({
+        type: 'login',
+        userId: response.user._id,
+        sessionId: response.user.session || null,
+      });
+    }
+
     return response;
   },
 
@@ -402,7 +561,7 @@ export const EduService = {
     return {
       ...overview,
       courses: (overview.courses || []).map(normalizeCourseCard),
-      liveClasses: (overview.liveClasses || []).map(normalizeLiveClass),
+      liveClasses: (overview.liveClasses || []).filter(isPresent).map(normalizeLiveClass),
       dashboard: {
         ...overview.dashboard,
         continueLearning: (overview.dashboard?.continueLearning || []).map(normalizeCourseCard),
@@ -412,12 +571,12 @@ export const EduService = {
 
   getLiveClasses: async () => {
     const response = await request<{ liveClasses: LiveClass[] }>('/live-classes');
-    return { ...response, liveClasses: (response.liveClasses || []).map(normalizeLiveClass) };
+    return { ...response, liveClasses: (response.liveClasses || []).filter(isPresent).map(normalizeLiveClass) };
   },
 
   getAdminLiveClasses: async () => {
     const response = await request<{ liveClasses: LiveClass[] }>('/live-classes/admin');
-    return { ...response, liveClasses: (response.liveClasses || []).map(normalizeLiveClass) };
+    return { ...response, liveClasses: (response.liveClasses || []).filter(isPresent).map(normalizeLiveClass) };
   },
 
   sendAnnouncement: async (payload: {
@@ -546,6 +705,13 @@ export const EduService = {
     });
   },
 
+  submitLivePollVote: async (liveClassId: string, optionId: string) => {
+    return request<{ liveClass: LiveClass; activePoll: NonNullable<LiveClass['activePoll']>; selectedOptionId: string }>(`/live-classes/${liveClassId}/poll/vote`, {
+      method: 'POST',
+      body: JSON.stringify({ optionId }),
+    });
+  },
+
   approveLiveParticipant: async (liveClassId: string, participantUserId: string, approved: boolean) => {
     return request<{ participant: LiveClassSessionState['participants'][number] }>(`/live-classes/${liveClassId}/session/participants/${participantUserId}/approval`, {
       method: 'POST',
@@ -582,7 +748,7 @@ export const EduService = {
     });
   },
 
-  submitMockTest: async (testId: string, answers: Record<string, number>, startedAt: string) => {
+  submitMockTest: async (testId: string, answers: Record<string, number | number[]>, startedAt: string) => {
     return request<TestAttemptResult>(`/tests/${testId}/submit`, {
       method: 'POST',
       body: JSON.stringify({ answers, startedAt }),

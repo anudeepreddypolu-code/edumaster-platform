@@ -55,45 +55,9 @@ import {
 } from '../types';
 import { cn } from '../lib/utils';
 import { useAuth } from '../AuthContext';
-
-declare global {
-  interface Window {
-    JitsiMeetExternalAPI?: any;
-  }
-}
+import { ResilientHlsVideo } from './ResilientHlsVideo';
 
 const LIVE_ROOM_STORAGE_KEY = 'edumaster.live.active-room';
-const jitsiScriptLoads = new Map<string, Promise<void>>();
-
-const loadJitsiScript = async (domain: string) => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  if (window.JitsiMeetExternalAPI) {
-    return;
-  }
-
-  if (!jitsiScriptLoads.has(domain)) {
-    jitsiScriptLoads.set(domain, new Promise<void>((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>(`script[data-jitsi-domain="${domain}"]`);
-      if (existing) {
-        existing.addEventListener('load', () => resolve(), { once: true });
-        existing.addEventListener('error', () => reject(new Error('Unable to load Jitsi script.')), { once: true });
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = `https://${domain}/external_api.js`;
-      script.async = true;
-      script.dataset.jitsiDomain = domain;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Unable to load Jitsi script.'));
-      document.head.appendChild(script);
-    }));
-  }
-
-  await jitsiScriptLoads.get(domain);
-};
 
 const getErrorMessage = (error: unknown) => (
   error instanceof Error
@@ -151,18 +115,6 @@ const clearActiveLiveRoom = () => {
   window.localStorage.removeItem(LIVE_ROOM_STORAGE_KEY);
 };
 
-const isPublicJitsiRoom = (roomUrl?: string | null) => {
-  if (!roomUrl) {
-    return false;
-  }
-
-  try {
-    return new URL(roomUrl).hostname === 'meet.jit.si';
-  } catch {
-    return false;
-  }
-};
-
 const isLiveKitRoomConnected = (room?: Room | null) => (
   Boolean(room && room.state === ConnectionState.Connected)
 );
@@ -171,6 +123,33 @@ const supportsDisplayCapture = () => (
   typeof navigator !== 'undefined'
   && Boolean(navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices)
 );
+
+const sanitizeLiveClasses = (items: Array<LiveClass | null | undefined> | null | undefined): LiveClass[] => (
+  (items || []).filter((item): item is LiveClass => Boolean(item))
+);
+
+const getLiveStatusValue = (liveClass: LiveClass | null | undefined) => String(liveClass?.status || 'scheduled').toLowerCase();
+const getLiveStatusLabel = (liveClass: LiveClass | null | undefined) => String(liveClass?.status || 'scheduled');
+
+const EMPTY_LIVE_CLASS: LiveClass = {
+  _id: '',
+  title: '',
+  instructor: '',
+  startTime: '',
+  durationMinutes: 0,
+  provider: 'livekit',
+  mode: 'live',
+  status: 'scheduled',
+  chatEnabled: true,
+  doubtSolving: false,
+  replayAvailable: false,
+  attendees: 0,
+  topicTags: [],
+  sessionNotes: [],
+  resources: [],
+  activePoll: null,
+  teacherProfile: null,
+};
 
 type LiveKitTrackEntry = {
   trackSid: string;
@@ -183,8 +162,20 @@ type LiveKitTrackEntry = {
   track: Track;
 };
 
-const formatTime = (value: string) =>
-  new Intl.DateTimeFormat('en-IN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+const formatTime = (value: string) => {
+  try {
+    const formatted = new Intl.DateTimeFormat('en-IN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+    return Number.isNaN(new Date(value).getTime()) ? '' : formatted;
+  } catch {
+    return '';
+  }
+};
+
+const splitTimeLabel = (value: string) => {
+  const label = formatTime(value);
+  const [time = '', meridiem = ''] = label.split(' ');
+  return { time, meridiem };
+};
 
 const formatFullDate = (value: string) =>
   new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
@@ -335,7 +326,7 @@ const calculateDurationMinutes = (startDateTime: string, endTime: string, fallba
   if (Number.isNaN(start.getTime())) {
     return fallbackMinutes;
   }
-  const [endHours, endMinutes] = endTime.split(':').map((entry) => Number(entry));
+  const [endHours, endMinutes] = String(endTime || '').split(':').map((entry) => Number(entry));
   if (!Number.isFinite(endHours) || !Number.isFinite(endMinutes)) {
     return fallbackMinutes;
   }
@@ -573,7 +564,7 @@ const normalizeLiveTeacherProfile = (liveClass: LiveClass | null): LiveTeacherPr
 
 const buildLivePollFromForm = (question: string, optionsText: string): LiveClassPoll | null => {
   const normalizedQuestion = question.trim();
-  const options = optionsText
+  const options = String(optionsText || '')
     .split('\n')
     .map((entry) => entry.trim())
     .filter(Boolean)
@@ -604,7 +595,7 @@ const isValidLiveAssetUrl = (value: string) => {
   }
 };
 
-const getPollOptionCount = (value: string) => value.split('\n').map((entry) => entry.trim()).filter(Boolean).length;
+const getPollOptionCount = (value: string) => String(value || '').split('\n').map((entry) => entry.trim()).filter(Boolean).length;
 
 const TeacherAvatar = ({ name, photoUrl, size = 'md', online = false }: { name: string; photoUrl?: string | null; size?: 'sm' | 'md' | 'lg'; online?: boolean }) => {
   const sizeClass = size === 'sm' ? 'h-9 w-9 text-[12px]' : size === 'lg' ? 'h-14 w-14 text-base' : 'h-11 w-11 text-sm';
@@ -929,8 +920,8 @@ const liveCreationSteps = [
 
 export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, initialLiveClassId, onInitialLiveClassHandled }: Props) => {
   const { user, isAdmin } = useAuth();
-  const [liveClasses, setLiveClasses] = useState<LiveClass[]>(overview.liveClasses || []);
-  const [selectedLiveClassId, setSelectedLiveClassId] = useState<string>((overview.liveClasses || [])[0]?._id || '');
+  const [liveClasses, setLiveClasses] = useState<LiveClass[]>(sanitizeLiveClasses(overview.liveClasses));
+  const [selectedLiveClassId, setSelectedLiveClassId] = useState<string>(sanitizeLiveClasses(overview.liveClasses)[0]?._id || '');
   const [view, setView] = useState<'list' | 'detail' | 'room'>('list');
   const [access, setAccess] = useState<LiveClassAccess | null>(null);
   const [session, setSession] = useState<LiveClassSessionState | null>(null);
@@ -952,7 +943,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   const [mediaNotice, setMediaNotice] = useState<string | null>(null);
   const [mediaWarning, setMediaWarning] = useState<string | null>(null);
   const [roomStartHelpVisible, setRoomStartHelpVisible] = useState(false);
-  const [directRoomMode, setDirectRoomMode] = useState(false);
   const [liveKitTrackVersion, setLiveKitTrackVersion] = useState(0);
   const [mobileRoomMenuOpen, setMobileRoomMenuOpen] = useState(false);
   const [copiedIngestField, setCopiedIngestField] = useState<string | null>(null);
@@ -963,9 +953,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   const [uiNotice, setUiNotice] = useState<string | null>(null);
   const [participantSearch, setParticipantSearch] = useState('');
   const [selectedPollOption, setSelectedPollOption] = useState<string | null>(null);
-  const mobileJitsiContainerRef = useRef<HTMLDivElement | null>(null);
-  const desktopJitsiContainerRef = useRef<HTMLDivElement | null>(null);
-  const jitsiApiRef = useRef<any>(null);
   const liveKitRoomRef = useRef<Room | null>(null);
   const mobileLiveKitStageRef = useRef<HTMLVideoElement | null>(null);
   const desktopLiveKitStageRef = useRef<HTMLVideoElement | null>(null);
@@ -974,7 +961,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   const mobileLiveKitAudioSinkRef = useRef<HTMLDivElement | null>(null);
   const desktopLiveKitAudioSinkRef = useRef<HTMLDivElement | null>(null);
   const liveKitAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const directRoomWindowRef = useRef<Window | null>(null);
   const viewRef = useRef(view);
   const accessRef = useRef(access);
   const localMediaRef = useRef({
@@ -1002,6 +988,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   const shareToggleTimerRef = useRef<number | null>(null);
   const overviewRefreshTimerRef = useRef<number | null>(null);
   const lastOverviewRefreshAtRef = useRef(0);
+  const activeJoinAttemptRef = useRef(0);
   const wantedScreenShareStateRef = useRef<boolean | null>(null);
   const cameraBeforeScreenShareRef = useRef(Boolean(isAdmin));
   const todaySectionRef = useRef<HTMLDivElement | null>(null);
@@ -1010,6 +997,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   const mobileDetailContentRef = useRef<HTMLDivElement | null>(null);
   const desktopDetailContentRef = useRef<HTMLDivElement | null>(null);
   const mobileRoomStageRef = useRef<HTMLDivElement | null>(null);
+  const desktopRoomStageRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     viewRef.current = view;
@@ -1022,10 +1010,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   useEffect(() => {
     accessRef.current = access;
   }, [access]);
-
-  useEffect(() => {
-    setDirectRoomMode(isPublicJitsiRoom(access?.roomUrl));
-  }, [access?.roomUrl]);
 
   useEffect(() => {
     localMediaRef.current = {
@@ -1056,9 +1040,10 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   }, []);
 
   useEffect(() => {
-    setLiveClasses(overview.liveClasses || []);
-    if (!selectedLiveClassId && overview.liveClasses?.[0]?._id) {
-      setSelectedLiveClassId(overview.liveClasses[0]._id);
+    const sanitizedLiveClasses = sanitizeLiveClasses(overview.liveClasses);
+    setLiveClasses(sanitizedLiveClasses);
+    if (!selectedLiveClassId && sanitizedLiveClasses[0]?._id) {
+      setSelectedLiveClassId(sanitizedLiveClasses[0]._id);
     }
   }, [overview.liveClasses, selectedLiveClassId]);
 
@@ -1069,7 +1054,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
 
     void EduService.getAdminLiveClasses()
       .then((response) => {
-        setLiveClasses(response.liveClasses || []);
+        setLiveClasses(sanitizeLiveClasses(response.liveClasses));
       })
       .catch(() => undefined);
   }, [isAdmin, overview.liveClasses]);
@@ -1116,23 +1101,24 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       return 2;
     };
 
-    return [...liveClasses].sort((left, right) => {
-      const statusDelta = rank(left.status) - rank(right.status);
+    return sanitizeLiveClasses(liveClasses).sort((left, right) => {
+      const statusDelta = rank(left?.status) - rank(right?.status);
       if (statusDelta !== 0) {
         return statusDelta;
       }
-      return Date.parse(left.startTime) - Date.parse(right.startTime);
+      return Date.parse(left?.startTime || '') - Date.parse(right?.startTime || '');
     });
   }, [liveClasses]);
 
   const selectedLiveClass = useMemo(
-    () => liveClasses.find((item) => item._id === selectedLiveClassId) || orderedLiveClasses[0] || null,
+    () => liveClasses.find((item) => item._id === selectedLiveClassId) || orderedLiveClasses[0] || EMPTY_LIVE_CLASS,
     [liveClasses, orderedLiveClasses, selectedLiveClassId],
   );
+  const hasSelectedLiveClass = Boolean(selectedLiveClass?._id);
 
   const featuredLiveClass = useMemo(
-    () => orderedLiveClasses.find((item) => String(item.status).toLowerCase() === 'live')
-      || orderedLiveClasses.find((item) => ['scheduled', 'upcoming'].includes(String(item.status).toLowerCase()))
+    () => orderedLiveClasses.find((item) => getLiveStatusValue(item) === 'live')
+      || orderedLiveClasses.find((item) => ['scheduled', 'upcoming'].includes(getLiveStatusValue(item)))
       || orderedLiveClasses[0]
       || null,
     [orderedLiveClasses],
@@ -1158,6 +1144,40 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   )
     ? `${access.liveClassId}:${access.liveKitUrl}`
     : '';
+  const isInteractiveLiveRoom = access?.accessType === 'livekit-room';
+  const isBroadcastLiveStream = access?.accessType === 'live-stream';
+  const showInteractiveRoomControls = isInteractiveLiveRoom;
+  const showRaiseHandControl = isInteractiveLiveRoom && !isAdmin;
+  const showPresenterScreenShareControl = isInteractiveLiveRoom && isAdmin;
+  const broadcastModeNotice = isBroadcastLiveStream
+    ? 'This class is running in broadcast mode for scale. Camera, microphone, and screen sharing stay with the teacher studio.'
+    : null;
+  const liveLifecycleMessage = useMemo(() => {
+    const currentAccess = access;
+    const currentClass = selectedLiveClass;
+    const replayReady = Boolean(currentClass?.replayReady);
+    const replayState = String(currentAccess?.replayState || currentClass?.replayState || '').toLowerCase();
+    const recordingState = String(currentAccess?.recordingState || currentClass?.recordingState || '').toLowerCase();
+    const currentStatus = String(currentAccess?.status || currentClass?.status || '').toLowerCase();
+    const statusMessage = String(currentAccess?.statusMessage || '').trim();
+
+    if (currentStatus === 'live' && statusMessage) {
+      return statusMessage;
+    }
+    if (replayReady || replayState === 'replay_ready') {
+      return 'Replay is ready and available for protected playback.';
+    }
+    if (recordingState === 'recording') {
+      return 'The class is being recorded while it is live.';
+    }
+    if (recordingState === 'processing' || replayState === 'processing') {
+      return 'Recording is processing. Replay will appear here after upload finishes.';
+    }
+    if (currentStatus === 'ended') {
+      return 'This live class has ended. Replay will appear here once processing completes.';
+    }
+    return statusMessage || null;
+  }, [access, selectedLiveClass]);
 
   const queueOverviewRefresh = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -1182,20 +1202,49 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     overviewRefreshTimerRef.current = window.setTimeout(runRefresh, 1600 - elapsed);
   }, [onRefresh]);
 
+  const syncLiveClassFromAccess = useCallback((liveClassId: string, accessResponse: LiveClassAccess) => {
+    setLiveClasses((current) => sanitizeLiveClasses(current).map((liveClass) => {
+      if (liveClass?._id !== liveClassId) {
+        return liveClass;
+      }
+      return {
+        ...liveClass,
+        status: accessResponse.status || liveClass?.status,
+        livePlaybackType: accessResponse.accessType === 'live-stream'
+          ? 'live-stream'
+          : accessResponse.accessType === 'livekit-room'
+            ? 'livekit'
+            : liveClass.livePlaybackType,
+        livePlaybackUrl: accessResponse.streamUrl || liveClass.livePlaybackUrl || null,
+        roomName: accessResponse.liveRoomName || liveClass.roomName || null,
+        roomUrl: accessResponse.roomUrl || liveClass.roomUrl || null,
+        embedUrl: accessResponse.embedUrl || liveClass.embedUrl || null,
+      };
+    }));
+  }, []);
+
   const refreshDetailState = useCallback(async (
     liveClassId: string,
     options?: {
+      includeAccess?: boolean;
       includeChat?: boolean;
       includeSession?: boolean;
     },
   ) => {
-    setError(null);
+    if (options?.includeAccess !== false || options?.includeChat || options?.includeSession) {
+      setError(null);
+    }
     try {
-      const tasks: Array<Promise<void>> = [
-        EduService.getLiveClassAccess(liveClassId).then((accessResponse) => {
-          setAccess(accessResponse);
-        }),
-      ];
+      const tasks: Array<Promise<void>> = [];
+
+      if (options?.includeAccess !== false) {
+        tasks.push(
+          EduService.getLiveClassAccess(liveClassId).then((accessResponse) => {
+            setAccess(accessResponse);
+            syncLiveClassFromAccess(liveClassId, accessResponse);
+          }),
+        );
+      }
 
       if (options?.includeSession) {
         tasks.push(
@@ -1217,13 +1266,41 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to load this live class.');
     }
-  }, []);
+  }, [syncLiveClassFromAccess]);
 
   useEffect(() => {
-    if (!selectedLiveClass?._id || !user || view === 'list') {
+    if (!selectedLiveClass?._id || !user || view !== 'detail') {
+      return;
+    }
+
+    void refreshDetailState(selectedLiveClass._id, {
+      includeAccess: true,
+      includeChat: detailTab === 'chat',
+      includeSession: false,
+    });
+
+    const selectedStatusValue = getLiveStatusValue(selectedLiveClass);
+    if (selectedStatusValue === 'ended') {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshDetailState(selectedLiveClass._id, {
+        includeAccess: true,
+        includeChat: false,
+        includeSession: false,
+      });
+    }, 7000);
+
+    return () => window.clearInterval(interval);
+  }, [detailTab, refreshDetailState, selectedLiveClass?._id, selectedLiveClass?.status, user, view]);
+
+  useEffect(() => {
+    if (!selectedLiveClass?._id || !user || view !== 'room') {
       return;
     }
     void refreshDetailState(selectedLiveClass._id, {
+      includeAccess: false,
       includeChat: view === 'room' || detailTab === 'chat',
       includeSession: true,
     });
@@ -1280,51 +1357,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       }
       applyDesiredMediaState(reason);
     }, delay);
-  };
-
-  const launchDirectRoomWindow = (roomUrl?: string | null) => {
-    if (typeof window === 'undefined' || !roomUrl) {
-      return false;
-    }
-
-    const existingWindow = directRoomWindowRef.current;
-    if (existingWindow && !existingWindow.closed) {
-      existingWindow.location.href = roomUrl;
-      existingWindow.focus();
-      return true;
-    }
-
-    const openedWindow = window.open(roomUrl, 'edumaster-live-room');
-    if (!openedWindow) {
-      return false;
-    }
-
-    directRoomWindowRef.current = openedWindow;
-    openedWindow.focus();
-    return true;
-  };
-
-  const reserveDirectRoomWindow = () => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-
-    const existingWindow = directRoomWindowRef.current;
-    if (existingWindow && !existingWindow.closed) {
-      existingWindow.focus();
-      return true;
-    }
-
-    const openedWindow = window.open('', 'edumaster-live-room');
-    if (!openedWindow) {
-      return false;
-    }
-
-    openedWindow.document.title = 'Opening live room...';
-    openedWindow.document.body.innerHTML = '<div style="font-family: Arial, sans-serif; padding: 24px;">Opening live room...</div>';
-    directRoomWindowRef.current = openedWindow;
-    openedWindow.focus();
-    return true;
   };
 
   const disposeLiveKitAudio = () => {
@@ -1445,13 +1477,13 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   };
 
   useEffect(() => {
-    if (view !== 'room') {
+    if (view !== 'room' || !isInteractiveLiveRoom) {
       setRoomStartHelpVisible(false);
-      return;
-    }
-
-    if (directRoomMode) {
-      setRoomStartHelpVisible(true);
+      setMediaWarning((current) => (
+        current === 'The live room has not fully connected yet. Wait for the classroom to finish joining before using camera, mic, or screen share.'
+          ? null
+          : current
+      ));
       return;
     }
 
@@ -1463,14 +1495,11 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     const timer = window.setTimeout(() => {
       if (!localMediaRef.current.roomLoaded) {
         setRoomStartHelpVisible(true);
-        if ((accessRef.current?.roomUrl || '').includes('meet.jit.si')) {
-          setMediaWarning('The public Jitsi room has not fully joined yet. On meet.jit.si, the first participant may need to authenticate or open the room directly before camera, mic, and screen sharing can start.');
-        }
+        setMediaWarning('The live room has not fully connected yet. Wait for the classroom to finish joining before using camera, mic, or screen share.');
       }
     }, 8000);
-
     return () => window.clearTimeout(timer);
-  }, [view, roomLoaded, directRoomMode]);
+  }, [isInteractiveLiveRoom, view, roomLoaded]);
 
   const ensureMediaPermissions = async () => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -1505,14 +1534,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     }
   };
 
-  const disposeJitsi = () => {
-    const api = jitsiApiRef.current;
-    if (api) {
-      api.dispose?.();
-      jitsiApiRef.current = null;
-    }
-  };
-
   const requestRoomRemount = (reason: string) => {
     if (viewRef.current !== 'room' || !accessRef.current?.liveClassId) {
       return;
@@ -1535,11 +1556,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       attempt: reconnectAttemptsRef.current,
       liveClassId: accessRef.current.liveClassId,
     });
-    if (accessRef.current?.accessType === 'livekit-room') {
-      disposeLiveKit();
-    } else {
-      disposeJitsi();
-    }
+    disposeLiveKit();
     if (reconnectTimerRef.current) {
       window.clearTimeout(reconnectTimerRef.current);
     }
@@ -1620,40 +1637,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       return;
     }
 
-    const api = jitsiApiRef.current;
-    if (!api || !localMediaRef.current.roomLoaded) {
-      return;
-    }
-
-    const desired = desiredMediaStateRef.current;
-    const local = localMediaRef.current;
-    logMedia('info', 'Reconciling room media state.', { reason, desired, local });
-
-    if (desired.micMuted !== local.micMuted) {
-      if (desired.micMuted || desired.canSpeak || isAdmin) {
-        api.executeCommand?.('toggleAudio');
-      }
-    }
-
-    if (desired.videoEnabled !== local.videoEnabled) {
-      api.executeCommand?.('toggleVideo');
-    }
-
-    if (isAdmin && desired.isScreenSharing !== local.isScreenSharing) {
-      wantedScreenShareStateRef.current = desired.isScreenSharing;
-      clearShareToggleTimeout();
-      shareToggleTimerRef.current = window.setTimeout(() => {
-        if (wantedScreenShareStateRef.current !== null) {
-          setMediaWarning(
-            wantedScreenShareStateRef.current
-              ? 'Screen sharing did not start. Check browser permission for display capture and try again.'
-              : 'Screen sharing did not stop cleanly. The classroom is retrying media sync.',
-          );
-          wantedScreenShareStateRef.current = null;
-        }
-      }, 5000);
-      api.executeCommand?.('toggleShareScreen');
-    }
+    return;
   };
 
   useEffect(() => {
@@ -1675,10 +1659,33 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
           return [...current, payload.message as LiveClassChatMessage];
         });
       }
+      if (
+        payload.liveClass
+        && payload.liveClassId === selectedLiveClass._id
+        && payload.event.startsWith('live-class.')
+      ) {
+        setLiveClasses((current) => sanitizeLiveClasses(current).map((item) => (
+          item?._id === payload.liveClassId
+            ? ({
+              ...item,
+              ...payload.liveClass,
+              activePoll: payload.liveClass?.activePoll ?? item.activePoll,
+            } as LiveClass)
+            : item
+        )));
+        void refreshDetailState(selectedLiveClass._id, {
+          includeAccess: true,
+          includeSession: true,
+          includeChat: false,
+        }).catch(() => undefined);
+        queueOverviewRefresh();
+      }
       if (payload.event === 'session.updated' || payload.event === 'session.snapshot') {
-        void EduService.getLiveClassAccess(selectedLiveClass._id)
-          .then(setAccess)
-          .catch(() => undefined);
+        if (accessRef.current?.accessType === 'livekit-room') {
+          void EduService.getLiveClassAccess(selectedLiveClass._id)
+            .then(setAccess)
+            .catch(() => undefined);
+        }
         queueOverviewRefresh();
       }
       if (payload.event === 'participant.removed' && payload.participant?.userId === user._id) {
@@ -1686,7 +1693,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         clearActiveLiveRoom();
         setError('You were removed from this class by the admin.');
         setView('detail');
-        jitsiApiRef.current?.executeCommand?.('hangup');
         liveKitRoomRef.current?.disconnect(true);
       }
     };
@@ -1709,6 +1715,20 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   }, [queueOverviewRefresh, selectedLiveClass?._id, user?._id, view]);
 
   useEffect(() => {
+    if (access?.accessType === 'livekit-room' && isAdmin) {
+      if (view !== 'room' || !roomLoaded) {
+        return;
+      }
+
+      if (syncTimerRef.current) {
+        window.clearTimeout(syncTimerRef.current);
+      }
+      syncTimerRef.current = window.setTimeout(() => {
+        applyDesiredMediaState('session-update');
+      }, 200);
+      return;
+    }
+
     desiredMediaStateRef.current = {
       micMuted: selfParticipant?.micMuted ?? !isAdmin,
       videoEnabled: selfParticipant?.videoEnabled ?? Boolean(isAdmin),
@@ -1758,23 +1778,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       return;
     }
 
-    if (!jitsiApiRef.current) {
-      return;
-    }
-
-    if (participant.micMuted && !localMicMuted) {
-      jitsiApiRef.current.executeCommand?.('toggleAudio');
-      return;
-    }
-
-    if (!participant.micMuted && participant.canSpeak && localMicMuted) {
-      jitsiApiRef.current.executeCommand?.('toggleAudio');
-      return;
-    }
-
-    if (participant.role !== 'admin' && !participant.canSpeak && !participant.micMuted && !localMicMuted) {
-      jitsiApiRef.current.executeCommand?.('toggleAudio');
-    }
   }, [access?.accessType, session, user?._id, localMicMuted]);
 
   useEffect(() => {
@@ -1787,7 +1790,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     clearActiveLiveRoom();
     setMediaNotice(null);
     setMediaWarning('The live class has ended.');
-    jitsiApiRef.current?.executeCommand?.('hangup');
     liveKitRoomRef.current?.disconnect(true);
     setView('detail');
   }, [session?.status, access?.status, view]);
@@ -2151,218 +2153,18 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   }, [liveKitTracks]);
 
   useEffect(() => {
-    const jitsiContainer = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
-      ? mobileJitsiContainerRef.current
-      : desktopJitsiContainerRef.current;
-    if (view !== 'room' || !access?.roomUrl || !access.liveRoomName || !jitsiContainer || !user) {
+    if (view !== 'room') {
       return;
     }
 
-    if (directRoomMode) {
+    if (access?.accessType !== 'livekit-room' || !access.liveRoomName || !user) {
       setRoomLoaded(false);
-      setMediaNotice('Live media is running in a separate room tab so the browser can grant camera, microphone, audio, and screen-sharing access normally.');
-      setMediaWarning(null);
       return;
     }
 
-    let disposed = false;
-    const roomUrl = new URL(access.roomUrl);
-    const domain = roomUrl.hostname;
-
-    const mount = async () => {
-      setMediaNotice(reconnectAttemptsRef.current > 0 ? 'Reconnecting live media...' : 'Connecting to the live classroom...');
-      setMediaWarning(null);
-      setRoomLoaded(false);
-      await ensureMediaPermissions();
-      await loadJitsiScript(domain);
-      if (disposed || !jitsiContainer || !window.JitsiMeetExternalAPI) {
-        return;
-      }
-
-      const api = new window.JitsiMeetExternalAPI(domain, {
-        roomName: access.liveRoomName,
-        width: '100%',
-        height: '100%',
-        parentNode: jitsiContainer,
-        userInfo: {
-          displayName: user.name,
-          email: user.email,
-        },
-        onload: () => {
-          logMedia('info', 'Jitsi iframe finished loading.', { liveClassId: access.liveClassId, roomName: access.liveRoomName });
-        },
-        configOverwrite: {
-          prejoinPageEnabled: false,
-          startWithAudioMuted: desiredMediaStateRef.current.micMuted,
-          startWithVideoMuted: !desiredMediaStateRef.current.videoEnabled,
-          disableModeratorIndicator: false,
-          disableDeepLinking: true,
-        },
-        interfaceConfigOverwrite: {
-          TILE_VIEW_MAX_COLUMNS: 2,
-          DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
-          MOBILE_APP_PROMO: false,
-          SHOW_JITSI_WATERMARK: false,
-          SHOW_WATERMARK_FOR_GUESTS: false,
-          TOOLBAR_BUTTONS: [],
-        },
-      });
-
-      jitsiApiRef.current = api;
-      const iframe = api.getIFrame?.();
-      iframe?.setAttribute('allow', 'camera; microphone; autoplay; display-capture; fullscreen; clipboard-read; clipboard-write');
-      iframe?.setAttribute('allowfullscreen', 'true');
-      if (iframe) {
-        iframe.style.width = '100%';
-        iframe.style.height = '100%';
-        iframe.style.minHeight = '100%';
-        iframe.style.border = '0';
-        iframe.style.display = 'block';
-      }
-
-      const addListener = (eventName: string, handler: (...args: any[]) => void) => {
-        api.addListener?.(eventName, (...args: any[]) => {
-          if (disposed) {
-            return;
-          }
-          handler(...args);
-        });
-      };
-
-      addListener('videoConferenceJoined', () => {
-        reconnectAttemptsRef.current = 0;
-        setRoomLoaded(true);
-        setMediaNotice('Connected to the live classroom.');
-        rememberActiveLiveRoom(access.liveClassId);
-        void EduService.updateLiveMediaState(access.liveClassId, {
-          micMuted: desiredMediaStateRef.current.micMuted,
-          videoEnabled: desiredMediaStateRef.current.videoEnabled,
-          isScreenSharing: desiredMediaStateRef.current.isScreenSharing,
-        }).catch(() => undefined);
-        window.setTimeout(() => {
-          applyDesiredMediaState('conference-joined');
-          setMediaNotice(null);
-        }, 250);
-      });
-
-      addListener('audioMuteStatusChanged', ({ muted }: { muted: boolean }) => {
-        setLocalMicMuted(Boolean(muted));
-        desiredMediaStateRef.current = {
-          ...desiredMediaStateRef.current,
-          micMuted: Boolean(muted),
-        };
-        void EduService.updateLiveMediaState(access.liveClassId, { micMuted: Boolean(muted) }).catch(() => undefined);
-      });
-
-      addListener('videoMuteStatusChanged', ({ muted }: { muted: boolean }) => {
-        setLocalVideoEnabled(!muted);
-        desiredMediaStateRef.current = {
-          ...desiredMediaStateRef.current,
-          videoEnabled: !muted,
-        };
-        void EduService.updateLiveMediaState(access.liveClassId, { videoEnabled: !muted }).catch(() => undefined);
-      });
-
-      addListener('screenSharingStatusChanged', ({ on }: { on: boolean }) => {
-        clearShareToggleTimeout();
-        wantedScreenShareStateRef.current = null;
-        setLocalScreenSharing(Boolean(on));
-        if (on) {
-          cameraBeforeScreenShareRef.current = localMediaRef.current.videoEnabled;
-        }
-        desiredMediaStateRef.current = {
-          ...desiredMediaStateRef.current,
-          isScreenSharing: Boolean(on),
-        };
-        void EduService.updateLiveMediaState(access.liveClassId, { isScreenSharing: Boolean(on) }).catch(() => undefined);
-        if (!on) {
-          window.setTimeout(() => {
-            if (cameraBeforeScreenShareRef.current && desiredMediaStateRef.current.videoEnabled && !localMediaRef.current.videoEnabled) {
-              api.executeCommand?.('toggleVideo');
-            }
-            applyDesiredMediaState('screen-share-ended');
-          }, 250);
-        }
-      });
-
-      addListener('videoConferenceLeft', () => {
-        setRoomLoaded(false);
-        if (intentionalExitRef.current || viewRef.current !== 'room') {
-          setMediaNotice(null);
-          return;
-        }
-        requestRoomRemount('conference-left');
-      });
-
-      addListener('readyToClose', () => {
-        setRoomLoaded(false);
-        if (intentionalExitRef.current || viewRef.current !== 'room') {
-          setMediaNotice(null);
-          setView('detail');
-          return;
-        }
-        requestRoomRemount('ready-to-close');
-      });
-
-      addListener('peerConnectionFailure', (payload: unknown) => {
-        logMedia('warn', 'Peer connection failure detected.', payload);
-        requestRoomRemount('peer-connection-failure');
-      });
-
-      addListener('suspendDetected', () => {
-        logMedia('warn', 'Browser suspend detected for live media.');
-        requestRoomRemount('browser-suspend');
-      });
-
-      addListener('cameraError', (payload: unknown) => {
-        logMedia('warn', 'Camera initialization failed.', payload);
-        setMediaWarning('Camera access failed. Check the browser camera permission and try toggling video again.');
-      });
-
-      addListener('micError', (payload: unknown) => {
-        logMedia('warn', 'Microphone initialization failed.', payload);
-        setMediaWarning('Microphone access failed. Check the browser microphone permission and try toggling audio again.');
-      });
-
-      addListener('browserSupport', ({ supported }: { supported: boolean }) => {
-        if (!supported) {
-          setMediaWarning('This browser restricts some live media capabilities. Chrome or Edge is recommended for the most reliable session.');
-        }
-      });
-
-      addListener('errorOccurred', (payload: any) => {
-        const errorName = String(payload?.name || payload?.type || 'UNKNOWN');
-        logMedia('warn', 'Jitsi media error occurred.', payload);
-        if (errorName.toLowerCase().includes('screen') || errorName.toLowerCase().includes('display')) {
-          clearShareToggleTimeout();
-          wantedScreenShareStateRef.current = null;
-          setMediaWarning('Screen sharing was blocked or cancelled. Allow display capture and try again.');
-        }
-      });
-
-      addListener('participantJoined', (payload: unknown) => {
-        logMedia('info', 'Remote participant joined the room.', payload);
-      });
-
-      addListener('participantLeft', (payload: unknown) => {
-        logMedia('info', 'Remote participant left the room.', payload);
-      });
-    };
-
-    void mount().catch((nextError) => {
-      logMedia('error', 'Unable to start the live classroom.', nextError);
-      setMediaNotice(null);
-      setError(nextError instanceof Error ? nextError.message : 'Unable to start classroom.');
-      requestRoomRemount('mount-failed');
-    });
-
-    return () => {
-      disposed = true;
-      clearShareToggleTimeout();
-      setRoomLoaded(false);
-      disposeJitsi();
-    };
-  }, [view, access?.roomUrl, access?.liveRoomName, access?.liveClassId, isAdmin, user, roomMountNonce, directRoomMode]);
+    setMediaNotice(reconnectAttemptsRef.current > 0 ? 'Reconnecting live media...' : 'Connecting to the live classroom...');
+    setMediaWarning(null);
+  }, [view, access?.accessType, access?.liveRoomName, user]);
 
   const openLiveClass = async (liveClassId: string) => {
     setSelectedLiveClassId(liveClassId);
@@ -2638,8 +2440,23 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     setBusy(true);
     setError(null);
     try {
-      await EduService.updateLiveClass(selectedLiveClass._id, {
+      const response = await EduService.updateLiveClass(selectedLiveClass._id, {
         activePoll: buildLivePollFromForm(createForm.pollQuestion, createForm.pollOptionsText),
+      });
+      if (response.liveClass?._id) {
+        setLiveClasses((current) => sanitizeLiveClasses(current).map((liveClass) => (
+          liveClass?._id === response.liveClass._id
+            ? ({
+              ...liveClass,
+              ...response.liveClass,
+            } as LiveClass)
+            : liveClass
+        )));
+      }
+      await refreshDetailState(selectedLiveClass._id, {
+        includeAccess: true,
+        includeSession: false,
+        includeChat: false,
       });
       await onRefresh();
       setUiNotice('Live poll updated.');
@@ -2655,11 +2472,6 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       return;
     }
 
-    const shouldUseDirectRoom = isPublicJitsiRoom(access?.roomUrl);
-    const reservedDirectRoom = shouldUseDirectRoom ? reserveDirectRoomWindow() : false;
-    if (shouldUseDirectRoom && !reservedDirectRoom) {
-      setMediaWarning('The browser blocked opening the live room tab. Allow popups for this site so camera, microphone, and screen share can start.');
-    }
     setBusy(true);
     setError(null);
     try {
@@ -2705,6 +2517,8 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     if (!selectedLiveClass?._id) {
       return;
     }
+    const joinAttemptId = activeJoinAttemptRef.current + 1;
+    activeJoinAttemptRef.current = joinAttemptId;
 
     if (isReferenceMode) {
       setError(null);
@@ -2778,33 +2592,61 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       setView('room');
       return;
     }
-
-    const shouldUseDirectRoom = isPublicJitsiRoom(access?.roomUrl);
-    const reservedDirectRoom = shouldUseDirectRoom ? reserveDirectRoomWindow() : false;
-    if (shouldUseDirectRoom && !reservedDirectRoom) {
-      setMediaWarning('The browser blocked opening the live room tab. Allow popups for this site so camera, microphone, and screen share can start.');
-    }
     setBusy(true);
     setError(null);
     try {
       intentionalExitRef.current = false;
-      await EduService.joinLiveSession(selectedLiveClass._id);
+      const accessResponse = await EduService.getLiveClassAccess(selectedLiveClass._id);
+      if (activeJoinAttemptRef.current !== joinAttemptId) {
+        return;
+      }
+      setAccess(accessResponse);
       rememberActiveLiveRoom(selectedLiveClass._id);
       setMediaNotice('Connecting to the live classroom...');
       setView('room');
-      const [accessResponse, sessionResponse] = await Promise.all([
-        EduService.getLiveClassAccess(selectedLiveClass._id),
-        EduService.getLiveSessionState(selectedLiveClass._id),
-      ]);
-      setAccess(accessResponse);
-      setSession(sessionResponse.session);
-      setDirectRoomMode(isPublicJitsiRoom(accessResponse.roomUrl));
-      if (isPublicJitsiRoom(accessResponse.roomUrl)) {
-        const opened = launchDirectRoomWindow(accessResponse.roomUrl);
-        setMediaNotice('Live media opened in a separate room tab. Use that tab for camera, microphone, audio, and screen sharing, then return here for chat and admin controls.');
-        if (!opened) {
-          setMediaWarning('The live room tab was blocked by the browser. Use the Open Room button below to continue into the real meeting room.');
+
+      if (accessResponse.accessType === 'live-stream') {
+        setMediaNotice('Viewing the live stream.');
+        void EduService.getLiveSessionState(selectedLiveClass._id)
+          .then((sessionResponse) => {
+            if (activeJoinAttemptRef.current !== joinAttemptId) {
+              return;
+            }
+            setSession(sessionResponse.session || null);
+          })
+          .catch(() => undefined);
+        return;
+      }
+
+      if (accessResponse.accessType === 'jitsi-room') {
+        await EduService.joinLiveSession(selectedLiveClass._id);
+        const sessionResponse = await EduService.getLiveSessionState(selectedLiveClass._id);
+        if (activeJoinAttemptRef.current !== joinAttemptId) {
+          return;
         }
+        setSession(sessionResponse.session);
+        setMediaNotice('Teacher studio opened. Use the embedded room toolbar for camera, microphone, and screen sharing.');
+        return;
+      }
+
+      if (
+        accessResponse.accessType === 'livekit-room'
+        && (!accessResponse.liveKitUrl || !accessResponse.liveKitToken)
+      ) {
+        throw new Error(
+          accessResponse.statusMessage
+          || 'Interactive classroom is selected, but the LiveKit server is not fully configured. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET, or start this class with managed HLS for large audience playback.',
+        );
+      }
+
+      await EduService.joinLiveSession(selectedLiveClass._id);
+      const sessionResponse = await EduService.getLiveSessionState(selectedLiveClass._id);
+      if (activeJoinAttemptRef.current !== joinAttemptId) {
+        return;
+      }
+      setSession(sessionResponse.session);
+      if (accessResponse.accessType !== 'livekit-room') {
+        throw new Error('This live class is not configured for the interactive classroom yet. Recreate it with LiveKit to enable audio, video, screen sharing, chat, polls, and hand-raise.');
       }
     } catch (nextError) {
       clearActiveLiveRoom();
@@ -2826,17 +2668,14 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     if (!selectedLiveClass?._id) {
       return;
     }
+    activeJoinAttemptRef.current += 1;
     intentionalExitRef.current = true;
     clearActiveLiveRoom();
-    if (directRoomWindowRef.current && !directRoomWindowRef.current.closed) {
-      directRoomWindowRef.current.close();
-    }
     try {
       await EduService.leaveLiveSession(selectedLiveClass._id);
     } catch {
       // Ignore leave failures and still return to detail view.
     }
-    jitsiApiRef.current?.executeCommand?.('hangup');
     liveKitRoomRef.current?.disconnect(true);
     setView('detail');
   };
@@ -2853,9 +2692,44 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       setError(nextError instanceof Error ? nextError.message : 'Unable to send message.');
     }
   };
+
+  const handlePollVote = async (optionId: string) => {
+    if (!selectedLiveClass?._id || !activePoll) {
+      return;
+    }
+
+    setSelectedPollOption(optionId);
+    setError(null);
+    try {
+      const response = await EduService.submitLivePollVote(selectedLiveClass._id, optionId);
+      if (response.liveClass?._id) {
+        setLiveClasses((current) => sanitizeLiveClasses(current).map((liveClass) => (
+          liveClass?._id === response.liveClass._id
+            ? ({
+              ...liveClass,
+              ...response.liveClass,
+              activePoll: response.liveClass.activePoll ?? response.activePoll ?? liveClass.activePoll,
+            } as LiveClass)
+            : liveClass
+        )));
+      }
+      await refreshDetailState(selectedLiveClass._id, {
+        includeAccess: true,
+        includeSession: true,
+        includeChat: false,
+      });
+      setUiNotice('Poll vote submitted.');
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Unable to submit poll vote.');
+    }
+  };
+
   const countdown = selectedLiveClass?.startTime ? formatCountdown(selectedLiveClass.startTime) : null;
   const joinedCount = session?.participants.length || selectedLiveClass?.attendees || 0;
-  const selectedStatus = String(selectedLiveClass?.status || '').toLowerCase();
+  const accessStatus = access?.liveClassId === selectedLiveClass?._id
+    ? String(access.status || '').toLowerCase()
+    : '';
+  const selectedStatus = accessStatus || String(selectedLiveClass?.status || '').toLowerCase();
   const detailStatus = isReferenceMode ? liveFigmaReference.detail.status : selectedStatus;
   const notificationItems = overview.notifications.slice(0, 4);
   const filteredParticipants = useMemo(() => {
@@ -3095,13 +2969,15 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
             {activePoll?.question || 'No live poll is running right now.'}
           </p>
         </div>
-        <span className={cn('rounded-full px-3 py-1 text-[11px] font-semibold', dark ? 'bg-white/10 text-white/72' : 'bg-[#eef4ff] text-[#2f6fe4]')}>Live</span>
+        <span className={cn('rounded-full px-3 py-1 text-[11px] font-semibold', dark ? 'bg-white/10 text-white/72' : 'bg-[#eef4ff] text-[#2f6fe4]')}>
+          {activePoll?.totalVotes ? `${activePoll.totalVotes} votes` : 'Live'}
+        </span>
       </div>
       {!isReferenceMode && isAdmin && (
         <div className="mt-4 grid gap-3">
-          <input value={createForm.pollQuestion} onChange={(event) => setCreateForm((current) => ({ ...current, pollQuestion: event.target.value }))} placeholder="Poll question" className={cn('rounded-[14px] border px-4 py-3 outline-none', dark ? 'border-white/10 bg-white/4 text-white placeholder:text-white/36' : 'border-[#dbe4f4] bg-[#fbfcff] text-[#1f2d4e] placeholder:text-[#8da0bd]')} />
-          <textarea value={createForm.pollOptionsText} onChange={(event) => setCreateForm((current) => ({ ...current, pollOptionsText: event.target.value }))} placeholder="Poll options, one per line" rows={3} className={cn('rounded-[14px] border px-4 py-3 outline-none', dark ? 'border-white/10 bg-white/4 text-white placeholder:text-white/36' : 'border-[#dbe4f4] bg-[#fbfcff] text-[#1f2d4e] placeholder:text-[#8da0bd]')} />
-          <button type="button" onClick={() => void handleSaveActivePoll()} className="w-fit rounded-[12px] bg-[#2f6fe4] px-4 py-2.5 text-[13px] font-semibold text-white">
+          <input data-testid="live-poll-question-input" value={createForm.pollQuestion} onChange={(event) => setCreateForm((current) => ({ ...current, pollQuestion: event.target.value }))} placeholder="Poll question" className={cn('rounded-[14px] border px-4 py-3 outline-none', dark ? 'border-white/10 bg-white/4 text-white placeholder:text-white/36' : 'border-[#dbe4f4] bg-[#fbfcff] text-[#1f2d4e] placeholder:text-[#8da0bd]')} />
+          <textarea data-testid="live-poll-options-input" value={createForm.pollOptionsText} onChange={(event) => setCreateForm((current) => ({ ...current, pollOptionsText: event.target.value }))} placeholder="Poll options, one per line" rows={3} className={cn('rounded-[14px] border px-4 py-3 outline-none', dark ? 'border-white/10 bg-white/4 text-white placeholder:text-white/36' : 'border-[#dbe4f4] bg-[#fbfcff] text-[#1f2d4e] placeholder:text-[#8da0bd]')} />
+          <button data-testid="live-poll-save" type="button" onClick={() => void handleSaveActivePoll()} className="w-fit rounded-[12px] bg-[#2f6fe4] px-4 py-2.5 text-[13px] font-semibold text-white">
             Save Poll
           </button>
         </div>
@@ -3110,10 +2986,15 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         {activePoll ? activePoll.options.map((option) => (
           <button
             key={option.id}
+            data-testid={`live-poll-option-${option.id}`}
             type="button"
             onClick={() => {
-              setSelectedPollOption(option.id);
-              setUiNotice(`${option.text} added to the feedback queue.`);
+              if (isAdmin) {
+                setSelectedPollOption(option.id);
+                setUiNotice(`${option.text} selected.`);
+                return;
+              }
+              void handlePollVote(option.id);
             }}
             aria-pressed={selectedPollOption === option.id}
             className={cn(
@@ -3122,12 +3003,15 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                 ? dark
                   ? 'border-[#6d8dff] bg-[#17325f] text-white'
                   : 'border-[#bfd3ff] bg-[#eef4ff] text-[#1f2d4e]'
-                : dark
-                  ? 'border-white/10 bg-white/4 text-white/84'
-                  : 'border-[#dbe4f4] bg-[#fbfcff] text-[#1f2d4e]',
+                  : dark
+                    ? 'border-white/10 bg-white/4 text-white/84'
+                    : 'border-[#dbe4f4] bg-[#fbfcff] text-[#1f2d4e]',
             )}
           >
-            <span>{option.text}</span>
+            <span className="min-w-0 flex-1">{option.text}</span>
+            <span className={cn('ml-3 inline-flex min-w-[72px] justify-end text-[12px] font-semibold', dark ? 'text-white/62' : 'text-[#7283a0]')}>
+              {typeof option.votes === 'number' ? `${option.votes} vote${option.votes === 1 ? '' : 's'}` : '0 votes'}
+            </span>
             <Check className={cn('h-4 w-4', selectedPollOption === option.id ? (dark ? 'text-[#b9ccff]' : 'text-[#2f6fe4]') : (dark ? 'text-white/48' : 'text-[#9cb0cc]'))} />
           </button>
         )) : (
@@ -3376,6 +3260,14 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       ],
     }
     : (selectedLiveClass?.activePoll || null);
+  useEffect(() => {
+    if (!user?._id) {
+      setSelectedPollOption(null);
+      return;
+    }
+    const pollSelection = activePoll?.responses?.[user._id] || null;
+    setSelectedPollOption(pollSelection);
+  }, [activePoll, user?._id]);
   const featuredTeacherProfile = normalizeLiveTeacherProfile(featuredLiveClass);
 
   const detailDisplay = isReferenceMode ? {
@@ -3441,8 +3333,8 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
   } : (
     featuredLiveClass ? {
       liveClassId: featuredLiveClass._id,
-      status: String(featuredLiveClass.status || 'scheduled').toLowerCase(),
-      badge: String(featuredLiveClass.status).toLowerCase() === 'live' ? 'LIVE NOW' : String(featuredLiveClass.status || 'scheduled'),
+      status: getLiveStatusValue(featuredLiveClass),
+      badge: getLiveStatusValue(featuredLiveClass) === 'live' ? 'LIVE NOW' : getLiveStatusLabel(featuredLiveClass),
       title: getDisplayLiveClassTitle(featuredLiveClass),
       subtitle: getLiveClassTopicLine(featuredLiveClass),
       meta: getLiveMetaLine(featuredLiveClass),
@@ -3452,22 +3344,21 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       audience: Math.max(featuredLiveClass.attendees || 0, joinedCount) > 0
         ? `${formatCompactCount(Math.max(featuredLiveClass.attendees || 0, joinedCount))} watching`
         : 'Open for students',
-      buttonLabel: String(featuredLiveClass.status).toLowerCase() === 'live' ? 'Join Live Class' : 'View Details',
+      buttonLabel: getLiveStatusValue(featuredLiveClass) === 'live' ? 'Join Live Class' : 'View Details',
     } : null
   );
   const mobileTodayCards = isReferenceMode
     ? liveFigmaReference.today.map((card, index) => ({ ...card, liveClassId: referenceClassBindings.todayIds[index] || referenceClassBindings.featuredId }))
     : orderedLiveClasses.map((liveClass, index) => ({
       liveClassId: liveClass._id,
-      time: formatTime(liveClass.startTime).split(' ')[0],
-      meridiem: formatTime(liveClass.startTime).split(' ')[1] || '',
+      ...splitTimeLabel(liveClass.startTime),
       topic: getPrimaryTopic(liveClass) || 'Live Session',
       title: getDisplayLiveClassTitle(liveClass),
       meta: [getLiveLevel(liveClass), getLiveLanguage(liveClass)].filter(Boolean).join(' • ') || 'Upcoming Session',
       teacher: normalizeLiveTeacherProfile(liveClass).name || liveClass.instructor || 'Live Faculty',
       teacherAvatarUrl: normalizeLiveTeacherProfile(liveClass).avatarUrl || null,
-      status: String(liveClass.status || 'scheduled').toLowerCase(),
-      statusLabel: String(liveClass.status || 'scheduled').toUpperCase(),
+      status: getLiveStatusValue(liveClass),
+      statusLabel: getLiveStatusLabel(liveClass).toUpperCase(),
       attendees: Math.max(liveClass.attendees || 0, 0) > 0 ? `${formatCompactCount(Math.max(liveClass.attendees || 0, 0))} going` : 'Open',
       colorIndex: index,
     }));
@@ -3475,8 +3366,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
     ? { ...liveFigmaReference.tomorrow, liveClassId: referenceClassBindings.tomorrowId }
     : ((orderedLiveClasses[1] || orderedLiveClasses[0]) ? {
       liveClassId: (orderedLiveClasses[1] || orderedLiveClasses[0])._id,
-      time: formatTime((orderedLiveClasses[1] || orderedLiveClasses[0]).startTime).split(' ')[0],
-      meridiem: formatTime((orderedLiveClasses[1] || orderedLiveClasses[0]).startTime).split(' ')[1] || '',
+      ...splitTimeLabel((orderedLiveClasses[1] || orderedLiveClasses[0]).startTime),
       topic: getPrimaryTopic(orderedLiveClasses[1] || orderedLiveClasses[0]) || 'Biology',
       title: getDisplayLiveClassTitle(orderedLiveClasses[1] || orderedLiveClasses[0]),
       meta: [getLiveLevel(orderedLiveClasses[1] || orderedLiveClasses[0]), getLiveLanguage(orderedLiveClasses[1] || orderedLiveClasses[0])].filter(Boolean).join(' • ') || 'Upcoming Session',
@@ -3592,7 +3482,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
 
   const toggleAudio = () => {
     if (access?.accessType === 'livekit-room') {
-      if (!roomLoaded || !isLiveKitRoomConnected(liveKitRoomRef.current)) {
+      if (!roomLoaded) {
         setMediaWarning('The live room is still connecting. Wait for the room to finish joining before toggling audio.');
         return;
       }
@@ -3607,8 +3497,10 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       };
       setLocalMicMuted(nextMuted);
       setMediaWarning(null);
+      void EduService.updateLiveMediaState(selectedLiveClass._id, { micMuted: nextMuted }).catch((nextError) => {
+        logMedia('warn', 'Unable to sync LiveKit microphone state to the live session.', nextError);
+      });
       void liveKitRoomRef.current.localParticipant.setMicrophoneEnabled(!nextMuted)
-        .then(() => EduService.updateLiveMediaState(selectedLiveClass._id, { micMuted: nextMuted }))
         .catch((nextError) => {
           logMedia('warn', 'Unable to toggle LiveKit microphone.', nextError);
           setLocalMicMuted(!nextMuted);
@@ -3616,29 +3508,19 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
             ...desiredMediaStateRef.current,
             micMuted: !nextMuted,
           };
+          void EduService.updateLiveMediaState(selectedLiveClass._id, { micMuted: !nextMuted }).catch((syncError) => {
+            logMedia('warn', 'Unable to restore LiveKit microphone state after a toggle failure.', syncError);
+          });
           setMediaWarning('Microphone permission was blocked or the microphone is unavailable.');
         });
       return;
     }
-    if (directRoomMode) {
-      setMediaWarning('This class is using the direct live room tab for real media. Use the microphone control inside that room tab.');
-      return;
-    }
-    if (!roomLoaded) {
-      setMediaWarning('The live room is still connecting. Wait for the room to finish joining before toggling audio.');
-      return;
-    }
-    if (!selfParticipant?.canSpeak && !isAdmin) {
-      setError('Raise your hand and wait for admin approval before speaking.');
-      return;
-    }
-    setMediaWarning(null);
-    jitsiApiRef.current?.executeCommand?.('toggleAudio');
+    setMediaWarning('Interactive audio is only available in LiveKit classrooms. Recreate this live class with LiveKit to enable microphone control.');
   };
 
   const toggleVideo = () => {
     if (access?.accessType === 'livekit-room') {
-      if (!roomLoaded || !isLiveKitRoomConnected(liveKitRoomRef.current)) {
+      if (!roomLoaded) {
         setMediaWarning('The live room is still connecting. Wait for the room to finish joining before toggling video.');
         return;
       }
@@ -3649,8 +3531,10 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
       };
       setLocalVideoEnabled(nextEnabled);
       setMediaWarning(null);
+      void EduService.updateLiveMediaState(selectedLiveClass._id, { videoEnabled: nextEnabled }).catch((nextError) => {
+        logMedia('warn', 'Unable to sync LiveKit camera state to the live session.', nextError);
+      });
       void liveKitRoomRef.current.localParticipant.setCameraEnabled(nextEnabled)
-        .then(() => EduService.updateLiveMediaState(selectedLiveClass._id, { videoEnabled: nextEnabled }))
         .catch((nextError) => {
           logMedia('warn', 'Unable to toggle LiveKit camera.', nextError);
           setLocalVideoEnabled(!nextEnabled);
@@ -3658,20 +3542,14 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
             ...desiredMediaStateRef.current,
             videoEnabled: !nextEnabled,
           };
+          void EduService.updateLiveMediaState(selectedLiveClass._id, { videoEnabled: !nextEnabled }).catch((syncError) => {
+            logMedia('warn', 'Unable to restore LiveKit camera state after a toggle failure.', syncError);
+          });
           setMediaWarning('Camera permission was blocked or the camera is unavailable.');
         });
       return;
     }
-    if (directRoomMode) {
-      setMediaWarning('This class is using the direct live room tab for real media. Use the camera control inside that room tab.');
-      return;
-    }
-    if (!roomLoaded) {
-      setMediaWarning('The live room is still connecting. Wait for the room to finish joining before toggling video.');
-      return;
-    }
-    setMediaWarning(null);
-    jitsiApiRef.current?.executeCommand?.('toggleVideo');
+    setMediaWarning('Interactive video is only available in LiveKit classrooms. Recreate this live class with LiveKit to enable camera control.');
   };
 
   const toggleScreenShare = () => {
@@ -3708,38 +3586,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         });
       return;
     }
-    if (directRoomMode) {
-      setMediaWarning('This class is using the direct live room tab for real media. Start screen sharing from that room tab.');
-      return;
-    }
-    if (!roomLoaded) {
-      setMediaWarning('The live room has not joined yet, so screen sharing cannot start. Launch the room directly if the public Jitsi room is asking for authentication.');
-      return;
-    }
-    if (!isAdmin) {
-      return;
-    }
-    if (!localMediaRef.current.isScreenSharing && !supportsDisplayCapture()) {
-      setMediaWarning('This mobile browser or WebView does not expose screen sharing. Enable display capture in the native app WebView or use Chrome/Edge.');
-      return;
-    }
-    wantedScreenShareStateRef.current = !localMediaRef.current.isScreenSharing;
-    if (!localMediaRef.current.isScreenSharing) {
-      cameraBeforeScreenShareRef.current = localMediaRef.current.videoEnabled;
-    }
-    clearShareToggleTimeout();
-    shareToggleTimerRef.current = window.setTimeout(() => {
-      if (wantedScreenShareStateRef.current !== null) {
-        setMediaWarning(
-          wantedScreenShareStateRef.current
-            ? 'Screen sharing was not granted or is blocked by the browser.'
-            : 'The room could not stop screen sharing cleanly. Media sync will retry automatically.',
-        );
-        wantedScreenShareStateRef.current = null;
-      }
-    }, 5000);
-    setMediaWarning(null);
-    jitsiApiRef.current?.executeCommand?.('toggleShareScreen');
+    setMediaWarning('Screen sharing is only available in LiveKit classrooms. Recreate this live class with LiveKit to enable screen sharing.');
   };
 
   const createStartDate = formatDateInputValue(createForm.startTime);
@@ -3768,10 +3615,20 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         return;
       }
 
-      await (mobileRoomStageRef.current || document.documentElement).requestFullscreen();
+      await (desktopRoomStageRef.current || mobileRoomStageRef.current || document.documentElement).requestFullscreen();
     } catch (fullscreenError) {
       setUiNotice('Fullscreen is not available on this device. Rotate your phone for a larger live class view.');
     }
+  };
+
+  const teacherStudioUrl = access?.embedUrl || access?.roomUrl || null;
+  const openTeacherStudio = () => {
+    const studioUrl = teacherStudioUrl;
+    if (!studioUrl || typeof window === 'undefined') {
+      return;
+    }
+
+    window.open(studioUrl, '_blank', 'noopener,noreferrer');
   };
 
   const updateCreateFormDateTime = (patch: { date?: string; time?: string; endTime?: string }) => {
@@ -4609,8 +4466,8 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
               </div>
               {featuredLiveClass && (
                 <button type="button" onClick={() => void openLiveClass(featuredLiveClass._id)} className="mt-4 w-full rounded-[16px] bg-[linear-gradient(135deg,#f9fbff_0%,#eef3ff_100%)] p-3.5 text-left">
-                  <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', getStatusTone(featuredLiveClass.status || 'scheduled'))}>
-                    {featuredLiveClass.status || 'scheduled'}
+                  <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', getStatusTone(getLiveStatusLabel(featuredLiveClass)))}>
+                    {getLiveStatusLabel(featuredLiveClass)}
                   </span>
                   <h4 className="mt-2.5 text-[1.05rem] font-semibold tracking-[-0.02em] text-[#122444]">{getDisplayLiveClassTitle(featuredLiveClass)}</h4>
                   <p className="mt-1 text-[13px] text-[#5c7295]">{getLiveClassTopicLine(featuredLiveClass)}</p>
@@ -4644,7 +4501,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         </div>
       )}
 
-      {view === 'detail' && selectedLiveClass && (
+      {view === 'detail' && hasSelectedLiveClass && (
         <div
           data-testid="live-class-detail-page"
           data-live-class-id={selectedLiveClass._id}
@@ -4669,7 +4526,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
             <div data-testid="live-class-detail-hero" className={cn('overflow-hidden rounded-[18px] border border-[#1c2f53] bg-[linear-gradient(135deg,#0d1530_0%,#13254a_52%,#0d1630_100%)] px-[13px] py-[13px] text-white shadow-[0_14px_30px_rgba(9,16,32,0.16)]', isReferenceMode && 'rounded-[18px] shadow-[0_14px_28px_rgba(9,16,32,0.15)]')}>
               <div className={cn('grid gap-3', isReferenceMode ? 'grid-cols-[minmax(0,1fr)_132px]' : 'grid-cols-[minmax(0,1fr)_128px]')}>
                 <div className="min-w-0">
-                  <span className={cn('inline-flex items-center rounded-[11px] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', detailStatus === 'live' ? 'bg-[#fff0f0] text-[#ff4b4b]' : getStatusTone(selectedLiveClass.status || 'scheduled'))}>
+                  <span className={cn('inline-flex items-center rounded-[11px] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', detailStatus === 'live' ? 'bg-[#fff0f0] text-[#ff4b4b]' : getStatusTone(getLiveStatusLabel(selectedLiveClass)))}>
                     {detailDisplay.badge}
                   </span>
                   <h2
@@ -4741,6 +4598,11 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   Test Audio/Video
                 </button>
               </div>
+              {liveLifecycleMessage && (
+                <div data-testid="live-status-message" className="mt-3 rounded-[12px] border border-white/12 bg-white/8 px-3 py-2.5 text-[11px] leading-5 text-white/82 backdrop-blur">
+                  {liveLifecycleMessage}
+                </div>
+              )}
 
             </div>
 
@@ -4947,7 +4809,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
                   <div className="min-w-0">
-                    <span className={cn('inline-flex items-center rounded-[10px] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', detailStatus === 'live' ? 'bg-[#fff0f0] text-[#ff4b4b]' : getStatusTone(selectedLiveClass.status || 'scheduled'))}>
+                    <span className={cn('inline-flex items-center rounded-[10px] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', detailStatus === 'live' ? 'bg-[#fff0f0] text-[#ff4b4b]' : getStatusTone(getLiveStatusLabel(selectedLiveClass)))}>
                       {detailDisplay.badge}
                     </span>
                     <h2 data-testid="live-selected-title" className="mt-3 max-w-[480px] font-serif text-[1.9rem] font-semibold leading-[1.02] tracking-[-0.05em] md:text-[2.1rem]">
@@ -4998,6 +4860,11 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         Test Audio/Video
                       </button>
                     </div>
+                    {liveLifecycleMessage && (
+                      <div data-testid="live-status-message" className="mt-3 rounded-[16px] border border-white/12 bg-white/8 px-4 py-3 text-[13px] leading-6 text-white/82 backdrop-blur">
+                        {liveLifecycleMessage}
+                      </div>
+                    )}
                   </div>
 
                   <div className="relative">
@@ -5041,7 +4908,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                     ['Polls', 'polls'],
                     ['Resources', 'resources'],
                   ].map(([tab, key]) => (
-                    <button key={tab} type="button" onClick={() => selectDetailTab(key as LiveDetailTabKey)} className={cn('relative whitespace-nowrap pb-1', detailTab === key && 'text-[#1765f5] after:absolute after:inset-x-0 after:-bottom-3 after:h-[2px] after:rounded-full after:bg-[#1765f5]')}>
+                    <button key={tab} type="button" data-testid={`live-detail-tab-${key}`} onClick={() => selectDetailTab(key as LiveDetailTabKey)} className={cn('relative whitespace-nowrap pb-1', detailTab === key && 'text-[#1765f5] after:absolute after:inset-x-0 after:-bottom-3 after:h-[2px] after:rounded-full after:bg-[#1765f5]')}>
                       {tab}
                     </button>
                   ))}
@@ -5166,10 +5033,13 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
         </div>
       )}
 
-      {view === 'room' && selectedLiveClass && access && (
+      {view === 'room' && hasSelectedLiveClass && access && (
         <div
           data-testid="live-runtime-page"
-          data-self-mic-muted={selfParticipant?.micMuted ? 'true' : 'false'}
+          data-self-mic-muted={localMicMuted ? 'true' : 'false'}
+          data-self-video-enabled={localVideoEnabled ? 'true' : 'false'}
+          data-self-mic-server-muted={selfParticipant?.micMuted ? 'true' : 'false'}
+          data-self-video-server-enabled={selfParticipant?.videoEnabled ? 'true' : 'false'}
           data-self-can-speak={selfParticipant?.canSpeak ? 'true' : 'false'}
           data-self-hand-status={selfParticipant?.handStatus || 'idle'}
           data-screen-sharing={localScreenSharing ? 'true' : 'false'}
@@ -5410,9 +5280,43 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
 
                 <div className="overflow-hidden rounded-[22px] border border-white/8 bg-[#101a2b] shadow-[0_14px_30px_rgba(0,0,0,0.22)]">
                   <div>
-                    {access.accessType === 'livekit-room' ? (
+                    {access.accessType === 'jitsi-room' ? (
+                      <div data-testid="live-jitsi-container" className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-4 bg-[#0d1422] px-6 text-center text-white/82">
+                        <div className="rounded-full bg-[#1a2740] p-4 text-[#7ea7ff]">
+                          <MonitorUp className="h-9 w-9" />
+                        </div>
+                        <div className="max-w-[520px]">
+                          <p className="text-[18px] font-semibold text-white">Teacher studio is ready in a separate tab</p>
+                          <p className="mt-2 text-[13px] leading-6 text-white/58">
+                            Open the studio to use camera, microphone, and screen sharing with full browser media support.
+                          </p>
+                        </div>
+                        {teacherStudioUrl ? (
+                          <a
+                            data-testid="live-open-teacher-studio"
+                            href={teacherStudioUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-[14px] bg-[#215df5] px-4 py-3 text-[13px] font-semibold text-white shadow-[0_12px_24px_rgba(33,93,245,0.28)]"
+                          >
+                            Open teacher studio
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="cursor-not-allowed rounded-[14px] bg-white/10 px-4 py-3 text-[13px] font-semibold text-white/40"
+                          >
+                            Teacher studio unavailable
+                          </button>
+                        )}
+                        <p className="text-[12px] text-white/48">
+                          The classroom remains on this page while the studio opens in a new tab.
+                        </p>
+                      </div>
+                    ) : access.accessType === 'livekit-room' ? (
                       <div
-                        data-testid="live-jitsi-container"
+                        data-testid="live-room-container"
                         data-room-loaded={roomLoaded ? 'true' : 'false'}
                         data-room-name={access.liveRoomName || ''}
                         className="relative aspect-[16/9] w-full overflow-hidden bg-[#0d1422]"
@@ -5431,20 +5335,41 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         </div>
                         <div ref={mobileLiveKitAudioSinkRef} className="hidden" aria-hidden="true" />
                       </div>
-                    ) : directRoomMode ? (
-                      <div data-testid="live-jitsi-container" data-room-loaded="false" data-room-name={access.liveRoomName || ''} className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-4 bg-white px-5 text-center">
-                        <MonitorUp className="h-10 w-10 text-[#5f87ff]" />
-                        <div>
-                          <p className="text-[15px] font-semibold text-[#1f2d4e]">Open the live room tab to use camera, microphone, audio, and screen sharing.</p>
-                          <p className="mt-2 text-[12px] leading-5 text-[#6e80a1]">Public Jitsi rooms need to run in their own browser tab in this setup.</p>
+                    ) : access.accessType === 'live-stream' ? (
+                      <div className="space-y-4">
+                        <div data-testid="live-stream-container" className="relative aspect-[16/9] w-full overflow-hidden bg-[#0d1422]">
+                          {access.streamUrl ? (
+                            <ResilientHlsVideo
+                              src={new URL(access.streamUrl, window.location.origin).toString()}
+                              title={detailDisplay.title}
+                              watermarkText={access.watermarkText || null}
+                              className="h-full w-full"
+                              autoPlay
+                            />
+                          ) : (
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-5 text-center text-white/72">
+                              <MonitorUp className="h-9 w-9 text-[#7ea7ff]" />
+                              <div>
+                                <p className="text-[15px] font-semibold text-white">Preparing live playback...</p>
+                                <p className="mt-2 text-[12px] leading-5 text-white/58">The stream will appear here once the teacher starts broadcasting.</p>
+                              </div>
+                            </div>
+                          )}
                         </div>
+                        {selectedLiveClass?.activePoll && renderDetailPolls(true)}
                       </div>
                     ) : (
-                      <div ref={mobileJitsiContainerRef} data-testid="live-jitsi-container" data-room-loaded={roomLoaded ? 'true' : 'false'} data-room-name={access.liveRoomName || ''} className="aspect-[16/9] w-full bg-white" />
+                      <div className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-4 bg-white px-5 text-center">
+                        <MonitorUp className="h-10 w-10 text-[#5f87ff]" />
+                        <div>
+                          <p className="text-[15px] font-semibold text-[#1f2d4e]">This live class is not connected to an interactive LiveKit room yet.</p>
+                          <p className="mt-2 text-[12px] leading-5 text-[#6e80a1]">Recreate or start the class with LiveKit to enable audio, microphone, video, screen sharing, polls, hand raise, and live chat.</p>
+                        </div>
+                      </div>
                     )}
-                    {(mediaNotice || mediaWarning) && (
+                    {(mediaNotice || mediaWarning || broadcastModeNotice) && (
                       <div className={cn('border-t px-4 py-3 text-[12px]', mediaWarning ? 'border-[#5b2b2b] bg-[#251317] text-[#ffc6ce]' : 'border-white/8 bg-[#0f1728] text-white/72')}>
-                        {mediaWarning || mediaNotice}
+                        {mediaWarning || mediaNotice || broadcastModeNotice}
                       </div>
                     )}
                   </div>
@@ -5542,36 +5467,45 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                   </div>
                 </div>
 
-                <div className="grid grid-cols-5 items-end gap-2 px-1 pt-1">
-                  <button data-testid="live-toggle-audio" type="button" disabled={!roomLoaded || directRoomMode} onClick={toggleAudio} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded || directRoomMode ? 'text-white/34' : 'text-white')}>
-                    <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#143c2b] text-[#91f1b9]')}>{localMicMuted ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}</span>
-                    <span className="text-[11px] font-semibold">{localMicMuted ? 'Unmute' : 'Mute'}</span>
-                  </button>
-                  <button data-testid="live-toggle-video" type="button" disabled={!roomLoaded || directRoomMode} onClick={toggleVideo} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded || directRoomMode ? 'text-white/34' : 'text-white')}>
-                    <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#3f1c2c] text-[#ffb8cb]')}>{localVideoEnabled ? <VideoOff className="h-4.5 w-4.5" /> : <Video className="h-4.5 w-4.5" />}</span>
-                    <span className="text-[11px] font-semibold">{localVideoEnabled ? 'Stop Video' : 'Start Video'}</span>
-                  </button>
-                  <button type="button" data-testid="live-raise-hand" disabled={isAdmin} onClick={() => void EduService.updateLiveRaisedHand(selectedLiveClass._id, !Boolean(selfParticipant?.handRaised))} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', isAdmin ? 'text-white/34' : 'text-white')}>
-                    <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', isAdmin ? 'bg-white/6' : 'bg-white/10')}><Hand className="h-4.5 w-4.5" /></span>
-                    <span className="text-[11px] font-semibold">{selfParticipant?.handRaised ? 'Lower Hand' : 'Raise Hand'}</span>
-                  </button>
-                  {isAdmin ? (
-                    <button data-testid="live-toggle-screen-share" type="button" disabled={!roomLoaded || directRoomMode} onClick={toggleScreenShare} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded || directRoomMode ? 'text-white/34' : 'text-white')}>
-                      <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6' : 'bg-[#215df5] text-white')}>
-                        <MonitorUp className="h-4.5 w-4.5" />
-                      </span>
-                      <span className="text-[11px] font-semibold">{localScreenSharing ? 'Stop Share' : 'Share'}</span>
-                    </button>
+                <div className={cn('px-1 pt-1', showInteractiveRoomControls ? 'grid grid-cols-5 items-end gap-2' : 'flex justify-center')}>
+                  {showInteractiveRoomControls ? (
+                    <>
+                      <button data-testid="live-toggle-audio" type="button" disabled={!roomLoaded} onClick={toggleAudio} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded ? 'text-white/34' : 'text-white')}>
+                        <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded ? 'bg-white/6' : 'bg-[#143c2b] text-[#91f1b9]')}>{localMicMuted ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}</span>
+                        <span className="text-[11px] font-semibold">{localMicMuted ? 'Unmute' : 'Mute'}</span>
+                      </button>
+                      <button data-testid="live-toggle-video" type="button" disabled={!roomLoaded} onClick={toggleVideo} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded ? 'text-white/34' : 'text-white')}>
+                        <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded ? 'bg-white/6' : 'bg-[#3f1c2c] text-[#ffb8cb]')}>{localVideoEnabled ? <VideoOff className="h-4.5 w-4.5" /> : <Video className="h-4.5 w-4.5" />}</span>
+                        <span className="text-[11px] font-semibold">{localVideoEnabled ? 'Stop Video' : 'Start Video'}</span>
+                      </button>
+                      <button type="button" data-testid="live-raise-hand" disabled={!showRaiseHandControl} onClick={() => void EduService.updateLiveRaisedHand(selectedLiveClass._id, !Boolean(selfParticipant?.handRaised))} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', showRaiseHandControl ? 'text-white' : 'text-white/34')}>
+                        <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', showRaiseHandControl ? 'bg-white/10' : 'bg-white/6')}><Hand className="h-4.5 w-4.5" /></span>
+                        <span className="text-[11px] font-semibold">{selfParticipant?.handRaised ? 'Lower Hand' : 'Raise Hand'}</span>
+                      </button>
+                      {showPresenterScreenShareControl ? (
+                        <button data-testid="live-toggle-screen-share" type="button" disabled={!roomLoaded} onClick={toggleScreenShare} className={cn('flex min-w-0 flex-col items-center justify-center gap-2', !roomLoaded ? 'text-white/34' : 'text-white')}>
+                          <span className={cn('flex h-[56px] w-[56px] items-center justify-center rounded-full shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded ? 'bg-white/6' : 'bg-[#215df5] text-white')}>
+                            <MonitorUp className="h-4.5 w-4.5" />
+                          </span>
+                          <span className="text-[11px] font-semibold">{localScreenSharing ? 'Stop Share' : 'Share'}</span>
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => setMobileRoomMenuOpen((current) => !current)} className="flex min-w-0 flex-col items-center justify-center gap-2 text-white">
+                          <span className="flex h-[56px] w-[56px] items-center justify-center rounded-full bg-white/10 shadow-[0_14px_22px_rgba(0,0,0,0.18)]"><MoreHorizontal className="h-4.5 w-4.5" /></span>
+                          <span className="text-[11px] font-semibold">More</span>
+                        </button>
+                      )}
+                      <button data-testid="live-leave-class" type="button" onClick={() => void handleLeaveRoom()} className="flex min-w-0 flex-col items-center justify-center gap-2">
+                        <span className="flex h-[66px] w-[66px] items-center justify-center rounded-[20px] bg-[#ea4335] text-white shadow-[0_14px_24px_rgba(234,67,53,0.22)]"><PhoneOff className="h-5 w-5" /></span>
+                        <span className="text-[11px] font-semibold text-white">Leave</span>
+                      </button>
+                    </>
                   ) : (
-                    <button type="button" onClick={() => setMobileRoomMenuOpen((current) => !current)} className="flex min-w-0 flex-col items-center justify-center gap-2 text-white">
-                      <span className="flex h-[56px] w-[56px] items-center justify-center rounded-full bg-white/10 shadow-[0_14px_22px_rgba(0,0,0,0.18)]"><MoreHorizontal className="h-4.5 w-4.5" /></span>
-                      <span className="text-[11px] font-semibold">More</span>
+                    <button data-testid="live-leave-class" type="button" onClick={() => void handleLeaveRoom()} className="flex min-w-0 flex-col items-center justify-center gap-2">
+                      <span className="flex h-[66px] w-[66px] items-center justify-center rounded-[20px] bg-[#ea4335] text-white shadow-[0_14px_24px_rgba(234,67,53,0.22)]"><PhoneOff className="h-5 w-5" /></span>
+                      <span className="text-[11px] font-semibold text-white">Leave stream</span>
                     </button>
                   )}
-                  <button data-testid="live-leave-class" type="button" onClick={() => void handleLeaveRoom()} className="flex min-w-0 flex-col items-center justify-center gap-2">
-                    <span className="flex h-[66px] w-[66px] items-center justify-center rounded-[20px] bg-[#ea4335] text-white shadow-[0_14px_24px_rgba(234,67,53,0.22)]"><PhoneOff className="h-5 w-5" /></span>
-                    <span className="text-[11px] font-semibold text-white">Leave</span>
-                  </button>
                 </div>
               </div>
             )}
@@ -5611,8 +5545,42 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.56fr)_286px]">
               <div className="space-y-4">
                 <div className="overflow-hidden rounded-[20px] border border-white/8 bg-[#101a2b] shadow-[0_14px_30px_rgba(0,0,0,0.22)]">
-                  {access.accessType === 'livekit-room' ? (
-                    <div data-testid="live-jitsi-container" data-room-loaded={roomLoaded ? 'true' : 'false'} data-room-name={access.liveRoomName || ''} className="relative h-[430px] w-full overflow-hidden bg-[#0d1422]">
+                    {access.accessType === 'jitsi-room' ? (
+                      <div ref={desktopRoomStageRef} data-testid="live-jitsi-container" className="flex h-[430px] w-full flex-col items-center justify-center gap-5 bg-[#0d1422] px-6 text-center text-white/82">
+                        <div className="rounded-full bg-[#1a2740] p-5 text-[#7ea7ff]">
+                          <MonitorUp className="h-12 w-12" />
+                        </div>
+                        <div className="max-w-[560px]">
+                          <p className="text-[18px] font-semibold text-white">Teacher studio is ready in a separate tab</p>
+                          <p className="mt-2 text-[13px] leading-6 text-white/58">
+                            Open the studio to use camera, microphone, and screen sharing with full browser media support.
+                          </p>
+                        </div>
+                        {teacherStudioUrl ? (
+                          <a
+                            data-testid="live-open-teacher-studio"
+                            href={teacherStudioUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-[14px] bg-[#215df5] px-4 py-3 text-[13px] font-semibold text-white shadow-[0_12px_24px_rgba(33,93,245,0.28)]"
+                          >
+                            Open teacher studio
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="cursor-not-allowed rounded-[14px] bg-white/10 px-4 py-3 text-[13px] font-semibold text-white/40"
+                          >
+                            Teacher studio unavailable
+                          </button>
+                        )}
+                        <p className="text-[12px] text-white/48">
+                          The classroom stays here while the studio opens in a new tab.
+                        </p>
+                      </div>
+                    ) : access.accessType === 'livekit-room' ? (
+                    <div ref={desktopRoomStageRef} data-testid="live-room-container" data-room-loaded={roomLoaded ? 'true' : 'false'} data-room-name={access.liveRoomName || ''} className="relative h-[430px] w-full overflow-hidden bg-[#0d1422]">
                       <div className="absolute inset-0">
                         <video ref={desktopLiveKitStageRef} className={cn('h-full w-full object-cover', !liveKitActiveStageTrack && 'hidden')} playsInline autoPlay />
                         {!liveKitActiveStageTrack && (
@@ -5625,6 +5593,15 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                           </div>
                         )}
                       </div>
+                      <button
+                        type="button"
+                        data-testid="live-room-maximize"
+                        onClick={() => void toggleLiveRoomFullscreen()}
+                        className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-[14px] bg-black/55 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)]"
+                        aria-label="Maximize live class"
+                      >
+                        <Maximize2 className="h-4.5 w-4.5" />
+                      </button>
                       {liveKitActiveStageTrack && (
                         <div className="pointer-events-none absolute left-4 top-4 rounded-[14px] bg-black/48 px-3.5 py-2.5 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(0,0,0,0.26)]">
                           {liveKitActiveStageTrack.participantName}
@@ -5638,21 +5615,51 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                         <video ref={desktopLiveKitLocalPreviewRef} className={cn('h-24 w-36 object-cover', !liveKitLocalPreviewTrack || liveKitLocalPreviewTrack.trackSid === liveKitActiveStageTrack?.trackSid ? 'hidden' : '')} playsInline autoPlay muted />
                       </div>
                       <div ref={desktopLiveKitAudioSinkRef} className="hidden" aria-hidden="true" />
-                    </div>
-                  ) : directRoomMode ? (
-                    <div data-testid="live-jitsi-container" data-room-loaded="false" data-room-name={access.liveRoomName || ''} className="flex h-[430px] w-full flex-col items-center justify-center gap-4 bg-[#0d1422] px-6 text-center">
+                      </div>
+                    ) : access.accessType === 'live-stream' ? (
+                      <div className="space-y-4">
+                        <div data-testid="live-stream-container" className="relative h-[430px] w-full overflow-hidden bg-[#0d1422]">
+                          {access.streamUrl ? (
+                            <ResilientHlsVideo
+                              src={new URL(access.streamUrl, window.location.origin).toString()}
+                              title={detailDisplay.title}
+                              watermarkText={access.watermarkText || null}
+                              className="h-full w-full"
+                              autoPlay
+                            />
+                          ) : (
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-[#0d1422] px-6 text-center text-white/72">
+                              <MonitorUp className="h-12 w-12 text-[#7ea7ff]" />
+                              <div>
+                                <p className="text-[18px] font-semibold text-white">Preparing live playback...</p>
+                                <p className="mt-2 text-[13px] text-white/58">The stream will appear here once the teacher starts broadcasting.</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        {selectedLiveClass?.activePoll && renderDetailPolls(true)}
+                      </div>
+                    ) : (
+                    <div ref={desktopRoomStageRef} className="relative flex h-[430px] w-full flex-col items-center justify-center gap-4 bg-[#0d1422] px-6 text-center">
+                      <button
+                        type="button"
+                        data-testid="live-room-maximize"
+                        onClick={() => void toggleLiveRoomFullscreen()}
+                        className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-[14px] bg-black/55 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)]"
+                        aria-label="Maximize live class"
+                      >
+                        <Maximize2 className="h-4.5 w-4.5" />
+                      </button>
                       <MonitorUp className="h-12 w-12 text-[#7ea7ff]" />
                       <div>
-                        <p className="text-[18px] font-semibold text-white">Open the live room tab to use camera, microphone, audio, and screen sharing.</p>
-                        <p className="mt-2 text-[13px] text-white/62">Public Jitsi rooms need to run in their own browser tab in this setup. This page stays connected for chat, participants, and admin actions.</p>
+                        <p className="text-[18px] font-semibold text-white">This live class is not connected to an interactive LiveKit room yet.</p>
+                        <p className="mt-2 text-[13px] text-white/62">Recreate or start the class with LiveKit to enable audio, video, screen sharing, polls, hand raise, live chat, and admin controls.</p>
                       </div>
                     </div>
-                  ) : (
-                    <div ref={desktopJitsiContainerRef} data-testid="live-jitsi-container" data-room-loaded={roomLoaded ? 'true' : 'false'} data-room-name={access.liveRoomName || ''} className="h-[430px] w-full bg-[#0d1422]" />
                   )}
-                  {(mediaNotice || mediaWarning) && (
+                  {(mediaNotice || mediaWarning || broadcastModeNotice) && (
                     <div className={cn('border-t px-4 py-3 text-[13px]', mediaWarning ? 'border-[#5b2b2b] bg-[#251317] text-[#ffc6ce]' : 'border-white/8 bg-[#0f1728] text-white/72')}>
-                      {mediaWarning || mediaNotice}
+                      {mediaWarning || mediaNotice || broadcastModeNotice}
                     </div>
                   )}
                 </div>
@@ -5752,7 +5759,7 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
                           {participant.videoEnabled ? <Video className="h-4 w-4 text-[#4e8dff]" /> : <VideoOff className="h-4 w-4" />}
                         </div>
                       </div>
-                      {isAdmin && participant.role !== 'admin' && (
+                      {showInteractiveRoomControls && isAdmin && participant.role !== 'admin' && (
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button data-testid={`live-admin-toggle-mute-${participant.userId}`} type="button" onClick={() => void EduService.muteLiveParticipant(selectedLiveClass._id, participant.userId, !participant.micMuted)} className="rounded-[10px] bg-white/8 px-3 py-1.5 text-[11px] font-semibold">
                             {participant.micMuted ? 'Unmute' : 'Mute'}
@@ -5818,25 +5825,29 @@ export const LiveClassesFigmaTab = ({ overview, onRefresh, onMobileModeChange, i
 
             <div className="mt-5 flex flex-wrap items-center justify-center gap-3 border-t border-white/8 pt-4 lg:justify-between">
               <div className="flex flex-wrap items-center justify-center gap-3">
-                <button data-testid="live-toggle-audio" type="button" disabled={!roomLoaded || directRoomMode} onClick={toggleAudio} className={cn('flex h-[64px] w-[64px] flex-col items-center justify-center rounded-full text-[11px] font-semibold shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6 text-white/34' : 'bg-[#143c2b] text-[#91f1b9]')}>
-                  {localMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                  <span className="mt-1.5">{localMicMuted ? 'Unmute' : 'Mute'}</span>
-                </button>
-                <button data-testid="live-toggle-video" type="button" disabled={!roomLoaded || directRoomMode} onClick={toggleVideo} className={cn('flex h-[64px] w-[64px] flex-col items-center justify-center rounded-full text-[11px] font-semibold shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded || directRoomMode ? 'bg-white/6 text-white/34' : 'bg-[#3f1c2c] text-[#ffb8cb]')}>
-                  {localVideoEnabled ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
-                  <span className="mt-1.5">{localVideoEnabled ? 'Stop Video' : 'Start Video'}</span>
-                </button>
-                <button type="button" data-testid="live-raise-hand" disabled={isAdmin} onClick={() => void EduService.updateLiveRaisedHand(selectedLiveClass._id, !Boolean(selfParticipant?.handRaised))} className={cn('flex h-[64px] w-[64px] flex-col items-center justify-center rounded-full text-[11px] font-semibold shadow-[0_14px_22px_rgba(0,0,0,0.18)]', isAdmin ? 'bg-white/6 text-white/34' : 'bg-white/10 text-white')}>
-                  <Hand className="h-5 w-5" />
-                  <span className="mt-1.5">{selfParticipant?.handRaised ? 'Lower Hand' : 'Raise Hand'}</span>
-                </button>
-                <button data-testid="live-toggle-screen-share" type="button" disabled={!isAdmin || !roomLoaded || directRoomMode} onClick={toggleScreenShare} className={cn('flex h-[64px] w-[64px] flex-col items-center justify-center rounded-full text-[11px] font-semibold shadow-[0_14px_22px_rgba(0,0,0,0.18)]', isAdmin && roomLoaded && !directRoomMode ? 'bg-[#215df5] text-white' : 'bg-white/6 text-white/34')}>
-                  <MonitorUp className="h-5 w-5" />
-                  <span className="mt-1.5">{localScreenSharing ? 'Stop' : 'Share'}</span>
-                </button>
+                {showInteractiveRoomControls && (
+                  <>
+                    <button data-testid="live-toggle-audio" type="button" disabled={!roomLoaded} onClick={toggleAudio} className={cn('flex h-[64px] w-[64px] flex-col items-center justify-center rounded-full text-[11px] font-semibold shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded ? 'bg-white/6 text-white/34' : 'bg-[#143c2b] text-[#91f1b9]')}>
+                      {localMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                      <span className="mt-1.5">{localMicMuted ? 'Unmute' : 'Mute'}</span>
+                    </button>
+                    <button data-testid="live-toggle-video" type="button" disabled={!roomLoaded} onClick={toggleVideo} className={cn('flex h-[64px] w-[64px] flex-col items-center justify-center rounded-full text-[11px] font-semibold shadow-[0_14px_22px_rgba(0,0,0,0.18)]', !roomLoaded ? 'bg-white/6 text-white/34' : 'bg-[#3f1c2c] text-[#ffb8cb]')}>
+                      {localVideoEnabled ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+                      <span className="mt-1.5">{localVideoEnabled ? 'Stop Video' : 'Start Video'}</span>
+                    </button>
+                    <button type="button" data-testid="live-raise-hand" disabled={!showRaiseHandControl} onClick={() => void EduService.updateLiveRaisedHand(selectedLiveClass._id, !Boolean(selfParticipant?.handRaised))} className={cn('flex h-[64px] w-[64px] flex-col items-center justify-center rounded-full text-[11px] font-semibold shadow-[0_14px_22px_rgba(0,0,0,0.18)]', showRaiseHandControl ? 'bg-white/10 text-white' : 'bg-white/6 text-white/34')}>
+                      <Hand className="h-5 w-5" />
+                      <span className="mt-1.5">{selfParticipant?.handRaised ? 'Lower Hand' : 'Raise Hand'}</span>
+                    </button>
+                    <button data-testid="live-toggle-screen-share" type="button" disabled={!showPresenterScreenShareControl || !roomLoaded} onClick={toggleScreenShare} className={cn('flex h-[64px] w-[64px] flex-col items-center justify-center rounded-full text-[11px] font-semibold shadow-[0_14px_22px_rgba(0,0,0,0.18)]', showPresenterScreenShareControl && roomLoaded ? 'bg-[#215df5] text-white' : 'bg-white/6 text-white/34')}>
+                      <MonitorUp className="h-5 w-5" />
+                      <span className="mt-1.5">{localScreenSharing ? 'Stop' : 'Share'}</span>
+                    </button>
+                  </>
+                )}
               </div>
               <div className="flex flex-wrap items-center justify-center gap-3">
-                {isAdmin && (
+                {showInteractiveRoomControls && isAdmin && (
                   <button data-testid="live-admin-end" type="button" onClick={() => void handleEndLiveClass()} className="inline-flex min-w-[148px] items-center justify-center gap-3 rounded-[16px] bg-[#7a2430] px-5 py-3 text-[14px] font-semibold text-white shadow-[0_14px_24px_rgba(122,36,48,0.22)]">
                     <X className="h-4.5 w-4.5" />
                     End Class

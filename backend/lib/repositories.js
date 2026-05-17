@@ -22,6 +22,20 @@ const { getAiGenerationProviders } = require('./ai-content.js');
 const liveKitService = require('../live/livekit.service.js');
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+const normalizeMobileNumber = (value) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+  const normalized = trimmed.replace(/[^\d+]/g, '');
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.startsWith('+')) {
+    return `+${normalized.slice(1).replace(/\D/g, '')}`;
+  }
+  return normalized.replace(/\D/g, '');
+};
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -1348,15 +1362,24 @@ const upsertPgCourse = async (payload, client = null) => {
 
 const upsertPgTest = async (payload, client = null) => {
   const questions = Array.isArray(payload.questions)
-    ? payload.questions.map((question, index) => ({
-        id: question.id || createPersistentId(`question_${index + 1}`),
-        answer: question.answer ?? question.correctOption,
-        correctOption: question.correctOption ?? question.answer,
-        explanation: question.explanation || '',
-        marks: Number(question.marks || 1),
-        topic: question.topic || 'General Practice',
-        ...clone(question),
-      }))
+    ? payload.questions.map((question, index) => {
+        const normalizedCorrectOptions = Array.isArray(question.correctOptions) && question.correctOptions.length > 0
+          ? [...new Set(question.correctOptions.map((option) => Number(option)).filter((option) => Number.isInteger(option) && option >= 0))].sort((left, right) => left - right)
+          : Number.isFinite(Number(question.correctOption ?? question.answer))
+            ? [Number(question.correctOption ?? question.answer)]
+            : [0];
+
+        return {
+          ...clone(question),
+          id: question.id || createPersistentId(`question_${index + 1}`),
+          answer: normalizedCorrectOptions[0],
+          correctOption: normalizedCorrectOptions[0],
+          correctOptions: normalizedCorrectOptions,
+          explanation: question.explanation || '',
+          marks: Number(question.marks || 1),
+          topic: question.topic || 'General Practice',
+        };
+      })
     : [];
 
   const test = {
@@ -3157,6 +3180,35 @@ const usersRepository = {
     return state.users.find((user) => user.email === normalizeEmail(email)) || null;
   },
 
+  async findByMobileNumber(mobileNumber) {
+    await ensurePlatformReady();
+    const normalizedMobileNumber = normalizeMobileNumber(mobileNumber);
+    if (!normalizedMobileNumber) {
+      return null;
+    }
+
+    if (isPostgresMode()) {
+      return pgOne('SELECT * FROM users WHERE mobile_number = $1', [normalizedMobileNumber], mapUserRow);
+    }
+
+    if (isMongoMode()) {
+      return User.findOne({ mobileNumber: normalizedMobileNumber });
+    }
+
+    return state.users.find((user) => normalizeMobileNumber(user.mobileNumber) === normalizedMobileNumber) || null;
+  },
+
+  async findByLoginIdentifier(identifier) {
+    const normalized = String(identifier || '').trim();
+    if (!normalized) {
+      return null;
+    }
+    if (normalized.includes('@')) {
+      return usersRepository.findByEmail(normalized);
+    }
+    return usersRepository.findByMobileNumber(normalized);
+  },
+
   async findById(id) {
     await ensurePlatformReady();
 
@@ -3187,6 +3239,7 @@ const usersRepository = {
         ...payload,
         _id: payload._id || createPersistentId('user'),
         email: normalizeEmail(payload.email),
+        mobileNumber: normalizeMobileNumber(payload.mobileNumber),
       });
       try {
         await deleteRedisKey(cacheKey('user', String(createdUser._id)));
@@ -3198,6 +3251,7 @@ const usersRepository = {
       const createdUser = await User.create({
         ...payload,
         email: normalizeEmail(payload.email),
+        mobileNumber: normalizeMobileNumber(payload.mobileNumber),
       });
       return createdUser.toObject();
     }
@@ -3206,7 +3260,7 @@ const usersRepository = {
       _id: payload._id || nextId('user'),
       name: payload.name,
       email: normalizeEmail(payload.email),
-      mobileNumber: payload.mobileNumber || null,
+      mobileNumber: normalizeMobileNumber(payload.mobileNumber) || null,
       password: payload.password,
       role: payload.role || 'student',
       device: payload.device || null,
@@ -3236,6 +3290,7 @@ const usersRepository = {
       const merged = {
         ...current,
         ...clone(patch),
+        mobileNumber: patch.mobileNumber === undefined ? current.mobileNumber : normalizeMobileNumber(patch.mobileNumber),
         updated_at: nowIso(),
       };
       await upsertPgUser(merged);
@@ -3260,6 +3315,7 @@ const usersRepository = {
     state.users[userIndex] = {
       ...state.users[userIndex],
       ...clone(patch),
+      mobileNumber: patch.mobileNumber === undefined ? state.users[userIndex].mobileNumber : normalizeMobileNumber(patch.mobileNumber),
       updated_at: nowIso(),
     };
     try {
@@ -3765,15 +3821,24 @@ const testsRepository = {
     }
 
     const questions = Array.isArray(payload.questions)
-      ? payload.questions.map((question, index) => ({
-          id: question.id || nextId(`question_${index + 1}`),
-          answer: question.answer ?? question.correctOption,
-          correctOption: question.correctOption ?? question.answer,
-          explanation: question.explanation || '',
-          marks: Number(question.marks || 1),
-          topic: question.topic || 'General Practice',
-          ...clone(question),
-        }))
+      ? payload.questions.map((question, index) => {
+          const normalizedCorrectOptions = Array.isArray(question.correctOptions) && question.correctOptions.length > 0
+            ? [...new Set(question.correctOptions.map((option) => Number(option)).filter((option) => Number.isInteger(option) && option >= 0))].sort((left, right) => left - right)
+            : Number.isFinite(Number(question.correctOption ?? question.answer))
+              ? [Number(question.correctOption ?? question.answer)]
+              : [0];
+
+          return {
+            ...clone(question),
+            id: question.id || nextId(`question_${index + 1}`),
+            answer: normalizedCorrectOptions[0],
+            correctOption: normalizedCorrectOptions[0],
+            correctOptions: normalizedCorrectOptions,
+            explanation: question.explanation || '',
+            marks: Number(question.marks || 1),
+            topic: question.topic || 'General Practice',
+          };
+        })
       : [];
 
     const createdTest = {
@@ -3837,15 +3902,24 @@ const testsRepository = {
     }
 
     const questions = Array.isArray(nextPayload.questions)
-      ? nextPayload.questions.map((question, questionIndex) => ({
-          id: question.id || nextId(`question_${questionIndex + 1}`),
-          answer: question.answer ?? question.correctOption,
-          correctOption: question.correctOption ?? question.answer,
-          explanation: question.explanation || '',
-          marks: Number(question.marks || 1),
-          topic: question.topic || 'General Practice',
-          ...clone(question),
-        }))
+      ? nextPayload.questions.map((question, questionIndex) => {
+          const normalizedCorrectOptions = Array.isArray(question.correctOptions) && question.correctOptions.length > 0
+            ? [...new Set(question.correctOptions.map((option) => Number(option)).filter((option) => Number.isInteger(option) && option >= 0))].sort((left, right) => left - right)
+            : Number.isFinite(Number(question.correctOption ?? question.answer))
+              ? [Number(question.correctOption ?? question.answer)]
+              : [0];
+
+          return {
+            ...clone(question),
+            id: question.id || nextId(`question_${questionIndex + 1}`),
+            answer: normalizedCorrectOptions[0],
+            correctOption: normalizedCorrectOptions[0],
+            correctOptions: normalizedCorrectOptions,
+            explanation: question.explanation || '',
+            marks: Number(question.marks || 1),
+            topic: question.topic || 'General Practice',
+          };
+        })
       : [];
 
     const updatedTest = {
@@ -3918,12 +3992,25 @@ const testsRepository = {
 
     test.questions.forEach((question) => {
       const submittedAnswer = answers[question.id];
+      const submittedOptionIndexes = Array.isArray(submittedAnswer)
+        ? [...new Set(submittedAnswer.map((option) => Number(option)).filter((option) => Number.isInteger(option) && option >= 0))].sort((left, right) => left - right)
+        : submittedAnswer === undefined || submittedAnswer === null
+          ? []
+          : [Number(submittedAnswer)].filter((option) => Number.isInteger(option) && option >= 0);
+      const correctOptionIndexes = Array.isArray(question.correctOptions) && question.correctOptions.length > 0
+        ? [...new Set(question.correctOptions.map((option) => Number(option)).filter((option) => Number.isInteger(option) && option >= 0))].sort((left, right) => left - right)
+        : Number.isFinite(Number(question.correctOption ?? question.answer))
+          ? [Number(question.correctOption ?? question.answer)]
+          : [0];
       const topic = question.topic || 'General Practice';
       const currentStats = topicStats.get(topic) || { correct: 0, incorrect: 0 };
 
-      if (submittedAnswer === undefined || submittedAnswer === null) {
+      if (submittedOptionIndexes.length === 0) {
         unattemptedCount += 1;
-      } else if (Number(submittedAnswer) === Number(question.correctOption ?? question.answer)) {
+      } else if (
+        submittedOptionIndexes.length === correctOptionIndexes.length
+        && submittedOptionIndexes.every((option, optionIndex) => option === correctOptionIndexes[optionIndex])
+      ) {
         correctCount += 1;
         score += Number(question.marks || 1);
         currentStats.correct += 1;
@@ -3939,8 +4026,20 @@ const testsRepository = {
     const solutions = test.questions.map((question) => ({
       questionId: question.id,
       questionText: question.questionText,
-      selectedOption: answers[question.id] ?? null,
-      correctOption: Number(question.correctOption ?? question.answer),
+      selectedOption: Array.isArray(answers[question.id]) ? null : answers[question.id] ?? null,
+      selectedOptions: Array.isArray(answers[question.id])
+        ? [...new Set(answers[question.id].map((option) => Number(option)).filter((option) => Number.isInteger(option) && option >= 0))].sort((left, right) => left - right)
+        : answers[question.id] === undefined || answers[question.id] === null
+          ? []
+          : [Number(answers[question.id])].filter((option) => Number.isInteger(option) && option >= 0),
+      correctOption: Array.isArray(question.correctOptions) && question.correctOptions.length > 0
+        ? Number(question.correctOptions[0])
+        : Number(question.correctOption ?? question.answer),
+      correctOptions: Array.isArray(question.correctOptions) && question.correctOptions.length > 0
+        ? [...new Set(question.correctOptions.map((option) => Number(option)).filter((option) => Number.isInteger(option) && option >= 0))].sort((left, right) => left - right)
+        : Number.isFinite(Number(question.correctOption ?? question.answer))
+          ? [Number(question.correctOption ?? question.answer)]
+          : [0],
       explanation: question.explanation || '',
       topic: question.topic || 'General Practice',
     }));

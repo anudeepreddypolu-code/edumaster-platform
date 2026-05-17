@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { CourseCard, CourseLesson, MockTest, PlatformOverview, ProtectedLessonPlayback } from '../types';
 import { cn } from '../lib/utils';
+import { wireHlsPlaybackMetrics } from '../lib/hlsPlaybackMetrics';
 import { useAuth } from '../AuthContext';
 import { EduService, type CoursePaymentProvider } from '../EduService';
 
@@ -1650,7 +1651,12 @@ export const CourseFigmaTab = ({
 
     if (currentVideo.canPlayType('application/vnd.apple.mpegurl')) {
       currentVideo.src = streamUrl;
-      return;
+      return wireHlsPlaybackMetrics({
+        video: currentVideo,
+        src: streamUrl,
+        title: selectedLesson?.title || 'Recorded lesson',
+        trackVideoId: selectedLesson?.id || null,
+      });
     }
 
     if (!Hls.isSupported()) {
@@ -1665,8 +1671,16 @@ export const CourseFigmaTab = ({
     hlsRef.current = hls;
     hls.loadSource(streamUrl);
     hls.attachMedia(currentVideo);
+    const cleanupMetrics = wireHlsPlaybackMetrics({
+      video: currentVideo,
+      hls,
+      src: streamUrl,
+      title: selectedLesson?.title || 'Recorded lesson',
+      trackVideoId: selectedLesson?.id || null,
+    });
 
     return () => {
+      cleanupMetrics();
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -4624,10 +4638,11 @@ export const CourseFigmaTab = ({
     const renderExamCompleteCard = () => {
       const selectedOption = selectedLessonExamSelectedOption;
       const correct = selectedOption === selectedLessonCopy.quiz.answerIndex;
-      const score = correct ? '8 / 10' : '7 / 10';
-      const percent = correct ? 80 : 70;
-      const correctAnswers = correct ? 8 : 7;
-      const wrongAnswers = correct ? 2 : 3;
+      const totalQuestions = Math.max(selectedLessonCopy.quiz.totalQuestions || 1, 1);
+      const correctAnswers = correct ? 1 : 0;
+      const wrongAnswers = selectedOption !== null && !correct ? 1 : 0;
+      const score = `${correctAnswers} / ${totalQuestions}`;
+      const percent = Math.round((correctAnswers / totalQuestions) * 100);
 
       return (
         <section className="space-y-[14px]">

@@ -1,0 +1,23 @@
+{
+  "environment": "prod",
+  "approvedRunId": "2026-05-15T09-37-01-788Z",
+  "approvedAt": "2026-05-15T09:37:01.914Z",
+  "tags": [
+    "manual-trigger"
+  ],
+  "metrics": {
+    "startupSuccessRate": 100,
+    "mediaManifestP50Ms": 399.5,
+    "mediaManifestP95Ms": 1749.5,
+    "mediaManifestP99Ms": 3020,
+    "firstFrameMs": 689,
+    "bufferingRatio": 0,
+    "interruptionRate": 0,
+    "sustainedContinuityScore": 100,
+    "recoverySuccessRate": 100,
+    "cacheHitEffectiveness": null,
+    "browserStabilityRate": 88.1,
+    "failedRequestRate": 0
+  },
+  "playbackHealthScore": 93.56
+}

@@ -6,7 +6,9 @@ services:
     restart: unless-stopped
     depends_on:
       - app
+      - app-2
       - nginx-rtmp
+      - recorded-hls-cache
     ports:
       - "80:80"
       - "443:443"
@@ -20,6 +22,18 @@ services:
       - caddy-data:/data
       - caddy-config:/config
 
+  recorded-hls-cache:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+      - app-2
+      - manifest-app
+      - manifest-app-2
+    volumes:
+      - ./recorded-hls-cache/nginx.conf:/etc/nginx/nginx.conf:ro
+      - recorded-hls-cache:/var/cache/nginx/recorded-hls
+
   app:
     build:
       context: ../..
@@ -30,9 +44,14 @@ services:
     environment:
       PORT: 5000
       HOST: 0.0.0.0
+      NODE_OPTIONS: --max-old-space-size=1280
+      ENABLE_BACKGROUND_WORKERS: "true"
       POSTGRES_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/edumaster
+      POSTGRES_POOL_MAX: 16
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+      REDIS_COMMAND_POOL_SIZE: 16
       LIVE_HLS_INTERNAL_BASE_URL: http://nginx-rtmp:8080/hls
+      LIVE_HLS_PUBLIC_BASE_URL: https://${LIVE_DOMAIN}/hls
       REPLAY_IMPORT_API_BASE_URL: http://app:5000/backend/api
       LIVE_RECORDINGS_ROOT: /recordings
     depends_on:
@@ -48,6 +67,95 @@ services:
       timeout: 10s
       retries: 5
 
+  app-2:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../../.env.production
+    environment:
+      PORT: 5000
+      HOST: 0.0.0.0
+      NODE_OPTIONS: --max-old-space-size=1024
+      ENABLE_BACKGROUND_WORKERS: "false"
+      POSTGRES_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/edumaster
+      POSTGRES_POOL_MAX: 16
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+      REDIS_COMMAND_POOL_SIZE: 12
+      LIVE_HLS_INTERNAL_BASE_URL: http://nginx-rtmp:8080/hls
+      LIVE_HLS_PUBLIC_BASE_URL: https://${LIVE_DOMAIN}/hls
+      REPLAY_IMPORT_API_BASE_URL: http://app:5000/backend/api
+      LIVE_RECORDINGS_ROOT: /recordings
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - app-private:/app/private_uploads
+      - app-uploads:/app/uploads
+      - live-recordings:/recordings
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  manifest-app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "backend/manifest-server.cjs"]
+    env_file:
+      - ../../.env.production
+    environment:
+      PORT: 5001
+      MANIFEST_PORT: 5001
+      HOST: 0.0.0.0
+      NODE_OPTIONS: --max-old-space-size=384
+      POSTGRES_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/edumaster
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+      REDIS_COMMAND_POOL_SIZE: 8
+    depends_on:
+      - redis
+    volumes:
+      - app-private:/app/private_uploads
+      - app-uploads:/app/uploads
+      - live-recordings:/recordings
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5001/backend/api/course-manifests/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  manifest-app-2:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "backend/manifest-server.cjs"]
+    env_file:
+      - ../../.env.production
+    environment:
+      PORT: 5001
+      MANIFEST_PORT: 5001
+      HOST: 0.0.0.0
+      NODE_OPTIONS: --max-old-space-size=384
+      POSTGRES_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/edumaster
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+      REDIS_COMMAND_POOL_SIZE: 8
+    depends_on:
+      - redis
+    volumes:
+      - app-private:/app/private_uploads
+      - app-uploads:/app/uploads
+      - live-recordings:/recordings
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5001/backend/api/course-manifests/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   watch-worker:
     build:
       context: ../..
@@ -57,6 +165,7 @@ services:
     env_file:
       - ../../.env.production
     environment:
+      NODE_OPTIONS: --max-old-space-size=768
       POSTGRES_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/edumaster
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
     depends_on:
@@ -72,6 +181,7 @@ services:
     env_file:
       - ../../.env.production
     environment:
+      NODE_OPTIONS: --max-old-space-size=512
       REPLAY_IMPORT_API_BASE_URL: http://app:5000/backend/api
       LIVE_RECORDINGS_ROOT: /recordings
       REPLAY_IMPORT_POLL_MS: 15000
@@ -139,3 +249,4 @@ volumes:
   redis-data:
   caddy-data:
   caddy-config:
+  recorded-hls-cache:

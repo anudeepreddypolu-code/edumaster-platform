@@ -16,6 +16,18 @@ export interface AuthResponse {
   user: AuthUser;
 }
 
+export interface AuthOtpChallenge {
+  challengeId: string;
+  channel: 'email' | 'sms';
+  expiresInSeconds: number;
+  destination: string;
+}
+
+export interface RegisterOtpResponse {
+  verificationRequired: true;
+  challenge: AuthOtpChallenge;
+}
+
 export interface CourseLesson {
   id: string;
   title: string;
@@ -108,6 +120,7 @@ export interface MockQuestion {
   questionText: string;
   options: string[];
   correctOption?: number;
+  correctOptions?: number[];
   explanation?: string;
   marks: number;
   topic: string;
@@ -144,7 +157,9 @@ export interface TestAttemptResult {
     questionId: string;
     questionText: string;
     selectedOption: number | null;
+    selectedOptions?: number[];
     correctOption: number;
+    correctOptions?: number[];
     explanation: string;
     topic: string;
   }[];
@@ -221,6 +236,8 @@ export interface LiveClass {
   recordingPublishedAt?: string | null;
   recordingExpiresAt?: string | null;
   recordingDurationMinutes?: number | null;
+  recordingState?: 'pending' | 'recording' | 'processing' | 'published' | 'disabled' | 'failed' | string | null;
+  replayState?: 'pending' | 'processing' | 'replay_ready' | 'disabled' | 'failed' | string | null;
   replayCourseId?: string | null;
   replayLessonId?: string | null;
   chatEnabled: boolean;
@@ -260,12 +277,15 @@ export interface LiveClassResource {
 export interface LiveClassPollOption {
   id: string;
   text: string;
+  votes?: number;
 }
 
 export interface LiveClassPoll {
   question: string;
   status?: 'draft' | 'live' | 'closed' | string;
   options: LiveClassPollOption[];
+  responses?: Record<string, string>;
+  totalVotes?: number;
 }
 
 export interface LiveClassChatMessage {
@@ -311,6 +331,18 @@ export interface LiveClassEventPayload {
   session?: LiveClassSessionState;
   participant?: LiveSessionParticipant;
   message?: LiveClassChatMessage;
+  liveClass?: {
+    _id?: string;
+    title?: string;
+    status?: string | null;
+    livePlaybackType?: string | null;
+    roomUrl?: string | null;
+    embedUrl?: string | null;
+    roomName?: string | null;
+    provider?: string | null;
+    activePoll?: LiveClassPoll | null;
+    replayAvailable?: boolean;
+  };
 }
 
 export interface LiveClassAccess {
@@ -332,6 +364,8 @@ export interface LiveClassAccess {
   replayExternalUrl: string | null;
   replayCourseId: string | null;
   replayLessonId: string | null;
+  recordingState?: 'pending' | 'recording' | 'processing' | 'published' | 'disabled' | 'failed' | string | null;
+  replayState?: 'pending' | 'processing' | 'replay_ready' | 'disabled' | 'failed' | string | null;
   tokenExpiresAt: string | null;
   watermarkText: string | null;
   statusMessage: string;

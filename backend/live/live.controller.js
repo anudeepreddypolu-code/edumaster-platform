@@ -1,6 +1,7 @@
 const { liveClassesRepository, notificationsRepository, usersRepository } = require('../lib/repositories.js');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 const {
   ApiError,
   asyncHandler,
@@ -14,6 +15,7 @@ const {
 const { appConfig } = require('../lib/config.js');
 const { getRedisJson, setRedisJson } = require('../lib/redis.js');
 const sessionService = require('./live-session.service.js');
+const { broadcastLiveEvent } = require('./live-event-bus.js');
 const liveKitService = require('./livekit.service.js');
 const {
   ensureLiveState,
@@ -31,12 +33,136 @@ const {
   getHlsAssetMimeType,
   rewriteHlsManifestUris,
 } = require('../lib/hls-manifest.js');
+const ffmpegPath = require('ffmpeg-static');
 
 const slugify = (value) => String(value || '')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-|-$/g, '')
   .slice(0, 64);
+
+const buildJitsiTeacherStudioAccess = (liveClass) => {
+  const roomName = `${slugify(liveClass?.title) || 'live-class'}-${String(liveClass?._id || '')}`;
+  const roomUrl = liveClass?.roomUrl || `https://${appConfig.jitsiMeetDomain}/${roomName}`;
+  const embedUrl = liveClass?.embedUrl || `${roomUrl}#config.prejoinPageEnabled=false&config.requireDisplayName=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false&interfaceConfig.DISABLE_JOIN_LEAVE_NOTIFICATIONS=true`;
+
+  return { roomName, roomUrl, embedUrl };
+};
+
+const sanitizeActivePollResponsesInput = (value) => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  return Object.entries(value).reduce((acc, [userId, optionId]) => {
+    const normalizedUserId = optionalString(userId, '', { maxLength: 120 });
+    const normalizedOptionId = optionalString(optionId, '', { maxLength: 80 });
+    if (normalizedUserId && normalizedOptionId) {
+      acc[normalizedUserId] = normalizedOptionId;
+    }
+    return acc;
+  }, {});
+};
+
+const sanitizeActivePollInput = (value) => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const question = optionalString(value.question, '', { maxLength: 240 });
+  const options = Array.isArray(value.options)
+    ? value.options
+      .map((option, index) => {
+        const entry = option && typeof option === 'object' ? option : {};
+        const text = optionalString(entry.text, '', { maxLength: 120 });
+        if (!text) {
+          return null;
+        }
+        return {
+          id: optionalString(entry.id, `option-${index + 1}`, { maxLength: 80 }) || `option-${index + 1}`,
+          text,
+        };
+      })
+      .filter(Boolean)
+    : [];
+
+  if (!question || options.length === 0) {
+    return null;
+  }
+
+  return {
+    question,
+    status: optionalString(value.status, 'live', { maxLength: 40 }) || 'live',
+    options,
+    responses: sanitizeActivePollResponsesInput(value.responses),
+  };
+};
+
+const buildActivePollVoteCounts = (activePoll) => {
+  const counts = new Map();
+  if (!activePoll || !Array.isArray(activePoll.options)) {
+    return counts;
+  }
+
+  activePoll.options.forEach((option) => {
+    counts.set(String(option.id || ''), 0);
+  });
+
+  const responses = activePoll.responses && typeof activePoll.responses === 'object' ? activePoll.responses : {};
+  Object.values(responses).forEach((optionId) => {
+    const normalizedOptionId = String(optionId || '');
+    if (!counts.has(normalizedOptionId)) {
+      return;
+    }
+    counts.set(normalizedOptionId, (counts.get(normalizedOptionId) || 0) + 1);
+  });
+
+  return counts;
+};
+
+const enrichActivePoll = (activePoll) => {
+  if (!activePoll) {
+    return null;
+  }
+
+  const counts = buildActivePollVoteCounts(activePoll);
+  return {
+    ...activePoll,
+    options: Array.isArray(activePoll.options)
+      ? activePoll.options.map((option) => ({
+        ...option,
+        votes: counts.get(String(option.id || '')) || 0,
+      }))
+      : [],
+    totalVotes: Array.from(counts.values()).reduce((sum, value) => sum + Number(value || 0), 0),
+  };
+};
+
+const buildLiveClassEventSnapshot = (liveClass) => ({
+  _id: String(liveClass?._id || ''),
+  title: liveClass?.title || '',
+  status: liveClass?.status || null,
+  livePlaybackType: liveClass?.livePlaybackType || null,
+  roomUrl: liveClass?.roomUrl || null,
+  embedUrl: liveClass?.embedUrl || null,
+  roomName: liveClass?.roomName || null,
+  provider: liveClass?.provider || null,
+  activePoll: enrichActivePoll(liveClass?.activePoll || null),
+  replayAvailable: liveClass?.replayAvailable !== false,
+});
+
+const broadcastLiveClassUpdate = async (liveClass, event = 'live-class.updated') => {
+  if (!liveClass?._id) {
+    return;
+  }
+
+  await broadcastLiveEvent({
+    event,
+    liveClassId: String(liveClass._id),
+    timestamp: new Date().toISOString(),
+    liveClass: buildLiveClassEventSnapshot(liveClass),
+  });
+};
 
 const normalizeOptionalUrl = (value) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -46,7 +172,138 @@ const normalizeOptionalUrl = (value) => {
   return normalized;
 };
 
-const buildManagedHlsPlaybackUrl = (streamName) => {
+const resolvePreferredLivePlaybackType = () => {
+  const preferred = String(appConfig.preferredLivePlaybackType || '').toLowerCase();
+  if (preferred === 'livekit') {
+    return 'livekit';
+  }
+  if (preferred === 'hls') {
+    return 'live-stream';
+  }
+  return null;
+};
+
+const normalizeLivePlaybackType = (value) => {
+  const type = String(value || '').trim().toLowerCase();
+  if (type === 'hls') {
+    return 'live-stream';
+  }
+  return type || null;
+};
+
+const isLoopbackUrl = (value) => {
+  try {
+    const url = new URL(String(value || ''));
+    return ['127.0.0.1', 'localhost', '0.0.0.0'].includes(String(url.hostname || '').toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
+const shouldUseLocalDevHlsOrigin = () => (
+  appConfig.nodeEnv !== 'production'
+  && (
+    !appConfig.liveHlsInternalBaseUrl
+    || isLoopbackUrl(appConfig.liveHlsInternalBaseUrl)
+  )
+);
+
+const getLocalDevHlsRootDir = () => path.join(process.cwd(), 'uploads/live-hls');
+const getLocalDevHlsStreamDir = (streamName) => path.join(getLocalDevHlsRootDir(), String(streamName || '').replace(/[^a-zA-Z0-9._-]+/g, '_'));
+const getLocalDevHlsPlaylistPath = (streamName) => path.join(getLocalDevHlsStreamDir(streamName), 'index.m3u8');
+const getLocalDevHlsPidPath = (streamName) => path.join(getLocalDevHlsStreamDir(streamName), 'ffmpeg.pid');
+
+const getLocalDevHlsSourcePath = () => {
+  const configured = String(appConfig.liveHlsDevSourcePath || '').trim();
+  if (configured) {
+    return path.isAbsolute(configured) ? configured : path.join(process.cwd(), configured);
+  }
+  return path.join(process.cwd(), 'uploads/live-fallback.mp4');
+};
+
+const ensureLocalDevHlsAssets = async (streamName) => {
+  const sourcePath = getLocalDevHlsSourcePath();
+  if (!fs.existsSync(sourcePath)) {
+    throw new ApiError(503, 'Local live HLS source is unavailable', {
+      code: 'LIVE_HLS_DEV_SOURCE_MISSING',
+      details: { sourcePath },
+    });
+  }
+
+  if (!ffmpegPath) {
+    throw new ApiError(503, 'ffmpeg runtime is unavailable for local live HLS generation', {
+      code: 'LIVE_HLS_DEV_FFMPEG_UNAVAILABLE',
+    });
+  }
+
+  const streamDir = getLocalDevHlsStreamDir(streamName);
+  const playlistPath = getLocalDevHlsPlaylistPath(streamName);
+  if (fs.existsSync(playlistPath)) {
+    return playlistPath;
+  }
+
+  fs.mkdirSync(streamDir, { recursive: true });
+  const pidPath = getLocalDevHlsPidPath(streamName);
+  const ffmpegArgs = [
+    '-y',
+    '-stream_loop', '-1',
+    '-re',
+    '-i', sourcePath,
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-ar', '48000',
+    '-b:a', '128k',
+    '-f', 'hls',
+    '-hls_time', '2',
+    '-hls_list_size', '6',
+    '-hls_segment_type', 'fmp4',
+    '-hls_fmp4_init_filename', 'init.mp4',
+    '-hls_flags', 'append_list+omit_endlist+independent_segments',
+    '-hls_segment_filename', path.join(streamDir, 'segment-%03d.m4s'),
+    playlistPath,
+  ];
+
+  const existingPid = fs.existsSync(pidPath) ? Number(fs.readFileSync(pidPath, 'utf8').trim()) : 0;
+  if (!existingPid || Number.isNaN(existingPid)) {
+    const stdioTarget = fs.openSync(path.join(streamDir, 'ffmpeg.log'), 'a');
+    const child = spawn(ffmpegPath, ffmpegArgs, {
+      detached: true,
+      stdio: ['ignore', stdioTarget, stdioTarget],
+    });
+    child.unref();
+    fs.writeFileSync(pidPath, String(child.pid));
+  }
+
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(playlistPath)) {
+      return playlistPath;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  if (!fs.existsSync(playlistPath)) {
+    throw new ApiError(503, 'Local live HLS playlist was not generated', {
+      code: 'LIVE_HLS_DEV_PLAYLIST_MISSING',
+      details: {
+        playlistPath,
+        pidPath,
+        streamName,
+      },
+    });
+  }
+
+  return playlistPath;
+};
+
+const buildManagedHlsPlaybackUrl = (streamName, requestOrigin = appConfig.appUrl) => {
+  if (shouldUseLocalDevHlsOrigin()) {
+    const baseOrigin = String(requestOrigin || appConfig.appUrl || '').replace(/\/+$/, '');
+    return `${baseOrigin}/uploads/live-hls/${encodeURIComponent(String(streamName))}/index.m3u8`;
+  }
+
   if (!appConfig.liveHlsInternalBaseUrl || !streamName) {
     return null;
   }
@@ -289,39 +546,6 @@ const sanitizeResourceItemsInput = (value) => (
     : []
 );
 
-const sanitizeActivePollInput = (value) => {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const question = optionalString(value.question, '', { maxLength: 240 });
-  const options = Array.isArray(value.options)
-    ? value.options
-      .map((option, index) => {
-        const entry = option && typeof option === 'object' ? option : {};
-        const text = optionalString(entry.text, '', { maxLength: 120 });
-        if (!text) {
-          return null;
-        }
-        return {
-          id: optionalString(entry.id, `option-${index + 1}`, { maxLength: 80 }) || `option-${index + 1}`,
-          text,
-        };
-      })
-      .filter(Boolean)
-    : [];
-
-  if (!question || options.length === 0) {
-    return null;
-  }
-
-  return {
-    question,
-    status: optionalString(value.status, 'live', { maxLength: 40 }) || 'live',
-    options,
-  };
-};
-
 const rewriteLiveHlsManifest = (manifestText, payload) => rewriteHlsManifestUris(manifestText, (assetReference) => {
   const resolvedAssetPath = path.posix.join(path.posix.dirname(payload.storagePath), assetReference);
   return buildLiveHlsAssetUrl(payload, resolvedAssetPath, getHlsAssetMimeType(resolvedAssetPath));
@@ -416,6 +640,20 @@ const buildStateBackedAccess = async ({ liveClass, liveState, user }) => {
   }
 
   return null;
+};
+
+const buildAdminTeacherStudioAccess = async ({ liveClassId, user }) => {
+  if (String(user?.role || '').toLowerCase() !== 'admin') {
+    return null;
+  }
+
+  const access = await liveClassesRepository.getAccess({
+    liveClassId,
+    userId: user?._id,
+    user,
+  });
+
+  return access.accessType === 'livekit-room' || access.accessType === 'jitsi-room' ? access : null;
 };
 
 const requireAdmin = (req) => {
@@ -521,16 +759,13 @@ const createLiveClass = asyncHandler(async (req, res) => {
     topicTags,
   });
 
-  const preferredPlaybackType = appConfig.hasManagedLiveHls
-    ? 'live-stream'
-    : appConfig.hasLiveKit
-      ? 'livekit'
-      : null;
+  const preferredPlaybackType = resolvePreferredLivePlaybackType();
   if (!preferredPlaybackType) {
     throw new ApiError(503, 'No live backend is configured. Configure managed HLS or LiveKit.', {
       code: 'LIVE_BACKEND_REQUIRED',
     });
   }
+  const teacherStudio = buildJitsiTeacherStudioAccess(createdLiveClass);
 
   const nextLiveClass = preferredPlaybackType === 'livekit'
     ? await liveClassesRepository.update(createdLiveClass._id, {
@@ -543,8 +778,8 @@ const createLiveClass = asyncHandler(async (req, res) => {
     })
     : await liveClassesRepository.update(createdLiveClass._id, {
       livePlaybackType: 'live-stream',
-      roomUrl: null,
-      embedUrl: null,
+      roomUrl: teacherStudio.roomUrl,
+      embedUrl: teacherStudio.embedUrl,
       livePlaybackUrl: null,
       provider: 'Managed HLS',
     });
@@ -565,6 +800,7 @@ const createLiveClass = asyncHandler(async (req, res) => {
   if (String(nextLiveClass.status || 'scheduled').toLowerCase() === 'scheduled') {
     queueLiveClassNotification(() => notificationsRepository.notifyLiveClassScheduled(nextLiveClass));
   }
+  await broadcastLiveClassUpdate(nextLiveClass, 'live-class.updated');
   return created(res, { liveClass: buildAdminIngestDetails(nextLiveClass) });
 });
 
@@ -641,6 +877,7 @@ const updateLiveClass = asyncHandler(async (req, res) => {
   if (scheduleChanged && ['scheduled', 'upcoming'].includes(nextStatus)) {
     queueLiveClassNotification(() => notificationsRepository.notifyLiveClassScheduled(nextLiveClass, { updated: true }));
   }
+  await broadcastLiveClassUpdate(nextLiveClass, 'live-class.updated');
   return ok(res, { liveClass: buildAdminIngestDetails(nextLiveClass) });
 });
 
@@ -661,18 +898,21 @@ const startLiveClass = asyncHandler(async (req, res) => {
     });
   }
   const liveClass = await findLiveClassOrThrow(req.params.liveClassId);
-  const livePlaybackType = appConfig.hasManagedLiveHls
-    ? 'live-stream'
-    : 'livekit';
+  const livePlaybackType = resolvePreferredLivePlaybackType()
+    || normalizeLivePlaybackType(liveClass.livePlaybackType)
+    || (appConfig.hasManagedLiveHls ? 'live-stream' : 'livekit');
   const roomName = livePlaybackType === 'livekit' ? liveKitService.getRoomName(liveClass) : liveClass.roomName || null;
+  const teacherStudio = livePlaybackType === 'live-stream'
+    ? buildJitsiTeacherStudioAccess(liveClass)
+    : null;
   const nextLiveClass = await liveClassesRepository.update(liveClass._id, {
     status: 'live',
     startTime: liveClass.startTime || new Date().toISOString(),
     livePlaybackType,
     provider: livePlaybackType === 'livekit' ? 'LiveKit Cloud' : 'Managed HLS',
     livePlaybackUrl: livePlaybackType === 'live-stream' ? (liveClass.livePlaybackUrl || null) : null,
-    roomUrl: null,
-    embedUrl: null,
+    roomUrl: livePlaybackType === 'livekit' ? null : (liveClass.roomUrl || teacherStudio?.roomUrl || null),
+    embedUrl: livePlaybackType === 'livekit' ? null : (liveClass.embedUrl || teacherStudio?.embedUrl || null),
     roomName,
   });
 
@@ -693,6 +933,7 @@ const startLiveClass = asyncHandler(async (req, res) => {
     replayState: nextLiveClass.replayAvailable !== false ? 'pending' : 'disabled',
   });
   queueLiveClassNotification(() => notificationsRepository.notifyLiveClassStarted(nextLiveClass));
+  await broadcastLiveClassUpdate(nextLiveClass, 'live-class.started');
   return ok(res, { liveClass: buildAdminIngestDetails(nextLiveClass), session });
 });
 
@@ -718,6 +959,7 @@ const endLiveClass = asyncHandler(async (req, res) => {
   if (livePlaybackType === 'livekit') {
     await liveKitService.closeRoom(nextLiveClass);
   }
+  await broadcastLiveClassUpdate(nextLiveClass, 'live-class.ended');
   return ok(res, { liveClass: nextLiveClass, session });
 });
 
@@ -725,10 +967,7 @@ const getLiveClassAccess = asyncHandler(async (req, res) => {
   const user = await getActingUser(req);
   const accessCacheKey = getLiveAccessCacheKey(req.params.liveClassId, req.user?.id || user._id);
   const liveState = await readLiveState(req.params.liveClassId);
-  const useStateBackedAccess = Boolean(
-    liveState
-    && (String(user.role || '').toLowerCase() === 'admin' || liveState.requiresEnrollment === false || !liveState.courseId),
-  );
+  const useStateBackedAccess = Boolean(liveState);
 
   const liveClass = useStateBackedAccess
     ? {
@@ -760,8 +999,27 @@ const getLiveClassAccess = asyncHandler(async (req, res) => {
     : null;
 
   if (stateBackedAccess) {
+    if (
+      String(user.role || '').toLowerCase() !== 'admin'
+      && liveState?.requiresEnrollment !== false
+      && liveState?.courseId
+    ) {
+      await liveClassesRepository.getAccess({
+        liveClassId: req.params.liveClassId,
+        userId: req.user?.id,
+        user,
+      });
+    }
     if (stateBackedAccess.accessType === 'live-stream' && stateBackedAccess.status === 'live') {
       await sessionService.joinSession(liveClass, user);
+      const adminTeacherStudioAccess = await buildAdminTeacherStudioAccess({
+        liveClassId: req.params.liveClassId,
+        user,
+      });
+      if (adminTeacherStudioAccess) {
+        await setRedisJson(accessCacheKey, adminTeacherStudioAccess, { ttlSeconds: LIVE_ACCESS_CACHE_TTL_SECONDS }).catch(() => false);
+        return ok(res, adminTeacherStudioAccess);
+      }
     }
     if (stateBackedAccess.accessType !== 'livekit-room') {
       await setRedisJson(accessCacheKey, stateBackedAccess, { ttlSeconds: LIVE_ACCESS_CACHE_TTL_SECONDS }).catch(() => false);
@@ -778,6 +1036,14 @@ const getLiveClassAccess = asyncHandler(async (req, res) => {
         roomName: cachedAccess.liveRoomName || null,
         liveRoomName: cachedAccess.liveRoomName || null,
       }, user);
+      const adminTeacherStudioAccess = await buildAdminTeacherStudioAccess({
+        liveClassId: req.params.liveClassId,
+        user,
+      });
+      if (adminTeacherStudioAccess) {
+        await setRedisJson(accessCacheKey, adminTeacherStudioAccess, { ttlSeconds: LIVE_ACCESS_CACHE_TTL_SECONDS }).catch(() => false);
+        return ok(res, adminTeacherStudioAccess);
+      }
     }
     return ok(res, cachedAccess);
   }
@@ -894,6 +1160,46 @@ const updateRaisedHand = asyncHandler(async (req, res) => {
   return ok(res, { participant });
 });
 
+const submitPollVote = asyncHandler(async (req, res) => {
+  const liveClass = await findLiveClassOrThrow(req.params.liveClassId);
+  const user = await getActingUser(req);
+  await liveClassesRepository.getAccess({
+    liveClassId: req.params.liveClassId,
+    userId: req.user?.id,
+    user,
+  });
+
+  const optionId = requireString(req.body?.optionId, 'optionId', { maxLength: 80 });
+  const activePoll = sanitizeActivePollInput(liveClass.activePoll);
+  if (!activePoll) {
+    throw new ApiError(409, 'No live poll is running right now', { code: 'LIVE_POLL_NOT_ACTIVE' });
+  }
+
+  const optionExists = activePoll.options.some((option) => String(option.id) === optionId);
+  if (!optionExists) {
+    throw new ApiError(400, 'Poll option not found', { code: 'LIVE_POLL_OPTION_NOT_FOUND' });
+  }
+
+  const nextPoll = {
+    ...activePoll,
+    responses: {
+      ...(activePoll.responses || {}),
+      [String(user._id)]: optionId,
+    },
+  };
+
+  const nextLiveClass = await liveClassesRepository.update(liveClass._id, {
+    activePoll: nextPoll,
+  });
+
+  await broadcastLiveClassUpdate(nextLiveClass, 'live-class.updated');
+  return ok(res, {
+    liveClass: buildLiveClassEventSnapshot(nextLiveClass),
+    activePoll: enrichActivePoll(nextLiveClass.activePoll),
+    selectedOptionId: optionId,
+  });
+});
+
 const updateSpeakerApproval = asyncHandler(async (req, res) => {
   requireAdmin(req);
   const liveClass = await findLiveClassOrThrow(req.params.liveClassId);
@@ -972,7 +1278,11 @@ const validateIngestPublish = asyncHandler(async (req, res) => {
     .pop() || '';
   const liveClassId = normalizedStreamName.split('__')[0];
   const liveClass = await findLiveClassOrThrow(liveClassId);
-  const playbackUrl = buildManagedHlsPlaybackUrl(normalizedStreamName);
+  const requestOrigin = `${req.protocol}://${req.get('host')}`;
+  if (shouldUseLocalDevHlsOrigin()) {
+    await ensureLocalDevHlsAssets(normalizedStreamName);
+  }
+  const playbackUrl = buildManagedHlsPlaybackUrl(normalizedStreamName, requestOrigin);
   await writeLiveState(buildLiveStateFromClass(liveClass, {
     status: 'live',
     provider: 'Managed HLS',
@@ -1103,6 +1413,7 @@ module.exports = {
   heartbeat,
   updateMedia,
   updateRaisedHand,
+  submitPollVote,
   updateSpeakerApproval,
   updateParticipantMute,
   removeParticipant,

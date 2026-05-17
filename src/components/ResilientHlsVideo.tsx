@@ -61,6 +61,11 @@ const getPreferredLevelIndex = (levels: Array<{ height?: number }>) => {
   return levels.indexOf(preferred);
 };
 
+const isDirectVideoSource = (value: string) => {
+  const normalized = String(value || '').toLowerCase();
+  return /\.(mp4|webm|mov)(\?|$)/.test(normalized);
+};
+
 export const ResilientHlsVideo = ({
   src,
   title,
@@ -81,12 +86,45 @@ export const ResilientHlsVideo = ({
   const watchdogTimerRef = useRef<number | null>(null);
   const isMountedRef = useRef(false);
   const isPlayingRef = useRef(false);
+  const startupStartedAtRef = useRef(0);
+  const startupReportedRef = useRef(false);
+  const bufferingStartedAtRef = useRef<number | null>(null);
+  const totalBufferMsRef = useRef(0);
   const lastProgressAtRef = useRef<number>(0);
   const lastCurrentTimeRef = useRef<number>(0);
   const onProgressRef = useRef(onProgress);
   const onReadyRef = useRef(onReady);
   const [isReconnecting, setIsReconnecting] = useState(true);
   const [loadMessage, setLoadMessage] = useState<string>('Connecting to stream…');
+
+  const emitPlaybackMetric = (type: string, detail: Record<string, unknown> = {}) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const video = videoRef.current;
+    const performanceWithMemory = performance as Performance & {
+      memory?: { usedJSHeapSize?: number; totalJSHeapSize?: number; jsHeapSizeLimit?: number };
+    };
+
+    window.dispatchEvent(new CustomEvent('edumaster:hls-metric', {
+      detail: {
+        type,
+        src,
+        title,
+        trackVideoId,
+        at: Date.now(),
+        currentTimeSeconds: video ? Math.max(Number(video.currentTime || 0), 0) : 0,
+        durationSeconds: video ? Math.max(Number(video.duration || 0), 0) : 0,
+        totalBufferMs: totalBufferMsRef.current,
+        connectionStrength: getConnectionStrength(),
+        usedJSHeapSize: performanceWithMemory.memory?.usedJSHeapSize || null,
+        totalJSHeapSize: performanceWithMemory.memory?.totalJSHeapSize || null,
+        jsHeapSizeLimit: performanceWithMemory.memory?.jsHeapSizeLimit || null,
+        ...detail,
+      },
+    }));
+  };
 
   const clearTimer = (timerRef: React.MutableRefObject<number | null>) => {
     if (timerRef.current !== null) {
@@ -147,6 +185,7 @@ export const ResilientHlsVideo = ({
 
     clearTimer(retryTimerRef);
     destroyPlayer();
+    emitPlaybackMetric('reconnect_scheduled', { reason, retryDelayMs: RETRY_DELAY_MS });
     setLoadMessage(reason);
     setIsReconnecting(true);
     retryTimerRef.current = window.setTimeout(() => {
@@ -166,6 +205,10 @@ export const ResilientHlsVideo = ({
     }
 
     destroyPlayer();
+    startupStartedAtRef.current = performance.now();
+    startupReportedRef.current = false;
+    bufferingStartedAtRef.current = null;
+    totalBufferMsRef.current = 0;
     setIsReconnecting(true);
     setLoadMessage('Connecting to stream…');
 
@@ -174,6 +217,7 @@ export const ResilientHlsVideo = ({
         isPlayingRef.current = true;
         lastProgressAtRef.current = Date.now();
         setIsReconnecting(false);
+        emitPlaybackMetric('play');
         stopHeartbeat();
         heartbeatTimerRef.current = window.setInterval(() => {
           if (!videoRef.current || !isPlayingRef.current) {
@@ -190,6 +234,7 @@ export const ResilientHlsVideo = ({
       const handlePause = () => {
         isPlayingRef.current = false;
         stopHeartbeat();
+        emitPlaybackMetric('pause');
         void sendHeartbeat(
           Math.max(Number(video.currentTime || 0), 0),
           Math.max(Number(video.duration || 0), 0),
@@ -211,6 +256,7 @@ export const ResilientHlsVideo = ({
         isPlayingRef.current = false;
         stopHeartbeat();
         stopWatchdog();
+        emitPlaybackMetric('ended');
         void sendHeartbeat(
           Math.max(Number(video.currentTime || 0), 0),
           Math.max(Number(video.duration || 0), 0),
@@ -219,13 +265,40 @@ export const ResilientHlsVideo = ({
       };
 
       const handleError = () => {
+        emitPlaybackMetric('media_error', {
+          code: video.error?.code || null,
+          message: video.error?.message || null,
+        });
         scheduleRetry('Stream interrupted. Reconnecting…');
       };
 
       const handleReady = () => {
         setIsReconnecting(false);
         setLoadMessage('Stream ready');
+        if (!startupReportedRef.current && startupStartedAtRef.current > 0) {
+          startupReportedRef.current = true;
+          emitPlaybackMetric('startup_ready', {
+            startupDelayMs: Math.round(performance.now() - startupStartedAtRef.current),
+            readyState: video.readyState,
+          });
+        }
         onReadyRef.current?.();
+      };
+
+      const handleWaiting = () => {
+        if (bufferingStartedAtRef.current === null) {
+          bufferingStartedAtRef.current = performance.now();
+          emitPlaybackMetric('buffering_start');
+        }
+      };
+
+      const handlePlaying = () => {
+        if (bufferingStartedAtRef.current !== null) {
+          const bufferMs = Math.round(performance.now() - bufferingStartedAtRef.current);
+          bufferingStartedAtRef.current = null;
+          totalBufferMsRef.current += bufferMs;
+          emitPlaybackMetric('buffering_end', { bufferMs });
+        }
       };
 
       video.addEventListener('play', handlePlay);
@@ -235,6 +308,8 @@ export const ResilientHlsVideo = ({
       video.addEventListener('error', handleError);
       video.addEventListener('loadeddata', handleReady);
       video.addEventListener('canplay', handleReady);
+      video.addEventListener('waiting', handleWaiting);
+      video.addEventListener('playing', handlePlaying);
 
       watchdogTimerRef.current = window.setInterval(() => {
         if (!isPlayingRef.current || video.paused || video.ended) {
@@ -246,6 +321,7 @@ export const ResilientHlsVideo = ({
         const stalledFor = Date.now() - lastProgressAtRef.current;
 
         if (stalledFor >= STALL_THRESHOLD_MS && currentTime === lastCurrentTimeRef.current && durationSeconds > 0) {
+          emitPlaybackMetric('watchdog_stall', { stalledForMs: stalledFor });
           scheduleRetry('Playback stalled. Reconnecting…');
         }
       }, WATCHDOG_INTERVAL_MS);
@@ -258,10 +334,16 @@ export const ResilientHlsVideo = ({
         video.removeEventListener('error', handleError);
         video.removeEventListener('loadeddata', handleReady);
         video.removeEventListener('canplay', handleReady);
+        video.removeEventListener('waiting', handleWaiting);
+        video.removeEventListener('playing', handlePlaying);
       };
     };
 
-    if (Hls.isSupported()) {
+    if (isDirectVideoSource(src)) {
+      mediaCleanupRef.current = setupMediaEvents();
+      video.src = src;
+      video.load();
+    } else if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
@@ -285,10 +367,46 @@ export const ResilientHlsVideo = ({
         hls.autoLevelCapping = connectionStrength === 'strong' ? -1 : preferredLevel;
         setLoadMessage(connectionStrength === 'weak' ? 'Saving mobile data with lower bitrate…' : 'Stream ready');
         setIsReconnecting(false);
+        emitPlaybackMetric('manifest_parsed', {
+          levelCount: data.levels?.length || 0,
+          preferredLevel,
+          levels: (data.levels || []).map((level) => ({
+            height: level.height || null,
+            bitrate: level.bitrate || null,
+          })),
+        });
         onReadyRef.current?.();
       });
 
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+        const level = hls.levels?.[data.level];
+        emitPlaybackMetric('level_switched', {
+          level: data.level,
+          height: level?.height || null,
+          bitrate: level?.bitrate || null,
+        });
+      });
+
+      hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+        const stats = data.frag?.stats || data.stats;
+        const loading = stats?.loading;
+        const start = Number(loading?.start || 0);
+        const end = Number(loading?.end || 0);
+        emitPlaybackMetric('segment_loaded', {
+          url: data.frag?.url || null,
+          level: data.frag?.level ?? null,
+          durationSeconds: data.frag?.duration || null,
+          loadMs: start > 0 && end >= start ? Math.round(end - start) : null,
+          sizeBytes: Number(stats?.loaded || 0) || null,
+        });
+      });
+
       hls.on(Hls.Events.ERROR, (_event, data) => {
+        emitPlaybackMetric('hls_error', {
+          fatal: Boolean(data?.fatal),
+          type: data?.type || null,
+          details: data?.details || null,
+        });
         const fatalOrRecoverableNetworkError = Boolean(
           data?.fatal
           || data?.type === Hls.ErrorTypes.NETWORK_ERROR

@@ -1,6 +1,33 @@
 {$APP_DOMAIN} {
   encode gzip zstd
-  reverse_proxy app:5000
+
+  handle /backend/api/courses/stream/* {
+    reverse_proxy recorded-hls-cache:8080
+  }
+
+  handle /backend/api/courses/h/* {
+    reverse_proxy recorded-hls-cache:8080
+  }
+
+  handle /backend/api/courses/hls/* {
+    reverse_proxy recorded-hls-cache:8080
+  }
+
+  handle /backend/api/course-manifests/b/* {
+    reverse_proxy recorded-hls-cache:8080
+  }
+
+  handle /backend/api/course-manifests/metrics {
+    reverse_proxy manifest-app:5001 manifest-app-2:5001
+  }
+
+  handle /backend/api/course-manifests/health {
+    reverse_proxy manifest-app:5001 manifest-app-2:5001
+  }
+
+  handle {
+    reverse_proxy app:5000 app-2:5000
+  }
 }
 
 {$LIVE_DOMAIN} {

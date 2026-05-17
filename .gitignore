@@ -2,6 +2,12 @@ node_modules/
 build/
 dist/
 qa-automation/.dist/
+mobile-rn/ios/Pods/
+qa-automation/artifacts/
+qa-automation/qa-automation/artifacts/
+qa-automation/reports/
+qa-automation/runs/
+reports/
 coverage/
 .DS_Store
 *.log

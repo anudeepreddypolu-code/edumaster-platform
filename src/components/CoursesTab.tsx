@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { ProtectedLivePlayback } from './ProtectedLivePlayback';
 import { EduService, type CoursePaymentProvider } from '../EduService';
 import { cn } from '../lib/utils';
+import { wireHlsPlaybackMetrics } from '../lib/hlsPlaybackMetrics';
 import { CourseCard, CourseLesson, LiveClass, LiveClassAccess, PlatformOverview, ProtectedLessonPlayback } from '../types';
 
 const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -1462,7 +1463,12 @@ export const CoursesTab = ({
 
     if (currentVideo.canPlayType('application/vnd.apple.mpegurl')) {
       currentVideo.src = privateVideoStreamUrl;
-      return;
+      return wireHlsPlaybackMetrics({
+        video: currentVideo,
+        src: privateVideoStreamUrl,
+        title: selectedLesson?.title || 'Recorded lesson',
+        trackVideoId: selectedLesson?.id || null,
+      });
     }
 
     if (!Hls.isSupported()) {
@@ -1477,8 +1483,16 @@ export const CoursesTab = ({
     hlsRef.current = hls;
     hls.loadSource(privateVideoStreamUrl);
     hls.attachMedia(currentVideo);
+    const cleanupMetrics = wireHlsPlaybackMetrics({
+      video: currentVideo,
+      hls,
+      src: privateVideoStreamUrl,
+      title: selectedLesson?.title || 'Recorded lesson',
+      trackVideoId: selectedLesson?.id || null,
+    });
 
     return () => {
+      cleanupMetrics();
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;

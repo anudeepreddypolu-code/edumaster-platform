@@ -1,0 +1,91 @@
+[
+  {
+    "runId": "2026-05-15T09-37-01-788Z",
+    "createdAt": "2026-05-15T09:37:01.789Z",
+    "environment": "prod",
+    "mode": "manual-trigger",
+    "tags": [
+      "manual-trigger"
+    ],
+    "sourceReports": [
+      "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/reports/course-video-direct-1000-fast-2026-05-15T07-08-14-899Z",
+      "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/reports/course-video-sustained-smoke-2026-05-15T07-29-18-051Z",
+      "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/reports/course-video-production-qa-2026-05-15T07-05-51-138Z"
+    ],
+    "metrics": {
+      "startupSuccessRate": 100,
+      "mediaManifestP50Ms": 399.5,
+      "mediaManifestP95Ms": 1749.5,
+      "mediaManifestP99Ms": 3020,
+      "firstFrameMs": 689,
+      "bufferingRatio": 0,
+      "interruptionRate": 0,
+      "sustainedContinuityScore": 100,
+      "recoverySuccessRate": 100,
+      "cacheHitEffectiveness": null,
+      "browserStabilityRate": 88.1,
+      "failedRequestRate": 0
+    },
+    "playbackHealthScore": 93.56,
+    "playbackHealthLabel": "OK"
+  },
+  {
+    "runId": "2026-05-15T09-37-10-371Z",
+    "createdAt": "2026-05-15T09:37:10.371Z",
+    "environment": "prod",
+    "mode": "manual-trigger",
+    "tags": [
+      "manual-trigger"
+    ],
+    "sourceReports": [
+      "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/reports/course-video-1000-2026-05-15T01-09-11-836Z",
+      "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/reports/course-video-production-qa-2026-05-15T07-05-51-138Z"
+    ],
+    "metrics": {
+      "startupSuccessRate": 36.4,
+      "mediaManifestP50Ms": 30000,
+      "mediaManifestP95Ms": 30006,
+      "mediaManifestP99Ms": 30006,
+      "firstFrameMs": 584,
+      "bufferingRatio": null,
+      "interruptionRate": null,
+      "sustainedContinuityScore": 36.4,
+      "recoverySuccessRate": 100,
+      "cacheHitEffectiveness": null,
+      "browserStabilityRate": 88.1,
+      "failedRequestRate": 4.83
+    },
+    "playbackHealthScore": 51.77,
+    "playbackHealthLabel": "CRITICAL"
+  },
+  {
+    "runId": "2026-05-15T09-38-40-876Z",
+    "createdAt": "2026-05-15T09:38:40.877Z",
+    "environment": "prod",
+    "mode": "manual-trigger",
+    "tags": [
+      "manual-trigger"
+    ],
+    "sourceReports": [
+      "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/reports/course-video-direct-1000-fast-2026-05-15T07-08-14-899Z",
+      "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/reports/course-video-sustained-smoke-2026-05-15T07-29-18-051Z",
+      "/Users/anudeepreddypolu/Downloads/remix_-edumaster_-ssc-&-rrb-je-prep-platform/qa-automation/reports/course-video-production-qa-2026-05-15T07-05-51-138Z"
+    ],
+    "metrics": {
+      "startupSuccessRate": 100,
+      "mediaManifestP50Ms": 399.5,
+      "mediaManifestP95Ms": 1749.5,
+      "mediaManifestP99Ms": 3020,
+      "firstFrameMs": 689,
+      "bufferingRatio": 0,
+      "interruptionRate": 0,
+      "sustainedContinuityScore": 100,
+      "recoverySuccessRate": 100,
+      "cacheHitEffectiveness": null,
+      "browserStabilityRate": 88.1,
+      "failedRequestRate": 0
+    },
+    "playbackHealthScore": 93.56,
+    "playbackHealthLabel": "OK"
+  }
+]

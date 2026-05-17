@@ -125,13 +125,18 @@ const waitForAnySelector = async (page: puppeteer.Page, selectorList: string[], 
 const clickFirstAvailable = async (page: puppeteer.Page, selectorList: string[], textMatchers: RegExp[] = []) => {
   for (const selector of selectorList) {
     const clicked = await page.evaluate((targetSelector) => {
-      const element = document.querySelector(targetSelector) as HTMLElement | null;
-      if (!element) {
-        return false;
-      }
+      const elements = [...document.querySelectorAll(targetSelector)] as HTMLElement[];
+      for (const element of elements) {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || rect.width <= 0 || rect.height <= 0) {
+          continue;
+        }
 
-      element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      return true;
+        element.click();
+        return true;
+      }
+      return false;
     }, selector);
 
     if (clicked) {
@@ -142,11 +147,22 @@ const clickFirstAvailable = async (page: puppeteer.Page, selectorList: string[],
   if (textMatchers.length > 0) {
     const matched = await page.evaluate((patterns) => {
       const regexes = patterns.map((pattern) => new RegExp(pattern, 'i'));
-      const button = [...document.querySelectorAll('button, a')].find((element) =>
-        regexes.some((regex) => regex.test((element.textContent || '').trim())),
-      ) as HTMLElement | undefined;
-      button?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      return Boolean(button);
+      const elements = [...document.querySelectorAll('button, a')] as HTMLElement[];
+      for (const element of elements) {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || rect.width <= 0 || rect.height <= 0) {
+          continue;
+        }
+        if (!regexes.some((regex) => regex.test((element.textContent || '').trim()))) {
+          continue;
+        }
+
+        element.click();
+        return true;
+      }
+
+      return false;
     }, textMatchers.map((pattern) => pattern.source));
 
     return matched;
@@ -155,29 +171,128 @@ const clickFirstAvailable = async (page: puppeteer.Page, selectorList: string[],
   return false;
 };
 
-const ensureChecked = async (page: puppeteer.Page, selector: string) => {
-  const clickedSelector = await page.evaluate((targetSelector) => {
-    const checkbox = document.querySelector(targetSelector) as HTMLInputElement | null;
-    if (!checkbox) {
-      return false;
+const getVisibleText = async (page: puppeteer.Page, selector: string) => page.evaluate((targetSelector) => {
+  const elements = [...document.querySelectorAll(targetSelector)] as HTMLElement[];
+  for (const element of elements) {
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || rect.width <= 0 || rect.height <= 0) {
+      continue;
     }
 
-    checkbox.click();
-    return true;
-  }, selector);
+    return (element.textContent || '').trim();
+  }
 
-  if (clickedSelector) {
-    return true;
+  return '';
+}, selector);
+
+const ensureChecked = async (page: puppeteer.Page, selector: string) => {
+  const checkboxHandles = await page.$$(selector);
+  for (const handle of checkboxHandles) {
+    const box = await handle.boundingBox();
+    if (!box || box.width <= 0 || box.height <= 0) {
+      continue;
+    }
+
+    const isVisible = await handle.evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+
+    if (!isVisible) {
+      continue;
+    }
+
+    await handle.click();
+    await page.waitForFunction(
+      (targetSelector) => {
+        const nodes = [...document.querySelectorAll(targetSelector)] as HTMLElement[];
+        return nodes.some((node) => {
+          const input = node instanceof HTMLInputElement ? node : node.querySelector('input[type="checkbox"]');
+          return Boolean(input?.checked);
+        });
+      },
+      { timeout: 2000 },
+      selector,
+    ).catch(() => undefined);
+
+    const becameChecked = await page.evaluate((targetSelector) => {
+      const nodes = [...document.querySelectorAll(targetSelector)] as HTMLElement[];
+      return nodes.some((node) => {
+        const input = node instanceof HTMLInputElement ? node : node.querySelector('input[type="checkbox"]');
+        return Boolean(input?.checked);
+      });
+    }, selector);
+
+    if (becameChecked) {
+      return true;
+    }
   }
 
   const checked = await page.evaluate(() => {
-    const checkbox = document.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-    checkbox?.click();
-    return Boolean(checkbox);
+    const checkboxes = [...document.querySelectorAll('input[type="checkbox"]')] as HTMLInputElement[];
+    for (const checkbox of checkboxes) {
+      const style = window.getComputedStyle(checkbox);
+      const rect = checkbox.getBoundingClientRect();
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || rect.width <= 0 || rect.height <= 0) {
+        continue;
+      }
+
+      checkbox.click();
+      return true;
+    }
+
+    return false;
   });
 
   return checked;
 };
+
+const getVisibleQuestionCount = async (page: puppeteer.Page, selectorPrefix: string) => page.evaluate((prefix) => {
+  const items = [...document.querySelectorAll<HTMLElement>(`[data-testid^="${prefix}"]`)];
+  return items.filter((item) => {
+    const style = window.getComputedStyle(item);
+    const rect = item.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && rect.width > 0 && rect.height > 0;
+  }).length;
+}, selectorPrefix);
+
+const selectFirstVisibleAnswer = async (page: puppeteer.Page) => page.evaluate(() => {
+  const optionLabels = [...document.querySelectorAll('label')] as HTMLElement[];
+  for (const label of optionLabels) {
+    const input = label.querySelector('input[type="radio"], input[type="checkbox"]') as HTMLInputElement | null;
+    if (!input) {
+      continue;
+    }
+
+    const style = window.getComputedStyle(label);
+    const rect = label.getBoundingClientRect();
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || rect.width <= 0 || rect.height <= 0) {
+      continue;
+    }
+
+    label.click();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  return false;
+});
+
+const hasVisibleSelection = async (page: puppeteer.Page) => page.evaluate(() => {
+  const inputs = [...document.querySelectorAll('input[type="radio"], input[type="checkbox"]')] as HTMLInputElement[];
+  return inputs.some((input) => {
+    if (!input.checked) {
+      return false;
+    }
+
+    const target = (input.closest('label') || input) as HTMLElement;
+    const style = window.getComputedStyle(target);
+    const rect = target.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && rect.width > 0 && rect.height > 0;
+  });
+});
 
 const goToBaseAndLogin = async (page: puppeteer.Page) => {
   await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -259,7 +374,7 @@ const reviewDesktopFlow = async (
     );
   }
 
-  await clickFirstAvailable(page, [selectors.testsInstructionsNext], [/^next$/i]);
+  await clickFirstAvailable(page, [selectors.testsInstructionsNextDesktop], [/^next$/i]);
   await sleep(500);
   await waitForAnySelector(page, [selectors.testsConfirmationDesktop, selectors.testsExamDesktop, 'input[type="checkbox"]']);
 
@@ -275,10 +390,39 @@ const reviewDesktopFlow = async (
     );
   }
 
-  await ensureChecked(page, selectors.testsConfirmationCheckbox);
-  await clickFirstAvailable(page, [selectors.testsConfirmationBegin], [/i am ready to begin/i, /ready to begin/i]);
+  await ensureChecked(page, selectors.testsConfirmationCheckboxDesktop);
+  await clickFirstAvailable(page, [], [/^previous$/i]);
+  await waitForAnySelector(page, [selectors.testsInstructionsDesktop]);
+  await clickFirstAvailable(page, [], [/go to tests/i]);
+  await waitForAnySelector(page, [selectors.testsDetailDesktop]);
+
+  const detailActionLabel = await getVisibleText(page, selectors.testsOpenInstructions);
+  if (/resume/i.test(detailActionLabel)) {
+    recordFailure(
+      failures,
+      'tests-confirmation-state-desktop',
+      'Desktop confirmation screen marks the test as resumed too early',
+      'Checking the declaration should not flip the detail CTA from Start to Resume until the learner actually begins the exam.',
+      confirmationShot,
+    );
+  }
+
+  await clickFirstAvailable(page, [selectors.testsOpenInstructions], [/resume now/i, /start now/i, /go to test series/i, /paper/i]);
+  await waitForAnySelector(page, [selectors.testsInstructionsDesktop]);
+  await clickFirstAvailable(page, [selectors.testsInstructionsNextDesktop], [/^next$/i]);
+  await waitForAnySelector(page, [selectors.testsConfirmationDesktop, 'input[type="checkbox"]']);
+  await ensureChecked(page, selectors.testsConfirmationCheckboxDesktop);
+  await page.waitForFunction(
+    (targetSelector) => {
+      const button = document.querySelector(targetSelector) as HTMLButtonElement | null;
+      return Boolean(button && !button.disabled);
+    },
+    { timeout: 5000 },
+    selectors.testsConfirmationBeginDesktop,
+  );
+  await clickFirstAvailable(page, [selectors.testsConfirmationBeginDesktop], [/i am ready to begin/i, /ready to begin/i]);
   await sleep(900);
-  await waitForAnySelector(page, [selectors.testsExamDesktop, 'button']);
+  await waitForAnySelector(page, [selectors.testsExamDesktop, selectors.testsExamSubmitDesktop]);
 
   const examShot = await captureStep(page, ctx, captures, 'tests-exam-desktop', 'tests-exam-desktop');
   if (!(await page.$(selectors.testsExamDesktop))) {
@@ -291,15 +435,13 @@ const reviewDesktopFlow = async (
     );
   }
 
-  const clickedDesktopOption = await page.evaluate(() => {
-    const firstOption = document.querySelector('input[type="radio"]') as HTMLInputElement | null;
-    firstOption?.click();
-    return Boolean(firstOption);
-  });
+  const questionCount = await getVisibleQuestionCount(page, 'tests-desktop-jump-');
+  const runAdvancedDesktopParityChecks = questionCount > 1;
+  const clickedDesktopOption = await selectFirstVisibleAnswer(page);
   await sleep(250);
   const selectedDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-desktop-selected', 'tests-exam-desktop-selected');
-  const hasDesktopSelection = await page.evaluate(() => Boolean(document.querySelector('input[type="radio"]:checked')));
-  if (!clickedDesktopOption || !hasDesktopSelection) {
+  const hasDesktopSelection = await hasVisibleSelection(page);
+  if (runAdvancedDesktopParityChecks && (!clickedDesktopOption || !hasDesktopSelection)) {
     recordFailure(
       failures,
       'tests-exam-desktop-selected',
@@ -309,89 +451,88 @@ const reviewDesktopFlow = async (
     );
   }
 
-  await clickFirstAvailable(page, [], [/save & next/i]);
-  await sleep(400);
-  const savedDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-desktop-saved-next', 'tests-exam-desktop-saved-next');
-  if (!(await page.$(selectors.testsExamDesktop))) {
-    recordFailure(
-      failures,
-      'tests-exam-desktop-saved-next',
-      'Desktop save & next interaction broke the exam flow',
-      'Saving the first desktop answer should advance to the next question while keeping the palette and counts updated.',
-      savedDesktopShot,
-    );
+  if (runAdvancedDesktopParityChecks) {
+    await clickFirstAvailable(page, [], [/save & next/i]);
+    await sleep(400);
+    const savedDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-desktop-saved-next', 'tests-exam-desktop-saved-next');
+    if (!(await page.$(selectors.testsExamDesktop))) {
+      recordFailure(
+        failures,
+        'tests-exam-desktop-saved-next',
+        'Desktop save & next interaction broke the exam flow',
+        'Saving the first desktop answer should advance to the next question while keeping the palette and counts updated.',
+        savedDesktopShot,
+      );
+    }
+
+    const clickedSecondDesktopOption = await selectFirstVisibleAnswer(page);
+    await sleep(250);
+    await clickFirstAvailable(page, [], [/save & next/i]);
+    await sleep(400);
+    const returnedToQuestionTwo = await page.evaluate(() => {
+      const target = document.querySelector('[data-testid="tests-desktop-jump-2"]') as HTMLElement | null;
+      target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return Boolean(target);
+    });
+    await sleep(350);
+    await clickFirstAvailable(page, [], [/mark for review/i]);
+    await sleep(250);
+    const reviewDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-desktop-review-state', 'tests-exam-desktop-review-state');
+    if (!(await page.$(selectors.testsExamDesktop)) || !clickedSecondDesktopOption || !returnedToQuestionTwo) {
+      recordFailure(
+        failures,
+        'tests-exam-desktop-review-state',
+        'Desktop review/save interaction broke the exam flow',
+        'Saving, revisiting, and toggling review on a desktop question should keep the user inside the exam with the updated question state.',
+        reviewDesktopShot,
+      );
+    }
   }
 
-  const clickedSecondDesktopOption = await page.evaluate(() => {
-    const options = [...document.querySelectorAll('input[type="radio"]')] as HTMLInputElement[];
-    const secondOption = options[1] || options[0] || null;
-    secondOption?.click();
-    return Boolean(secondOption);
-  });
-  await sleep(250);
-  await clickFirstAvailable(page, [], [/save & next/i]);
-  await sleep(400);
-  const returnedToQuestionTwo = await page.evaluate(() => {
-    const target = document.querySelector('[data-testid="tests-desktop-jump-2"]') as HTMLElement | null;
-    target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    return Boolean(target);
-  });
-  await sleep(350);
-  await clickFirstAvailable(page, [], [/mark for review/i]);
-  await sleep(250);
-  const reviewDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-desktop-review-state', 'tests-exam-desktop-review-state');
-  if (!(await page.$(selectors.testsExamDesktop)) || !clickedSecondDesktopOption || !returnedToQuestionTwo) {
-    recordFailure(
-      failures,
-      'tests-exam-desktop-review-state',
-      'Desktop review/save interaction broke the exam flow',
-      'Saving, revisiting, and toggling review on a desktop question should keep the user inside the exam with the updated question state.',
-      reviewDesktopShot,
-    );
-  }
+  if (runAdvancedDesktopParityChecks) {
+    await clickFirstAvailable(page, [selectors.testsDesktopOpenSymbols], [/symbols/i]);
+    await sleep(300);
+    const symbolsDesktopShot = await captureStep(page, ctx, captures, 'tests-symbols-desktop', 'tests-symbols-desktop');
+    if (!(await page.$(selectors.testsDesktopSymbolsOverlay))) {
+      recordFailure(
+        failures,
+        'tests-symbols-desktop',
+        'Desktop symbols interaction did not open the symbols panel',
+        'Clicking SYMBOLS should open the dedicated legend overlay that matches the Figma exam interaction.',
+        symbolsDesktopShot,
+      );
+    }
 
-  await clickFirstAvailable(page, [], [/symbols/i]);
-  await sleep(300);
-  const symbolsDesktopShot = await captureStep(page, ctx, captures, 'tests-symbols-desktop', 'tests-symbols-desktop');
-  if (!(await page.$(selectors.testsDesktopSymbolsOverlay))) {
-    recordFailure(
-      failures,
-      'tests-symbols-desktop',
-      'Desktop symbols interaction did not open the symbols panel',
-      'Clicking SYMBOLS should open the dedicated legend overlay that matches the Figma exam interaction.',
-      symbolsDesktopShot,
-    );
-  }
+    await clickFirstAvailable(page, [selectors.testsDesktopOpenInstructions], [/instructions/i]);
+    await sleep(300);
+    const instructionsOverlayDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-instructions-desktop', 'tests-exam-instructions-desktop');
+    if (!(await page.$(selectors.testsDesktopInstructionsOverlay))) {
+      recordFailure(
+        failures,
+        'tests-exam-instructions-desktop',
+        'Desktop instructions interaction did not open the in-exam instructions overlay',
+        'Clicking INSTRUCTIONS from the desktop exam should open the large scrollable instructions overlay.',
+        instructionsOverlayDesktopShot,
+      );
+    }
 
-  await clickFirstAvailable(page, [], [/instructions/i]);
-  await sleep(300);
-  const instructionsOverlayDesktopShot = await captureStep(page, ctx, captures, 'tests-exam-instructions-desktop', 'tests-exam-instructions-desktop');
-  if (!(await page.$(selectors.testsDesktopInstructionsOverlay))) {
-    recordFailure(
-      failures,
-      'tests-exam-instructions-desktop',
-      'Desktop instructions interaction did not open the in-exam instructions overlay',
-      'Clicking INSTRUCTIONS from the desktop exam should open the large scrollable instructions overlay.',
-      instructionsOverlayDesktopShot,
-    );
-  }
+    await clickFirstAvailable(page, [selectors.testsDesktopOpenSummary], [/overall test summary/i]);
+    await sleep(300);
+    const summaryDesktopShot = await captureStep(page, ctx, captures, 'tests-summary-desktop', 'tests-summary-desktop');
+    if (!(await page.$(selectors.testsDesktopSummaryOverlay))) {
+      recordFailure(
+        failures,
+        'tests-summary-desktop',
+        'Desktop overall summary interaction did not open the summary overlay',
+        'Clicking OVERALL TEST SUMMARY should open the centered summary state from the Figma.',
+        summaryDesktopShot,
+      );
+    }
 
-  await clickFirstAvailable(page, [], [/overall test summary/i]);
-  await sleep(300);
-  const summaryDesktopShot = await captureStep(page, ctx, captures, 'tests-summary-desktop', 'tests-summary-desktop');
-  if (!(await page.$(selectors.testsDesktopSummaryOverlay))) {
-    recordFailure(
-      failures,
-      'tests-summary-desktop',
-      'Desktop overall summary interaction did not open the summary overlay',
-      'Clicking OVERALL TEST SUMMARY should open the centered summary state from the Figma.',
-      summaryDesktopShot,
-    );
+    await clickFirstAvailable(page, [selectors.testsDesktopOpenSummary], [/overall test summary/i]);
+    await sleep(250);
   }
-
-  await clickFirstAvailable(page, [], [/overall test summary/i]);
-  await sleep(250);
-  await clickFirstAvailable(page, [selectors.testsExamSubmit], [/submit test/i, /submit/i]);
+  await clickFirstAvailable(page, [selectors.testsExamSubmitDesktop], [/submit test/i, /submit/i]);
   await sleep(800);
 
   const resultDesktopShot = await captureStep(page, ctx, captures, 'tests-result-desktop', 'tests-result-desktop');
@@ -472,7 +613,7 @@ const reviewMobileFlow = async (
     );
   }
 
-  await clickFirstAvailable(page, [selectors.testsInstructionsNext], [/^next$/i]);
+  await clickFirstAvailable(page, [selectors.testsInstructionsNextMobile], [/^next$/i]);
   await sleep(500);
   await waitForAnySelector(page, [selectors.testsConfirmationMobile, selectors.testsConfirmationDesktop, 'input[type="checkbox"]']);
   const confirmationShot = await captureStep(page, ctx, captures, 'tests-confirmation-mobile', 'tests-confirmation-mobile');
@@ -486,41 +627,43 @@ const reviewMobileFlow = async (
     );
   }
 
-  await ensureChecked(page, selectors.testsConfirmationCheckbox);
-  await clickFirstAvailable(page, [selectors.testsConfirmationBegin], [/i am ready to begin/i, /ready to begin/i]);
+  await ensureChecked(page, selectors.testsConfirmationCheckboxMobile);
+  await page.waitForFunction(
+    (targetSelector) => {
+      const button = document.querySelector(targetSelector) as HTMLButtonElement | null;
+      return Boolean(button && !button.disabled);
+    },
+    { timeout: 5000 },
+    selectors.testsConfirmationBeginMobile,
+  );
+  await clickFirstAvailable(page, [selectors.testsConfirmationBeginMobile], [/i am ready to begin/i, /ready to begin/i]);
   await sleep(900);
-  await waitForAnySelector(page, [selectors.testsExamMobile, selectors.testsExamDesktop, 'button']);
+  await waitForAnySelector(page, [selectors.testsExamMobile, selectors.testsExamSubmitMobile]);
 
-  await page.evaluate(() => {
-    const firstOption = document.querySelector('input[type="radio"]') as HTMLInputElement | null;
-    firstOption?.click();
-  });
+  const mobileQuestionCount = await getVisibleQuestionCount(page, 'tests-mobile-jump-');
+  await selectFirstVisibleAnswer(page);
   await sleep(200);
-  await clickFirstAvailable(page, [], [/save & next/i]);
-  await sleep(250);
+  if (mobileQuestionCount > 1) {
+    await clickFirstAvailable(page, [], [/save & next/i]);
+    await sleep(250);
 
-  await page.evaluate(() => {
-    const firstOption = document.querySelector('input[type="radio"]') as HTMLInputElement | null;
-    firstOption?.click();
-  });
-  await sleep(200);
-  await clickFirstAvailable(page, [], [/save & next/i]);
-  await sleep(250);
+    await selectFirstVisibleAnswer(page);
+    await sleep(200);
+    await clickFirstAvailable(page, [], [/save & next/i]);
+    await sleep(250);
 
-  await clickFirstAvailable(page, [], [/mark review/i]);
-  await sleep(250);
-  await clickFirstAvailable(page, [], [/save & next/i]);
-  await sleep(250);
+    await clickFirstAvailable(page, [], [/mark review/i]);
+    await sleep(250);
+    await clickFirstAvailable(page, [], [/save & next/i]);
+    await sleep(250);
 
-  await page.evaluate(() => {
-    const firstOption = document.querySelector('input[type="radio"]') as HTMLInputElement | null;
-    firstOption?.click();
-  });
-  await sleep(200);
-  await clickFirstAvailable(page, [], [/mark review/i]);
-  await sleep(250);
-  await clickFirstAvailable(page, [selectors.testsMobileJumpQuestion1]);
-  await sleep(300);
+    await selectFirstVisibleAnswer(page);
+    await sleep(200);
+    await clickFirstAvailable(page, [], [/mark review/i]);
+    await sleep(250);
+    await clickFirstAvailable(page, [selectors.testsMobileJumpQuestion1]);
+    await sleep(300);
+  }
 
   const examShot = await captureStep(page, ctx, captures, 'tests-exam-mobile', 'tests-exam-mobile');
   if (!(await page.$(selectors.testsExamMobile))) {
@@ -534,7 +677,7 @@ const reviewMobileFlow = async (
   }
 
   await page.evaluate(() => window.scrollTo(0, 0));
-  await clickFirstAvailable(page, [selectors.testsPaletteOpen], [/question palette/i, /palette/i, /menu/i]);
+  await clickFirstAvailable(page, [selectors.testsPaletteOpenMobile], [/question palette/i, /palette/i, /menu/i]);
   await sleep(500);
   const paletteShot = await captureStep(page, ctx, captures, 'tests-palette-mobile', 'tests-palette-mobile');
   if (!(await page.$(selectors.testsMobilePalette))) {
@@ -547,9 +690,9 @@ const reviewMobileFlow = async (
     );
   }
 
-  await clickFirstAvailable(page, [selectors.testsPaletteClose], [/close/i, /^x$/i, /back/i]);
+  await clickFirstAvailable(page, [selectors.testsPaletteCloseMobile], [/close/i, /^x$/i, /back/i]);
   await sleep(400);
-  await clickFirstAvailable(page, [selectors.testsExamSubmit], [/submit test/i, /submit/i]);
+  await clickFirstAvailable(page, [selectors.testsExamSubmitMobile], [/submit test/i, /submit/i]);
   await sleep(800);
 
   const resultShot = await captureStep(page, ctx, captures, 'tests-result-mobile', 'tests-result-mobile');

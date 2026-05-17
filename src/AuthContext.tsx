@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { EduService } from './EduService';
-import { AuthUser, RegisterPayload } from './types';
+import { AuthUser, RegisterOtpResponse, RegisterPayload } from './types';
 
 const AUTH_EVENT_KEY = 'edumaster.auth.event';
 
@@ -12,8 +12,8 @@ interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   isAdmin: boolean;
-  login: (email: string, password: string, options?: { forceLogoutOtherSessions?: boolean }) => Promise<void>;
-  register: (payload: RegisterPayload) => Promise<void>;
+  login: (identifier: string, password: string, options?: { forceLogoutOtherSessions?: boolean }) => Promise<void>;
+  register: (payload: RegisterPayload & { channel?: 'email' | 'sms' }) => Promise<RegisterOtpResponse>;
   updateProfile: (payload: { name: string; email: string; mobileNumber?: string | null }) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -24,7 +24,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAdmin: false,
   login: async () => {},
-  register: async () => {},
+  register: async () => ({ verificationRequired: true, challenge: { challengeId: '', channel: 'email', expiresInSeconds: 0, destination: '' } }),
   updateProfile: async () => {},
   logout: async () => {},
   refreshSession: async () => {},
@@ -80,14 +80,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const login = async (email: string, password: string, options?: { forceLogoutOtherSessions?: boolean }) => {
-    const response = await EduService.login(email, password, options);
+  const login = async (identifier: string, password: string, options?: { forceLogoutOtherSessions?: boolean }) => {
+    const response = await EduService.login(identifier, password, options);
     setUser(response.user);
   };
 
-  const register = async (payload: RegisterPayload) => {
-    const response = await EduService.register(payload);
-    setUser(response.user);
+  const register = async (payload: RegisterPayload & { channel?: 'email' | 'sms' }) => {
+    return EduService.register(payload);
   };
 
   const updateProfile = async (payload: { name: string; email: string; mobileNumber?: string | null }) => {

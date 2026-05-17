@@ -76,6 +76,7 @@ At minimum set these in [/.env.production](/Users/anudeepreddypolu/Downloads/rem
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`
 - `LIVE_INGEST_PUBLISHER_SECRET`
+- `LIVE_HLS_PUBLIC_BASE_URL`
 
 ## Deploy
 
@@ -92,6 +93,8 @@ This script:
 2. builds the frontend locally
 3. syncs the repo to the server with `rsync`
 4. starts the compose stack remotely
+
+For large classes, the student player should use the public HLS URL directly so the app server stays out of the per-segment media path.
 
 ## OBS publish settings
 

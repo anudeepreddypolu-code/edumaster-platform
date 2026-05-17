@@ -16,6 +16,11 @@ const {
   uploadPrivateStorageFile,
   deleteStoredPrivateVideoPrefix,
 } = require('./private-video-storage.js');
+const {
+  buildManifestBundleStorageKey,
+  createManifestBundleFromDirectory,
+  writeManifestBundleToDirectory,
+} = require('./manifest-bundle.js');
 
 const activeJobs = new Set();
 
@@ -39,6 +44,9 @@ const createInitialVideoDeliveryState = () => ({
   hlsProcessingError: null,
   hlsManifestPath: null,
   hlsPlaybackPath: null,
+  hlsManifestBundlePath: null,
+  hlsManifestRootPath: null,
+  hlsManifestVersion: null,
 });
 
 const cleanupDirectory = (directoryPath) => {
@@ -179,6 +187,7 @@ const transcodeToHls = async ({ sourcePath, outputDirectory, qualities }) => {
       '-y',
       '-i', sourcePath,
       '-vf', `scale=w=${profile.width}:h=${profile.height}:force_original_aspect_ratio=decrease,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2`,
+      '-ac', '2',
       '-c:a', 'aac',
       '-ar', '48000',
       '-b:a', '128k',
@@ -251,17 +260,30 @@ const scheduleVideoProcessing = ({ courseId, lessonId }) => {
 
       const workspaceDirectory = createTemporaryWorkspace(jobId);
       const outputKey = buildPrivateHlsAssetKey({ courseId, moduleId: lesson.moduleId || 'module', lessonId, assetName: 'master.m3u8' });
+      const outputRootPath = path.posix.dirname(outputKey);
+      const manifestBundleKey = buildManifestBundleStorageKey(outputKey);
       const localOutputDirectory = path.join(workspaceDirectory, 'hls');
       const { sourcePath, cleanup } = await downloadStorageSourceToLocal({
         lesson,
         workspaceDirectory,
       });
+      const manifestVersion = Date.now().toString(36);
 
       try {
         await transcodeToHls({
           sourcePath,
           outputDirectory: localOutputDirectory,
           qualities: Array.isArray(lesson.targetQualities) && lesson.targetQualities.length > 0 ? lesson.targetQualities : getTargetQualities(),
+        });
+        const manifestBundle = createManifestBundleFromDirectory({
+          outputDirectory: localOutputDirectory,
+          manifestKey: outputKey,
+          storageProvider: lesson.storageProvider || 'local',
+          version: manifestVersion,
+        });
+        writeManifestBundleToDirectory({
+          outputDirectory: localOutputDirectory,
+          bundle: manifestBundle,
         });
 
         if ((lesson.storageProvider || 'local') === 's3') {
@@ -305,6 +327,9 @@ const scheduleVideoProcessing = ({ courseId, lessonId }) => {
         hlsProcessingCompletedAt: new Date().toISOString(),
         hlsManifestPath: outputKey,
         hlsPlaybackPath: outputKey,
+        hlsManifestBundlePath: manifestBundleKey,
+        hlsManifestRootPath: outputRootPath,
+        hlsManifestVersion: manifestVersion,
         hlsProcessingError: null,
       }));
     } catch (error) {

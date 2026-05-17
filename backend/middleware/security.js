@@ -57,7 +57,11 @@ const cleanupBuckets = (now) => {
 
 const isProtectedMediaStreamRequest = (req) => {
   const requestPath = String(req.path || '');
-  return requestPath.startsWith('/api/courses/stream/');
+  return requestPath.startsWith('/api/courses/stream/')
+    || requestPath.startsWith('/api/courses/h/')
+    || requestPath.startsWith('/api/courses/hls/')
+    || requestPath.startsWith('/api/course-manifests/b/')
+    || requestPath.startsWith('/api/live-classes/stream/');
 };
 
 const hashKeyPart = (value) => createHash('sha256').update(String(value || '')).digest('hex').slice(0, 24);

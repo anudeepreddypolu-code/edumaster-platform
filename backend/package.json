@@ -5,6 +5,8 @@
   "scripts": {
     "start": "node server.cjs",
     "dev": "nodemon server.cjs",
+    "manifest:start": "node manifest-server.cjs",
+    "manifest:backfill": "node scripts/backfill-hls-manifest-bundles.mjs",
     "test": "node test-api.js",
     "test:api": "node test-api.js",
     "test:load": "node load-test.js",

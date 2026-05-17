@@ -121,6 +121,7 @@ app.get(['/api/live', '/backend/api/live'], (_req, res) => {
 
 const PORT = appConfig.port;
 const HOST = process.env.HOST || '127.0.0.1';
+const enableBackgroundWorkers = String(process.env.ENABLE_BACKGROUND_WORKERS || 'true').toLowerCase() !== 'false';
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -146,8 +147,10 @@ const startServer = async (options = {}) => {
 
   const port = options.port ?? PORT;
   const host = options.host ?? HOST;
-  startLiveEventBus();
-  ensureReplayImporterWorker();
+  if (enableBackgroundWorkers) {
+    startLiveEventBus();
+    ensureReplayImporterWorker();
+  }
 
   return new Promise((resolve, reject) => {
     const server = app.listen(port, host, () => {
